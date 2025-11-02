@@ -1,0 +1,52 @@
+# 环境变量文件
+.env
+.env.local
+.env.*.local
+
+# Python编译文件
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# 日志文件
+*.log
+logs/
+
+# 历史记录目录
+history/
+
+# 语音文件目录
+voice/*.mp3
+voice/*.wav
+
+# 数据库文件
+*.db
+*.sqlite
+
+# IDE相关文件
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 虚拟环境
+venv/
+env/
+ENV/
+
+# 测试相关
+.pytest_cache/
+coverage/
+
+# 打包文件
+*.egg-info/
+build/
+dist/
+*.whl
