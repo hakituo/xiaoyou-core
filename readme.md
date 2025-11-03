@@ -190,6 +190,7 @@ python app.py        # Flask server only
 * Improve speech recognition & synthesis
 * Multi-platform integration & UI/UX improvements
 * Plugin system for custom extensions
+* I will make a table pet and put it on Steam, and of course it is also free and open source
 
 ## 🤝 Contact
 
@@ -454,6 +455,7 @@ python app.py
 - [ ] 增强多平台集成和适配
 - [ ] 优化用户界面和交互体验
 - [ ] 增加插件系统支持自定义功能扩展
+- [ ] 我会做一个桌宠放steam上当然也是免费开源的
 
 ## 🤝 合作与支持
 
