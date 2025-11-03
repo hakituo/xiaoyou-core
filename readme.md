@@ -1,3 +1,204 @@
+# XiaoYou AI (xiaoyou-core)
+
+**A lightweight, high-performance AI chat assistant core system, optimized for low-spec computers.**  
+Supports WebSocket real-time communication, smart memory management, voice synthesis, and multi-platform integration.
+
+---
+
+## 🌟 Features
+
+### Core Features
+- **Multi-platform integration**: Web interface ready, with hooks for QQ and WeChat integration
+- **Real-time communication**: Efficient asynchronous messaging via WebSocket
+- **Smart memory system**
+  - Short-term context memory (configurable length & priority)
+  - Automatic/manual history saving and loading
+  - Importance-based memory pruning
+  - Long-term memory storage in database
+- **Voice synthesis**: Dual-engine support (Edge TTS cloud service + pyttsx3 offline backup)
+- **System integration**: Real-time system monitoring and resource management
+- **Performance optimized**: Runs smoothly even on low-spec computers
+
+### 🚀 Resource Optimization
+- Lazy-load non-core dependencies to reduce startup time & memory usage
+- Smart caching using LRU algorithm
+- Strict memory monitoring & limits
+- Automatic garbage collection & resource cleanup
+
+### 💾 Data Handling
+- Default history length: 10 messages (adjustable)
+- Importance-based pruning
+- Text length limits to avoid overuse
+- Batch processing & async handling of heavy tasks
+
+### 🔌 Connections & Concurrency
+- WebSocket heartbeat every 30s, 60s timeout
+- Default max connections: 10
+- Async I/O for maximum throughput
+- Task queue with concurrency limit
+
+### 🛡️ Stability
+- Full error handling & exception capture
+- Auto-retry for better reliability
+- Graceful shutdown releasing resources
+- Detailed logging for debugging
+
+---
+
+## 💻 Commands
+
+**System Commands**
+```text
+/system   - Show current system info & resource usage
+/clear    - Clear current conversation history
+/memory   - Check memory system status & stats
+Advanced
+
+text
+/save     - Save current conversation to file
+/load     - Load conversation history from file
+Quick Tools
+
+text
+/help           - Show all commands
+/setmemory [n]  - Set max history length (default 10)
+🛠️ Tech Stack
+Backend
+
+Python 3.7+
+
+Flask
+
+WebSocket (native)
+
+SQLite for long-term memory
+
+AI integration: TongYi QianWen API (dashscope)
+
+Voice synthesis: Edge TTS (primary) + pyttsx3 (backup)
+
+Libraries: jieba, SnowNLP, python-dotenv, psutil
+
+Vector DB: ChromaDB for knowledge retrieval
+
+Frontend
+
+HTML5, CSS3, JavaScript
+
+WebSocket API for communication
+
+LocalStorage for browser storage
+
+System Architecture
+
+Async I/O
+
+Custom LRU cache
+
+WebSocket heartbeat & connection management
+
+Lazy-load non-core dependencies & smart memory management
+
+📁 Project Structure
+text
+xiaoyou-core/
+├── app.py                  # Flask server
+├── ws_server.py            # WebSocket service
+├── start.py                # One-click startup
+├── bots/                   # Multi-platform integration
+│   ├── qq_bot.py
+│   └── wx_bot.py
+├── core/                   # Core modules
+│   ├── llm_connector.py
+│   ├── vector_search.py
+│   ├── models/
+│   │   └── qianwen_model.py
+│   └── utils.py
+├── memory/                 # Memory management
+│   ├── memory_manager.py
+│   └── long_term_db.py
+├── voice/                  # Voice files
+├── history/                # Conversation history
+├── templates/              # Frontend templates
+├── static/                 # Static files
+├── .env                    # Environment variables
+├── long_term_memory.db     # DB for long-term memory
+└── readme.md               # This document
+🚀 Quick Start
+Requirements
+
+Python 3.7+
+
+1GB RAM minimum (2GB+ recommended)
+
+50MB disk space
+
+Windows, macOS, Linux
+
+Install Dependencies
+
+bash
+pip install flask websockets python-dotenv jieba snownlp pyttsx3 chromadb
+pip install dashscope  # for TongYi QianWen API
+Configure Environment Variables (.env)
+
+env
+QIANWEN_API_KEY=your_api_key_here
+MAX_HISTORY_LENGTH=10
+MAX_CONNECTIONS=10
+Start the App
+
+bash
+python start.py
+Open browser at http://localhost:5000 to start chatting. WebSocket handles real-time messaging.
+
+Advanced (for debugging)
+
+bash
+python ws_server.py  # start WebSocket only
+python app.py        # start Flask server only
+💡 Tips & Usage
+Use /help to check all commands
+
+Click the 🔊 icon to play AI voice replies
+
+History auto-saves to history/
+
+Important info is stored in long-term memory
+
+Each user has independent history (via user_id)
+
+🔧 Troubleshooting
+WebSocket issues: check network/firewall, confirm server is running, refresh browser
+
+Voice issues: ensure pyttsx3 installed, Edge TTS needs network, check audio device & logs
+
+Memory & performance: reduce history using /setmemory, clear with /clear, restart to free resources
+
+Logs: stored in flask_app.log & startup.log
+
+🔮 Roadmap
+Better context & long-term memory
+
+Further performance optimization
+
+Support more third-party AI models
+
+Improve speech recognition & synthesis
+
+Enhance multi-platform integration
+
+UI/UX improvements
+
+Plugin system for custom extensions
+
+🤝 Contact
+For custom development, consulting, or deployment support:
+Leslie Qi – [2991731868@qq.com]
+
+📄 License
+MIT License (2025 © XiaoYou AI)
+
 # 小悠 AI (xiaoyou-core)
 
 一个轻量级、高性能的多平台AI聊天助手核心系统，特别优化了低配置电脑的运行性能。系统支持WebSocket实时通信、智能记忆管理、语音合成，以及多平台集成能力。
