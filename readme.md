@@ -1,203 +1,204 @@
 # XiaoYou AI (xiaoyou-core)
 
-**A lightweight, high-performance AI chat assistant core system, optimized for low-spec computers.**  
-Supports WebSocket real-time communication, smart memory management, voice synthesis, and multi-platform integration.
+**A lightweight, high-performance AI chat assistant core system, optimized for low-spec computers.** Supports WebSocket real-time communication, smart memory management, voice synthesis, and multi-platform integration.
 
 ---
 
 ## 🌟 Features
 
 ### Core Features
-- **Multi-platform integration**: Web interface ready, with hooks for QQ and WeChat integration
-- **Real-time communication**: Efficient asynchronous messaging via WebSocket
-- **Smart memory system**
-  - Short-term context memory (configurable length & priority)
-  - Automatic/manual history saving and loading
-  - Importance-based memory pruning
-  - Long-term memory storage in database
-- **Voice synthesis**: Dual-engine support (Edge TTS cloud service + pyttsx3 offline backup)
-- **System integration**: Real-time system monitoring and resource management
-- **Performance optimized**: Runs smoothly even on low-spec computers
 
-### 🚀 Resource Optimization
-- Lazy-load non-core dependencies to reduce startup time & memory usage
-- Smart caching using LRU algorithm
-- Strict memory monitoring & limits
-- Automatic garbage collection & resource cleanup
+* **Multi-platform integration**: Web interface ready, with hooks for QQ and WeChat integration
+* **Real-time communication**: Efficient asynchronous messaging via WebSocket
+* **Smart memory system**
 
-### 💾 Data Handling
-- Default history length: 10 messages (adjustable)
-- Importance-based pruning
-- Text length limits to avoid overuse
-- Batch processing & async handling of heavy tasks
+  * Short-term context memory (configurable length & priority)
+  * Automatic/manual history saving and loading
+  * Importance-based memory pruning
+  * Long-term memory storage in database
+* **Voice synthesis**: Dual-engine support (Edge TTS cloud service + pyttsx3 offline backup)
+* **System integration**: Real-time system monitoring and resource management
+* **Performance optimized**: Runs smoothly even on low-spec computers
 
-### 🔌 Connections & Concurrency
-- WebSocket heartbeat every 30s, 60s timeout
-- Default max connections: 10
-- Async I/O for maximum throughput
-- Task queue with concurrency limit
+### Resource Optimization
 
-### 🛡️ Stability
-- Full error handling & exception capture
-- Auto-retry for better reliability
-- Graceful shutdown releasing resources
-- Detailed logging for debugging
+* Lazy-load non-core dependencies to reduce startup time & memory usage
+* Smart caching using LRU algorithm
+* Strict memory monitoring & limits
+* Automatic garbage collection & resource cleanup
+
+### Data Handling
+
+* Default history length: 10 messages (adjustable)
+* Importance-based pruning
+* Text length limits to avoid overuse
+* Batch processing & async handling of heavy tasks
+
+### Connections & Concurrency
+
+* WebSocket heartbeat every 30s, 60s timeout
+* Default max connections: 10
+* Async I/O for maximum throughput
+* Task queue with concurrency limit
+
+### Stability
+
+* Full error handling & exception capture
+* Auto-retry for better reliability
+* Graceful shutdown releasing resources
+* Detailed logging for debugging
 
 ---
 
 ## 💻 Commands
 
 **System Commands**
-```text
+
+```
 /system   - Show current system info & resource usage
 /clear    - Clear current conversation history
 /memory   - Check memory system status & stats
-Advanced
-
-text
 /save     - Save current conversation to file
 /load     - Load conversation history from file
-Quick Tools
+/help     - Show all commands
+/setmemory [n] - Set max history length (default 10)
+```
 
-text
-/help           - Show all commands
-/setmemory [n]  - Set max history length (default 10)
-🛠️ Tech Stack
-Backend
+---
 
-Python 3.7+
+## 🛠️ Tech Stack
 
-Flask
+### Backend
 
-WebSocket (native)
+* Python 3.7+
+* Flask
+* WebSocket (native)
+* SQLite for long-term memory
+* AI integration: TongYi QianWen API (dashscope)
+* Voice synthesis: Edge TTS (primary) + pyttsx3 (backup)
+* Libraries: jieba, SnowNLP, python-dotenv, psutil
+* Vector DB: ChromaDB
 
-SQLite for long-term memory
+### Frontend
 
-AI integration: TongYi QianWen API (dashscope)
+* HTML5, CSS3, JavaScript
+* WebSocket API for communication
+* LocalStorage for browser storage
 
-Voice synthesis: Edge TTS (primary) + pyttsx3 (backup)
+### System Architecture
 
-Libraries: jieba, SnowNLP, python-dotenv, psutil
+* Async I/O
+* Custom LRU cache
+* WebSocket heartbeat & connection management
+* Lazy-load non-core dependencies & smart memory management
 
-Vector DB: ChromaDB for knowledge retrieval
+---
 
-Frontend
+## 📁 Project Structure
 
-HTML5, CSS3, JavaScript
-
-WebSocket API for communication
-
-LocalStorage for browser storage
-
-System Architecture
-
-Async I/O
-
-Custom LRU cache
-
-WebSocket heartbeat & connection management
-
-Lazy-load non-core dependencies & smart memory management
-
-📁 Project Structure
-text
+```
 xiaoyou-core/
-├── app.py                  # Flask server
-├── ws_server.py            # WebSocket service
-├── start.py                # One-click startup
-├── bots/                   # Multi-platform integration
+├── app.py
+├── ws_server.py
+├── start.py
+├── bots/
 │   ├── qq_bot.py
 │   └── wx_bot.py
-├── core/                   # Core modules
+├── core/
 │   ├── llm_connector.py
 │   ├── vector_search.py
 │   ├── models/
 │   │   └── qianwen_model.py
 │   └── utils.py
-├── memory/                 # Memory management
+├── memory/
 │   ├── memory_manager.py
 │   └── long_term_db.py
-├── voice/                  # Voice files
-├── history/                # Conversation history
-├── templates/              # Frontend templates
-├── static/                 # Static files
-├── .env                    # Environment variables
-├── long_term_memory.db     # DB for long-term memory
-└── readme.md               # This document
-🚀 Quick Start
-Requirements
+├── voice/
+├── history/
+├── templates/
+├── static/
+├── .env
+├── long_term_memory.db
+└── readme.md
+```
 
-Python 3.7+
+---
 
-1GB RAM minimum (2GB+ recommended)
+## 🚀 Quick Start
 
-50MB disk space
+### Requirements
 
-Windows, macOS, Linux
+* Python 3.7+
+* Minimum 1GB RAM (2GB+ recommended)
+* Minimum 50MB disk space
+* Windows, macOS, Linux
 
-Install Dependencies
+### Install Dependencies
 
-bash
+```bash
 pip install flask websockets python-dotenv jieba snownlp pyttsx3 chromadb
 pip install dashscope  # for TongYi QianWen API
-Configure Environment Variables (.env)
+```
 
-env
+### Configure Environment Variables (.env)
+
+```
 QIANWEN_API_KEY=your_api_key_here
 MAX_HISTORY_LENGTH=10
 MAX_CONNECTIONS=10
-Start the App
+```
 
-bash
+### Start the App
+
+```bash
 python start.py
-Open browser at http://localhost:5000 to start chatting. WebSocket handles real-time messaging.
+```
 
-Advanced (for debugging)
+Open browser at `http://localhost:5000` to start chatting.
 
-bash
-python ws_server.py  # start WebSocket only
-python app.py        # start Flask server only
-💡 Tips & Usage
-Use /help to check all commands
+### Advanced (Debugging)
 
-Click the 🔊 icon to play AI voice replies
+```bash
+python ws_server.py  # WebSocket only
+python app.py        # Flask server only
+```
 
-History auto-saves to history/
+---
 
-Important info is stored in long-term memory
+## 💡 Usage
 
-Each user has independent history (via user_id)
+* Use `/help` to check all commands
+* Click 🔊 icon to play AI voice replies
+* History auto-saves to `history/`
+* Important info stored in long-term memory
+* Each user has independent history via `user_id`
 
-🔧 Troubleshooting
-WebSocket issues: check network/firewall, confirm server is running, refresh browser
+## 🔧 Troubleshooting
 
-Voice issues: ensure pyttsx3 installed, Edge TTS needs network, check audio device & logs
+* **WebSocket issues**: check network/firewall, confirm server is running
+* **Voice issues**: pyttsx3 installed, Edge TTS needs network, check audio device & logs
+* **Memory/performance**: reduce history with `/setmemory`, clear with `/clear`, restart to free resources
+* **Logs**: stored in `flask_app.log` & `startup.log`
 
-Memory & performance: reduce history using /setmemory, clear with /clear, restart to free resources
+---
 
-Logs: stored in flask_app.log & startup.log
+## 🔮 Roadmap
 
-🔮 Roadmap
-Better context & long-term memory
+* Better context & long-term memory
+* More performance optimization
+* Support more third-party AI models
+* Improve speech recognition & synthesis
+* Multi-platform integration & UI/UX improvements
+* Plugin system for custom extensions
 
-Further performance optimization
+## 🤝 Contact
 
-Support more third-party AI models
+Leslie Qi – [[2991731868@qq.com](mailto:2991731868@qq.com)]
 
-Improve speech recognition & synthesis
+## 📄 License
 
-Enhance multi-platform integration
+MIT License © 2025 XiaoYo
 
-UI/UX improvements
-
-Plugin system for custom extensions
-
-🤝 Contact
-For custom development, consulting, or deployment support:
-Leslie Qi – [2991731868@qq.com]
-
-📄 License
-MIT License (2025 © XiaoYou AI)
 
 # 小悠 AI (xiaoyou-core)
 
