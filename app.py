@@ -7,9 +7,9 @@ import time
 from datetime import timedelta
 from functools import wraps
 from collections import deque
-from threading import Thread, Lock
+from threading import Lock
 
-# 配置日志
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -20,97 +20,80 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# 确保 Flask 知道你的 templates 文件夹就在旁边
+# Ensure Flask knows your templates folder is nearby
 app = Flask(__name__, static_folder='static') 
 
-# 配置静态文件缓存时间
+# Configure static file cache time
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = timedelta(days=1)
 
-# 性能优化配置
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 限制请求体大小为16MB
-app.config['TEMPLATES_AUTO_RELOAD'] = False  # 禁用模板自动重载
+# Performance optimization configuration
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Limit request body size to 16MB
+app.config['TEMPLATES_AUTO_RELOAD'] = False  # Disable template auto-reloading
 
-# 全局变量用于速率限制
-rate_limit_data = deque(maxlen=100)  # 存储最近的请求时间
+# Global variables for rate limiting
+rate_limit_data = deque(maxlen=100)  # Store recent request times
 rate_limit_lock = Lock()
-RATE_LIMIT_WINDOW = 60  # 60秒
-RATE_LIMIT_MAX_REQUESTS = 60  # 每分钟最多60个请求
+RATE_LIMIT_WINDOW = 60  # 60 seconds
+RATE_LIMIT_MAX_REQUESTS = 60  # Maximum 60 requests per minute
 
-# 内存监控
+# Memory monitoring
 last_gc_time = time.time()
-GC_INTERVAL = 300  # 5分钟进行一次垃圾回收
+GC_INTERVAL = 300  # Garbage collection every 5 minutes
 
-# 优化的缓存装饰器
-class SimpleCache:
-    def __init__(self, timeout=3600):
-        self.cache = {}
-        self.timeout = timeout
-        self.lock = Lock()
+# Cache decorator (commented out unused code)
+# class SimpleCache:
+#     def __init__(self, timeout=3600):
+#         self.cache = {}
+#         self.timeout = timeout
+#         self.lock = Lock()
+#     
+#     def __call__(self, f):
+#         @wraps(f)
+#         def decorated_function(*args, **kwargs):
+#             key = f.__name__ + str(args[:2]) + str(tuple(sorted(kwargs.items())[:2]))
+#             
+#             with self.lock:
+#                 current_time = time.time()
+#                 if key in self.cache:
+#                     value, timestamp = self.cache[key]
+#                     if current_time - timestamp < self.timeout:
+#                         return value
+#             
+#             result = f(*args, **kwargs)
+#             
+#             if result and sys.getsizeof(result) < 1024 * 1024:
+#                 with self.lock:
+#                     self.cache[key] = (result, time.time())
+#                     if len(self.cache) > 100:
+#                         self._cleanup()
+#             
+#             return result
+#         
+#         def _cleanup(self):
+#             current_time = time.time()
+#             self.cache = {k: v for k, v in self.cache.items() if current_time - v[1] < self.timeout}
+#         
+#         decorated_function._cleanup = lambda: _cleanup(self)
+#         return decorated_function
+
+# Cache instance (not currently used)
+
+# Memory optimization middleware - simplified version
+@app.before_request
+def before_request():
+    global last_gc_time
+    current_time = time.time()
     
-    def __call__(self, f):
-        @wraps(f)
-        def decorated_function(*args, **kwargs):
-            # 为了低配置电脑，使用简单但高效的缓存键生成
-            key = f.__name__ + str(args[:2]) + str(tuple(sorted(kwargs.items())[:2]))
-            
-            with self.lock:
-                current_time = time.time()
-                # 检查缓存是否存在且未过期
-                if key in self.cache:
-                    value, timestamp = self.cache[key]
-                    if current_time - timestamp < self.timeout:
-                        return value
-            
-            # 缓存未命中，执行函数
-            result = f(*args, **kwargs)
-            
-            # 仅缓存成功结果且结果不太大
-            if result and sys.getsizeof(result) < 1024 * 1024:  # 小于1MB
-                with self.lock:
-                    self.cache[key] = (result, time.time())
-                    # 定期清理过期缓存
-                    if len(self.cache) > 100:  # 限制缓存大小
-                        self._cleanup()
-            
-            return result
-        
-        def _cleanup(self):
-            current_time = time.time()
-            self.cache = {k: v for k, v in self.cache.items() if current_time - v[1] < self.timeout}
-        
-        decorated_function._cleanup = lambda: _cleanup(self)
-        return decorated_function
+    # Regularly trigger garbage collection
+    if current_time - last_gc_time > GC_INTERVAL:
+        try:
+            gc.collect()
+            last_gc_time = current_time
+            logger.info("Garbage collection completed")
+        except Exception as e:
+            logger.error(f"Failed to perform garbage collection: {e}")
 
-# 创建缓存实例
-simple_cache = SimpleCache(timeout=3600)
-
-# 内存优化中间件
-def memory_optimization_middleware():
-    @app.before_request
-    def before_request():
-        global last_gc_time
-        current_time = time.time()
-        
-        # 定期触发垃圾回收
-        if current_time - last_gc_time > GC_INTERVAL:
-            try:
-                gc.collect()
-                last_gc_time = current_time
-                logger.info("垃圾回收完成")
-            except Exception as e:
-                logger.error(f"垃圾回收失败: {e}")
-        
-        # 内存使用监控
-        if hasattr(sys, 'getsizeof'):
-            # 这里可以添加更复杂的内存监控
-            pass
-    
-    return before_request
-
-# 注册内存优化中间件
-memory_optimization_middleware()
-
-# 速率限制装饰器
+# Rate limiting decorator
 def rate_limit():
     def decorator(f):
         @wraps(f)
@@ -118,66 +101,66 @@ def rate_limit():
             current_time = time.time()
             
             with rate_limit_lock:
-                # 移除过期的请求记录
+                # Remove expired request records
                 while rate_limit_data and current_time - rate_limit_data[0] > RATE_LIMIT_WINDOW:
                     rate_limit_data.popleft()
                 
-                # 检查是否超过速率限制
+                # Check if rate limit is exceeded
                 if len(rate_limit_data) >= RATE_LIMIT_MAX_REQUESTS:
-                    logger.warning(f"速率限制触发: {request.remote_addr}")
-                    return jsonify({"error": "请求过于频繁，请稍后再试"}), 429
+                    logger.warning(f"Rate limit triggered: {request.remote_addr}")
+                    return jsonify({"error": "Too many requests, please try again later"}), 429
                 
-                # 记录新请求
+                # Record new request
                 rate_limit_data.append(current_time)
             
             return f(*args, **kwargs)
         return decorated_function
     return decorator
 
-# 错误处理
+# Error handling
 @app.errorhandler(404)
 def page_not_found(e):
-    logger.warning(f"404错误: {request.path} - {request.remote_addr}")
-    return render_template("error.html", error="页面未找到"), 404
+    logger.warning(f"404 error: {request.path} - {request.remote_addr}")
+    return render_template("error.html", error="Page not found"), 404
 
 @app.errorhandler(413)
 def request_entity_too_large(e):
-    logger.warning(f"请求体过大: {request.path} - {request.remote_addr}")
-    return jsonify({"error": "请求体过大"}), 413
+    logger.warning(f"Request body too large: {request.path} - {request.remote_addr}")
+    return jsonify({"error": "Request body too large"}), 413
 
 @app.errorhandler(Exception)
 def internal_server_error(e):
-    logger.error(f"服务器内部错误: {str(e)}", exc_info=True)
-    return render_template("error.html", error="服务器内部错误"), 500
+    logger.error(f"Internal server error: {str(e)}", exc_info=True)
+    return render_template("error.html", error="Internal server error"), 500
 
 @app.route("/")
 @rate_limit()
 def index():
-    # 渲染新的终极科幻界面
-    logger.info("使用模板: ultimate_xiaoyou_optimized.html")
+    # Render the new ultimate sci-fi interface
+    logger.info("Using template: ultimate_xiaoyou_optimized.html")
     return render_template('ultimate_xiaoyou_optimized.html')
 
-# 添加一个路由来提供 voice 目录中的静态音频文件
+# Add a route to serve static audio files from the voice directory
 @app.route('/voice/<path:filename>')
 @rate_limit()
 def serve_voice(filename):
     voice_dir = os.path.join(app.root_path, 'voice')
     
-    # 安全检查：防止目录遍历攻击
+    # Security check: prevent directory traversal attacks
     if '..' in filename or '\\' in filename:
-        logger.warning(f"安全警告：尝试访问非法路径: {filename} - {request.remote_addr}")
-        return jsonify({"error": "访问被拒绝"}), 403
+        logger.warning(f"Security warning: attempt to access illegal path: {filename} - {request.remote_addr}")
+        return jsonify({"error": "Access denied"}), 403
     
     try:
         response = send_from_directory(voice_dir, filename)
-        # 额外的缓存控制
+        # Additional cache control
         response.headers['Cache-Control'] = 'public, max-age=86400'
         return response
     except Exception as e:
-        logger.error(f"提供音频文件失败: {filename} - {str(e)}")
-        return jsonify({"error": "文件未找到"}), 404
+        logger.error(f"Failed to serve audio file: {filename} - {str(e)}")
+        return jsonify({"error": "File not found"}), 404
 
-# 健康检查端点
+# Health check endpoint
 @app.route('/health')
 def health_check():
     return jsonify({
@@ -186,39 +169,31 @@ def health_check():
         "version": "1.0.0"
     })
 
-# 资源清理函数
+# Resource cleanup function
 def cleanup_resources():
-    # 清理缓存
-    for func in app.view_functions.values():
-        if hasattr(func, '_cleanup'):
-            try:
-                func._cleanup()
-            except Exception as e:
-                logger.error(f"清理函数缓存失败: {e}")
-    
-    # 强制垃圾回收
+    # Force garbage collection
     try:
         gc.collect()
     except Exception as e:
-        logger.error(f"清理资源时垃圾回收失败: {e}")
+        logger.error(f"Failed to perform garbage collection during resource cleanup: {e}")
 
 if __name__ == "__main__":
     try:
-        # 针对低配置电脑的最终优化配置
+        # Final optimization configuration for low-spec computers
         app.run(
             host="0.0.0.0", 
             port=5000, 
             debug=False, 
             threaded=True,
-            processes=1,  # 单进程模式，减少内存占用
-            use_reloader=False,  # 禁用重载器，减少资源使用
-            load_dotenv=False,  # 禁用dotenv加载，提高启动速度
-            passthrough_errors=False  # 捕获所有错误
+            processes=1,  # Single process mode to reduce memory usage
+            use_reloader=False,  # Disable reloader to reduce resource usage
+            load_dotenv=False,  # Disable dotenv loading to improve startup speed
+            passthrough_errors=False  # Capture all errors
         )
     except KeyboardInterrupt:
-        logger.info("Flask应用程序被用户中断")
+        logger.info("Flask application interrupted by user")
         cleanup_resources()
     except Exception as e:
-        logger.critical(f"Flask应用程序启动失败: {e}", exc_info=True)
+        logger.critical(f"Failed to start Flask application: {e}", exc_info=True)
         cleanup_resources()
         sys.exit(1)

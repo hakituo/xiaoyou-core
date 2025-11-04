@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>小悠 AI · 终极科幻版</title>
+<title>XiaoYou AI · Ultimate Sci-Fi Edition</title>
 <style>
 :root {
   --bg1: #06070d;
@@ -85,7 +85,7 @@ body {
   max-height: 70vh;
   height: auto;
 }
-/* 增强滚动条可见性 - Chrome, Edge, Safari */
+/* Enhance scrollbar visibility - Chrome, Edge, Safari */
 #chat::-webkit-scrollbar{
   width: 14px;
   background: rgba(255,255,255,0.1);
@@ -109,7 +109,7 @@ body {
 #chat::-webkit-scrollbar-corner {
   background: transparent;
 }
-/* 为Firefox添加滚动条样式 */
+/* Add scrollbar styles for Firefox */
 #chat{
   scrollbar-width: 14px;
   scrollbar-color: var(--accent2) rgba(255,255,255,0.1);
@@ -186,26 +186,26 @@ body {
 <div class="bg-animated"></div>
 <div class="app">
   <header class="header">
-    <button id="themeToggle" class="theme-toggle" aria-label="切换主题">
+    <button id="themeToggle" class="theme-toggle" aria-label="Toggle Theme">
       <svg class="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="#FFD166"/><g stroke="#FFD166" stroke-width="1.2"><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></g></svg>
       <svg class="icon-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="#B0C4DE"/></svg>
     </button>
-    <div class="title"><h1>小悠 AI</h1></div>
+    <div class="title"><h1>XiaoYou AI</h1></div>
   </header>
 
   <main class="panel">
     <section id="chat" aria-live="polite"></section>
     <div class="input-row">
-      <!-- 暂时移除语音输入按钮，因为不支持SST -->
-        <!-- <button id="voice-btn" class="voice-btn" aria-label="语音输入">
+      <!-- Temporarily removed voice input button as SST is not supported -->
+        <!-- <button id="voice-btn" class="voice-btn" aria-label="Voice Input">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
             <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
             <line x1="12" y1="19" x2="12" y2="22"></line>
           </svg>
         </button> -->
-      <input id="user-input" placeholder="输入内容..." />
-      <button id="send-btn" class="button-send">发送</button>
+      <input id="user-input" placeholder="Type your message..." />
+      <button id="send-btn" class="button-send">Send</button>
     </div>
   </main>
 </div>
@@ -226,7 +226,7 @@ function showTyping(){
   if(typingShown)return;typingShown=true;
   typingElem=document.createElement('div');
   typingElem.className='typing-indicator assistant';
-  typingElem.innerHTML='<strong>小悠</strong><span> 正在思考</span><div class="dots"><span></span><span></span><span></span></div>';
+  typingElem.innerHTML='<strong>XiaoYou</strong><span> is thinking</span><div class="dots"><span></span><span></span><span></span></div>';
   chat.appendChild(typingElem);scrollBottom();
 }
 function hideTyping(){
@@ -244,7 +244,7 @@ function sendMsg(){
 input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg();}});
 sendBtn.addEventListener('click',sendMsg);
 
-// 语音输出功能 - 播放本地音频文件
+// Voice output functionality - playing local audio files
 function addPlayButton(messageElement, audioUrl){
   const playBtn=document.createElement('button');
   playBtn.className='play-btn';
@@ -283,26 +283,26 @@ function addPlayButton(messageElement, audioUrl){
     if(audioUrl){
       const audio=new Audio(audioUrl);
       audio.play().catch(error=>{
-        console.error('音频播放失败:', error);
+        console.error('Audio playback failed:', error);
       });
     }
   });
 }
 
-// 修改消息接收逻辑，处理内容和音频文件
+// Modify message receiving logic to handle content and audio files
 function receiveMessage(content, audioFile){
   hideTyping();
   const messageElement=createMsg(content,'assistant');
   chat.appendChild(messageElement);
   scrollBottom();
   
-  // 如果有音频文件，添加播放按钮
+  // If there's an audio file, add a play button
   if(audioFile){
-    // 构建音频文件的URL路径
+    // Construct URL path for audio file
     const audioUrl=`/voice/${audioFile}`;
     addPlayButton(messageElement, audioUrl);
   } else {
-    // 没有音频文件时也显示播放按钮，提示用户
+    // Show play button even without audio file to prompt user
     addPlayButton(messageElement, null);
   }
 }
@@ -310,11 +310,11 @@ function receiveMessage(content, audioFile){
 // websocket
 function connect(){
   ws=new WebSocket(WS_URL);
-  ws.onopen=()=>{chat.appendChild(createMsg('[系统] 已连接','system-message'));scrollBottom();};
+  ws.onopen=()=>{chat.appendChild(createMsg('[System] Connected','system-message'));scrollBottom();};
   ws.onmessage=(e)=>{
     try{const d=JSON.parse(e.data);
       if(d.message==='__heartbeat__'||JSON.stringify(d)==='{}'||JSON.stringify(d)==='[]')return;
-      // 检查是否有语音文件路径
+      // Check if there's a voice file path
       const audioFile=d.audio_file||d.audioFile||null;
       if(d.response||d.content){receiveMessage(d.response||d.content, audioFile);}
     }catch{ if(e.data.trim()==='{}'||e.data.trim()==='[]')return; receiveMessage(e.data, null); }
@@ -329,7 +329,7 @@ function connect(){
         try {
           connect();
         } catch (e) {
-          console.error('重连失败:', e);
+          console.error('Reconnection failed:', e);
         }
       }, 3000);
     }
@@ -344,7 +344,7 @@ themeToggle.addEventListener('click',()=>{
   const sun=themeToggle.querySelector('.icon-sun'),moon=themeToggle.querySelector('.icon-moon');
   if(isLight){sun.style.opacity=1;moon.style.opacity=0;}else{sun.style.opacity=0;moon.style.opacity=1;}
 });
-// 默认使用深色主题
+// Use dark theme by default
 if(localStorage.getItem('theme')==='light'){
   document.documentElement.classList.add('light-theme');
   themeToggle.querySelector('.icon-sun').style.opacity=1;

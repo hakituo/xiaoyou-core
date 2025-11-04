@@ -6,141 +6,141 @@ import asyncio
 import hashlib
 from functools import lru_cache
 
-# 配置日志
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Edge TTS支持
+# Edge TTS support
 edge_tts = None
-edge_tts_voice = "zh-CN-XiaoyiNeural"  # 指定语音角色
+edge_tts_voice = "zh-CN-XiaoyiNeural"  # Specify the default voice role
 
-# 延迟导入以减少启动时间
+# Lazy import to reduce startup time
 pyttsx3 = None
 
 class TTSManager:
-    # 低配置电脑优化参数
-    MAX_TEXT_LENGTH = 300       # 限制处理文本长度
-    MIN_RATE = 100              # 最低语速
-    MAX_RATE = 250              # 最高语速
-    PLAYBACK_CACHE_SIZE = 20    # 播放缓存大小
-    MAX_RETRY_COUNT = 2         # 最大重试次数
-    RETRY_DELAY_MS = 500        # 重试延迟(毫秒)
+    # Low-spec computer optimization parameters
+    MAX_TEXT_LENGTH = 300       # Limit the maximum length of processed text
+    MIN_RATE = 100              # Minimum speech rate
+    MAX_RATE = 250              # Maximum speech rate
+    PLAYBACK_CACHE_SIZE = 20    # Playback cache size
+    MAX_RETRY_COUNT = 2         # Maximum retry count
+    RETRY_DELAY_MS = 500        # Retry delay (milliseconds)
     
-    # TTS引擎类型
+    # TTS engine types
     ENGINE_PYTTSX3 = "pyttsx3"
     ENGINE_EDGE_TTS = "edge_tts"
     
     def __init__(self):
         self.engine = None
-        self._lock = threading.RLock()  # 可重入锁确保线程安全
+        self._lock = threading.RLock()  # Reentrant lock for thread safety
         self._initialized = False
         self._playback_thread = None
         self._is_playing = False
         self._config = {
-            'rate': 130,           # 降低语速以提高语音质量和自然度
-            'volume': 1.0,         # 默认音量
-            'language': 'chinese',  # 默认语言
-            'engine': self.ENGINE_EDGE_TTS  # 使用Edge TTS引擎
+            'rate': 130,           # Lower speech rate for better quality and naturalness
+            'volume': 1.0,         # Default volume
+            'language': 'chinese',  # Default language
+            'engine': self.ENGINE_EDGE_TTS  # Using Edge TTS engine
         }
-        # 简单的播放缓存
+        # Simple playback cache
         self._playback_cache = {}
         
-        # 延迟初始化，不立即创建引擎
-        logger.info("TTSManager已创建，引擎将在首次使用时初始化")
+        # Lazy initialization, engine will be created on first use
+        logger.info("TTSManager created, engine will be initialized on first use")
     
     def _load_pyttsx3(self):
-        """动态加载pyttsx3库"""
+        """Dynamically load pyttsx3 library"""
         global pyttsx3
         if pyttsx3 is None:
             try:
                 import pyttsx3
-                logger.info("pyttsx3库加载成功")
+                logger.info("pyttsx3 library loaded successfully")
             except ImportError:
-                logger.error("pyttsx3库未安装，TTS功能不可用")
+                logger.error("pyttsx3 library not installed, TTS functionality unavailable")
                 return False
         return pyttsx3 is not None
     
     def _load_edge_tts(self):
-        """动态加载Edge TTS库"""
+        """Dynamically load Edge TTS library"""
         global edge_tts
         if edge_tts is None:
             try:
                 import edge_tts
-                logger.info("Edge TTS库加载成功")
+                logger.info("Edge TTS library loaded successfully")
             except ImportError:
-                logger.error("Edge TTS库未安装，尝试使用pyttsx3作为备选")
+                logger.error("Edge TTS library not installed, trying pyttsx3 as fallback")
                 return False
         return edge_tts is not None
     
     def _initialize_engine(self):
-        """初始化TTS引擎"""
+        """Initialize TTS engine"""
         with self._lock:
             if self._initialized:
                 return True
             
-            # 检查使用的引擎类型
+            # Check engine type to use
             if self._config['engine'] == self.ENGINE_EDGE_TTS:
-                # 尝试使用Edge TTS
+                # Try to use Edge TTS
                 if self._load_edge_tts():
                     self._initialized = True
-                    logger.info(f"Edge TTS引擎初始化成功，使用语音: {edge_tts_voice}")
+                    logger.info(f"Edge TTS engine initialized successfully, using voice: {edge_tts_voice}")
                     return True
                 else:
-                    # 失败后回退到pyttsx3
-                    logger.warning("Edge TTS初始化失败，回退到pyttsx3")
+                    # Fall back to pyttsx3 if failed
+                    logger.warning("Edge TTS initialization failed, falling back to pyttsx3")
                     self._config['engine'] = self.ENGINE_PYTTSX3
             
-            # 使用pyttsx3作为备选
+            # Use pyttsx3 as fallback
             if not self._load_pyttsx3():
                 return False
             
-            # 尝试初始化pyttsx3引擎
+            # Try to initialize pyttsx3 engine
             try:
                 self.engine = pyttsx3.init(driverName=None, debug=False)
                 
-                # 应用配置
+                # Apply configuration
                 self.set_rate(self._config['rate'])
                 self.set_volume(self._config['volume'])
                 self.set_voice_language(self._config['language'])
                 
-                # 设置事件回调
+                # Set event callbacks
                 self.engine.connect('started-utterance', self._on_utterance_start)
                 self.engine.connect('finished-utterance', self._on_utterance_end)
                 
                 self._initialized = True
-                logger.info("pyttsx3 TTS引擎初始化成功")
+                logger.info("pyttsx3 TTS engine initialized successfully")
                 return True
             except Exception as e:
-                logger.error(f"TTS引擎初始化失败: {e}", exc_info=True)
+                logger.error(f"TTS engine initialization failed: {e}", exc_info=True)
                 self.engine = None
                 return False
     
     def _on_utterance_start(self, name, location, length):
-        """语音开始播放回调"""
+        """Speech start playback callback"""
         self._is_playing = True
-        logger.debug(f"语音开始播放: {name}")
+        logger.debug(f"Speech started playing: {name}")
     
     def _on_utterance_end(self, name, completed):
-        """语音结束播放回调"""
+        """Speech end playback callback"""
         self._is_playing = False
-        status = "成功" if completed else "中断"
-        logger.debug(f"语音播放结束: {name}, 状态: {status}")
+        status = "successful" if completed else "interrupted"
+        logger.debug(f"Speech playback ended: {name}, status: {status}")
     
     def set_voice_language(self, language='chinese'):
-        """设置语音语言（优化版）"""
+        """Set voice language (optimized version)"""
         if not self.engine and not self._initialize_engine():
             return False
         
         try:
             voices = self.engine.getProperty('voices')
             if not voices:
-                logger.warning("系统中未找到可用的语音")
+                logger.warning("No available voices found in system")
                 return False
             
-            # 优先尝试找到中文语音，增强匹配逻辑
+            # Try to find Chinese voice first, enhanced matching logic
             target_voice = None
             preferred_voice_indices = []
             
@@ -149,156 +149,156 @@ class TTSManager:
                 voice_name = voice.name.lower() if voice.name else ''
                 voice_info = f"{voice_id} {voice_name}"
                 
-                # 更严格的中文语音匹配规则
+                # Stricter Chinese voice matching rules
                 if ('china' in voice_info and 'female' in voice_info) or \
                    ('chinese' in voice_info and 'female' in voice_info):
-                    # 优先选择女性中文语音，通常更自然
-                    preferred_voice_indices.insert(0, i)  # 放在最前面
+                    # Prefer female Chinese voice, usually more natural
+                    preferred_voice_indices.insert(0, i)  # Put at the front
                 elif 'china' in voice_info or \
                      'chinese' in voice_info or \
                      'zh' in voice_info or \
-                     '中文' in voice_info or \
-                     '普通话' in voice_info:
+                     'chinese' in voice_info.lower() or \
+                     'mandarin' in voice_info.lower():
                     preferred_voice_indices.append(i)
             
-            # 选择最佳语音
+            # Select the best voice
             if preferred_voice_indices:
-                # 使用第一个匹配的语音
+                # Use the first matching voice
                 best_voice = voices[preferred_voice_indices[0]]
                 self.engine.setProperty('voice', best_voice.id)
                 self._config['language'] = language
-                logger.info(f"语音设置为: {best_voice.id}")
+                logger.info(f"Voice set to: {best_voice.id}")
                 return True
             else:
-                # 如果没有找到专门的中文语音，尝试选择听起来更自然的语音
-                # 通常第0个是系统默认，但有些系统上第1或第2个可能更好
+                # If no specific Chinese voice found, try to select a more natural-sounding voice
+                # Usually index 0 is system default, but sometimes index 1 or 2 might be better
                 best_voice_index = 0
                 if len(voices) > 1:
-                    # 尝试选择第二个语音，有些系统上第二个是更自然的
+                    # Try to select the second voice, which might be more natural on some systems
                     best_voice_index = 1
                 
                 self.engine.setProperty('voice', voices[best_voice_index].id)
-                logger.warning(f"未找到专门的{language}语言语音，使用备用语音: {voices[best_voice_index].id}")
+                logger.warning(f"No specific {language} language voice found, using fallback voice: {voices[best_voice_index].id}")
                 return True
         except Exception as e:
-            logger.error(f"设置语音语言失败: {e}")
+            logger.error(f"Failed to set voice language: {e}")
             return False
     
     def set_rate(self, rate):
-        """设置语速（优化版）"""
-        # 限制语速范围
+        """Set speech rate (optimized version)"""
+        # Limit speech rate range
         safe_rate = max(self.MIN_RATE, min(self.MAX_RATE, rate))
         
         if not self.engine and not self._initialize_engine():
-            # 如果引擎未初始化，先保存配置
+            # If engine not initialized, save configuration first
             self._config['rate'] = safe_rate
             return False
         
         try:
             self.engine.setProperty('rate', safe_rate)
             self._config['rate'] = safe_rate
-            logger.debug(f"语速设置为: {safe_rate}")
+            logger.debug(f"Speech rate set to: {safe_rate}")
             return True
         except Exception as e:
-            logger.error(f"设置语速失败: {e}")
+            logger.error(f"Failed to set speech rate: {e}")
             return False
     
     def set_volume(self, volume):
-        """设置音量（优化版）"""
-        # 限制音量范围
+        """Set volume (optimized version)"""
+        # Limit volume range
         safe_volume = max(0.0, min(1.0, volume))
         
         if not self.engine and not self._initialize_engine():
-            # 如果引擎未初始化，先保存配置
+            # If engine not initialized, save configuration first
             self._config['volume'] = safe_volume
             return False
         
         try:
             self.engine.setProperty('volume', safe_volume)
             self._config['volume'] = safe_volume
-            logger.debug(f"音量设置为: {safe_volume}")
+            logger.debug(f"Volume set to: {safe_volume}")
             return True
         except Exception as e:
-            logger.error(f"设置音量失败: {e}")
+            logger.error(f"Failed to set volume: {e}")
             return False
     
     def _clean_text(self, text):
-        """清理并验证文本"""
+        """Clean and validate text"""
         if not text or not isinstance(text, str):
             return None
         
-        # 去除多余空白字符
+        # Remove excess whitespace
         cleaned = ' '.join(text.split())
         
-        # 限制文本长度
+        # Limit text length
         if len(cleaned) > self.MAX_TEXT_LENGTH:
-            logger.warning(f"TTS文本过长，已截断至{self.MAX_TEXT_LENGTH}字符")
+            logger.warning(f"TTS text too long, truncated to {self.MAX_TEXT_LENGTH} characters")
             cleaned = cleaned[:self.MAX_TEXT_LENGTH]
         
         return cleaned
     
     def speak(self, text):
-        """播放文本语音（优化版）"""
-        # 清理并验证文本
+        """Play text as speech (optimized version)"""
+        # Clean and validate text
         cleaned_text = self._clean_text(text)
         if not cleaned_text:
-            logger.warning("无效的TTS输入文本")
+            logger.warning("Invalid TTS input text")
             return False
         
-        # 初始化引擎
+        # Initialize engine
         if not self.engine and not self._initialize_engine():
             return False
         
-        # 尝试使用缓存的语音文件
+        # Try to use cached speech file
         cache_key = hashlib.md5(cleaned_text.encode()).hexdigest()
         if cache_key in self._playback_cache:
             cached_file = self._playback_cache[cache_key]
             if os.path.exists(cached_file):
-                # 这里可以添加使用系统播放器播放缓存文件的逻辑
-                logger.debug(f"使用缓存的语音文件: {cached_file}")
+                # Logic to play cached file with system player could be added here
+                logger.debug(f"Using cached speech file: {cached_file}")
         
-        # 执行语音播放，支持重试
+        # Execute speech playback with retry support
         retries = 0
         while retries <= self.MAX_RETRY_COUNT:
             try:
                 with self._lock:
                     self.engine.say(cleaned_text)
                     self.engine.runAndWait()
-                logger.info(f"语音播放成功: {len(cleaned_text)}字符")
+                logger.info(f"Speech playback successful: {len(cleaned_text)} characters")
                 return True
             except Exception as e:
                 retries += 1
                 if retries > self.MAX_RETRY_COUNT:
-                    logger.error(f"语音播放失败(已重试{self.MAX_RETRY_COUNT}次): {e}", exc_info=True)
-                    # 尝试重新初始化引擎
+                    logger.error(f"Speech playback failed (retried {self.MAX_RETRY_COUNT} times): {e}", exc_info=True)
+                    # Try to reinitialize engine
                     self._initialized = False
                     return False
-                logger.warning(f"语音播放失败，{retries}秒后重试: {e}")
+                logger.warning(f"Speech playback failed, retrying in {retries} seconds: {e}")
                 time.sleep(self.RETRY_DELAY_MS / 1000.0)
     
     def save_to_file(self, text, filename):
-        """将文本保存为音频文件（优化版）"""
-        # 清理并验证文本
+        """Save text as audio file (optimized version)"""
+        # Clean and validate text
         cleaned_text = self._clean_text(text)
         if not cleaned_text:
-            logger.warning("无效的TTS输入文本")
+            logger.warning("Invalid TTS input text")
             return None
         
-        # 初始化引擎
+        # Initialize engine
         if not self.engine and not self._initialize_engine():
             return None
         
-        # 验证并确保文件路径有效
+        # Validate and ensure file path is valid
         if not filename:
-            logger.warning("无效的音频文件路径")
+            logger.warning("Invalid audio file path")
             return None
         
         try:
-            # 确保目录存在
+            # Ensure directory exists
             dir_path = os.path.dirname(os.path.abspath(filename))
             os.makedirs(dir_path, exist_ok=True)
             
-            # 执行文件保存，支持重试
+            # Execute file save with retry support
             retries = 0
             while retries <= self.MAX_RETRY_COUNT:
                 try:
@@ -306,52 +306,52 @@ class TTSManager:
                         self.engine.save_to_file(cleaned_text, filename)
                         self.engine.runAndWait()
                     
-                    # 验证文件是否成功创建
+                    # Verify file was successfully created
                     if os.path.exists(filename) and os.path.getsize(filename) > 0:
-                        # 更新缓存
+                        # Update cache
                         cache_key = hashlib.md5(cleaned_text.encode()).hexdigest()
-                        # 保持缓存大小限制
+                        # Maintain cache size limit
                         if len(self._playback_cache) >= self.PLAYBACK_CACHE_SIZE:
-                            # 删除最早添加的项
+                            # Remove oldest item
                             self._playback_cache.pop(next(iter(self._playback_cache)))
                         self._playback_cache[cache_key] = filename
                         
-                        logger.info(f"语音文件保存成功: {filename} ({os.path.getsize(filename)}字节)")
+                        logger.info(f"Speech file saved successfully: {filename} ({os.path.getsize(filename)} bytes)")
                         return filename
                     else:
-                        raise Exception("创建的文件为空或不存在")
+                        raise Exception("Created file is empty or does not exist")
                 except Exception as e:
                     retries += 1
                     if retries > self.MAX_RETRY_COUNT:
-                        logger.error(f"保存语音文件失败(已重试{self.MAX_RETRY_COUNT}次): {e}")
+                        logger.error(f"Failed to save speech file (retried {self.MAX_RETRY_COUNT} times): {e}")
                         return None
-                    logger.warning(f"保存语音文件失败，{self.RETRY_DELAY_MS}毫秒后重试: {e}")
+                    logger.warning(f"Failed to save speech file, retrying in {self.RETRY_DELAY_MS}ms: {e}")
                     time.sleep(self.RETRY_DELAY_MS / 1000.0)
         except Exception as e:
-            logger.error(f"保存语音文件过程中发生错误: {e}", exc_info=True)
+            logger.error(f"Error occurred while saving speech file: {e}", exc_info=True)
             return None
     
     def generate_speech(self, text, output_file):
-        """生成语音并保存到指定文件（Vector模块调用的方法）"""
-        # 确保引擎已初始化
+        """Generate speech and save to specified file (method called by Vector module)"""
+        # Ensure engine is initialized
         self._initialize_engine()
         
-        # 检查是否使用Edge TTS引擎
+        # Check if using Edge TTS engine
         if self._config['engine'] == self.ENGINE_EDGE_TTS and edge_tts:
-            # 对于Edge TTS，使用异步方法但在同步环境中运行
+            # For Edge TTS, use async method but run in sync environment
             try:
                 import asyncio
-                # 检查当前是否已经在事件循环中
+                # Check if already in event loop
                 try:
                     loop = asyncio.get_running_loop()
-                    # 如果已经在事件循环中，使用run_coroutine_threadsafe
+                    # If already in event loop, use run_coroutine_threadsafe
                     future = asyncio.run_coroutine_threadsafe(
                         self._save_with_edge_tts(text, output_file),
                         loop
                     )
-                    return future.result(timeout=10)  # 设置超时时间
+                    return future.result(timeout=10)  # Set timeout
                 except RuntimeError:
-                    # 如果不在事件循环中，创建新的事件循环
+                    # If not in event loop, create new event loop
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     try:
@@ -361,138 +361,138 @@ class TTSManager:
                     finally:
                         loop.close()
             except Exception as e:
-                logger.error(f"Edge TTS同步调用失败: {e}")
-                # 失败时回退到pyttsx3
+                logger.error(f"Edge TTS sync call failed: {e}")
+                # Fall back to pyttsx3 on failure
                 return self.save_to_file(text, output_file)
         else:
-            # 使用pyttsx3作为备选
+            # Use pyttsx3 as fallback
             return self.save_to_file(text, output_file)
     
     async def speak_async(self, text):
-        """异步播放文本语音（优化版）"""
-        # 使用线程池执行同步操作，避免阻塞事件循环
+        """Async text-to-speech playback (optimized version)"""
+        # Use thread pool to execute sync operations, avoid blocking event loop
         try:
             loop = asyncio.get_running_loop()
             return await loop.run_in_executor(
-                None,  # 使用默认线程池
+                None,  # Use default thread pool
                 self.speak,
                 text
             )
         except Exception as e:
-            logger.error(f"异步语音播放失败: {e}")
+            logger.error(f"Async speech playback failed: {e}")
             return False
     
     async def save_to_file_async(self, text, filename):
-        """异步保存音频文件（优化版）"""
-        # 清理并验证文本
+        """Async save audio file (optimized version)"""
+        # Clean and validate text
         cleaned_text = self._clean_text(text)
         if not cleaned_text:
-            logger.warning("无效的TTS输入文本")
+            logger.warning("Invalid TTS input text")
             return None
         
-        # 验证并确保文件路径有效
+        # Validate and ensure file path is valid
         if not filename:
-            logger.warning("无效的音频文件路径")
+            logger.warning("Invalid audio file path")
             return None
         
-        # 确保目录存在
+        # Ensure directory exists
         dir_path = os.path.dirname(os.path.abspath(filename))
         os.makedirs(dir_path, exist_ok=True)
         
-        # 初始化引擎
+        # Initialize engine
         if not self._initialize_engine():
             return None
         
-        # 检查是否使用Edge TTS
+        # Check if using Edge TTS engine
         if self._config['engine'] == self.ENGINE_EDGE_TTS and edge_tts:
             return await self._save_with_edge_tts(cleaned_text, filename)
         
-        # 使用pyttsx3作为备选
-        # 使用线程池执行同步操作，避免阻塞事件循环
+        # Use pyttsx3 as fallback
+        # Use thread pool to execute sync operations, avoid blocking event loop
         try:
             loop = asyncio.get_running_loop()
             return await loop.run_in_executor(
-                None,  # 使用默认线程池
+                None,  # Use default thread pool
                 self.save_to_file,
                 cleaned_text,
                 filename
             )
         except Exception as e:
-            logger.error(f"异步保存语音文件失败: {e}")
+            logger.error(f"Async save speech file failed: {e}")
             return None
     
     async def _save_with_edge_tts(self, text, filename):
-        """使用Edge TTS保存音频文件"""
+        """Save audio file using Edge TTS"""
         try:
-            # 创建Edge TTS通信器
+            # Create Edge TTS communicator
             communicate = edge_tts.Communicate(text, voice=edge_tts_voice)
             
-            # 保存音频文件
+            # Save audio file
             with open(filename, "wb") as file:
                 async for chunk in communicate.stream():
                     if chunk["type"] == "audio":
                         file.write(chunk["data"])
             
-            # 验证文件是否成功创建
+            # Verify file was successfully created
             if os.path.exists(filename) and os.path.getsize(filename) > 0:
-                # 更新缓存
+                # Update cache
                 cache_key = hashlib.md5(text.encode()).hexdigest()
-                # 保持缓存大小限制
+                # Maintain cache size limit
                 if len(self._playback_cache) >= self.PLAYBACK_CACHE_SIZE:
-                    # 删除最早添加的项
+                    # Remove oldest item
                     self._playback_cache.pop(next(iter(self._playback_cache)))
                 self._playback_cache[cache_key] = filename
                 
-                logger.info(f"Edge TTS语音文件保存成功: {filename} ({os.path.getsize(filename)}字节)")
+                logger.info(f"Edge TTS speech file saved successfully: {filename} ({os.path.getsize(filename)} bytes)")
                 return filename
             else:
-                raise Exception("创建的文件为空或不存在")
+                raise Exception("Created file is empty or does not exist")
         except Exception as e:
-            logger.error(f"Edge TTS保存失败: {e}", exc_info=True)
+            logger.error(f"Edge TTS save failed: {e}", exc_info=True)
             return None
     
     def is_playing(self):
-        """检查是否正在播放语音"""
+        """Check if speech is currently playing"""
         return self._is_playing
     
     def stop(self):
-        """停止当前语音播放"""
+        """Stop current speech playback"""
         try:
             with self._lock:
                 if self.engine:
                     self.engine.stop()
                     self._is_playing = False
-                    logger.info("语音播放已停止")
+                    logger.info("Speech playback stopped")
                     return True
         except Exception as e:
-            logger.error(f"停止语音播放失败: {e}")
+            logger.error(f"Failed to stop speech playback: {e}")
         return False
     
     def clear_cache(self):
-        """清理缓存以释放资源"""
+        """Clear cache to free resources"""
         try:
             self._playback_cache.clear()
-            logger.info("TTS缓存已清理")
+            logger.info("TTS cache cleared")
             return True
         except Exception as e:
-            logger.error(f"清理TTS缓存失败: {e}")
+            logger.error(f"Failed to clear TTS cache: {e}")
             return False
     
     def close(self):
-        """关闭TTS引擎并释放资源"""
+        """Close TTS engine and release resources"""
         try:
-            # 停止当前播放
+            # Stop current playback
             self.stop()
             
-            # 清理缓存
+            # Clear cache
             self.clear_cache()
             
-            # 关闭引擎
+            # Close engine
             if self.engine:
                 try:
                     self.engine.endLoop()
                 except:
-                    pass  # 忽略可能不存在的方法
+                    pass  # Ignore method that might not exist
                 
                 try:
                     self.engine = None
@@ -500,25 +500,25 @@ class TTSManager:
                     pass
             
             self._initialized = False
-            logger.info("TTS引擎已关闭")
+            logger.info("TTS engine closed")
             return True
         except Exception as e:
-            logger.error(f"关闭TTS引擎失败: {e}")
+            logger.error(f"Failed to close TTS engine: {e}")
             return False
     
     def __del__(self):
-        """析构函数，确保资源释放"""
+        """Destructor, ensure resource release"""
         try:
             self.close()
         except:
-            pass  # 避免析构函数中抛出异常
+            pass  # Avoid exceptions in destructor
 
-# 全局单例实例
+# Global singleton instance
 _tts_manager_instance = None
 _tts_manager_lock = threading.RLock()
 
 def get_tts_manager():
-    """获取TTS管理器单例（线程安全版）"""
+    """Get TTS manager singleton (thread-safe version)"""
     global _tts_manager_instance
     with _tts_manager_lock:
         if _tts_manager_instance is None:
@@ -526,20 +526,20 @@ def get_tts_manager():
         return _tts_manager_instance
 
 def cleanup_tts():
-    """清理TTS资源"""
+    """Clean up TTS resources"""
     global _tts_manager_instance
     with _tts_manager_lock:
         if _tts_manager_instance is not None:
             _tts_manager_instance.close()
             _tts_manager_instance = None
-            logger.info("TTS资源已清理")
+            logger.info("TTS resources cleaned up")
 
-# 测试代码
+# Test code
 if __name__ == "__main__":
     try:
         tts = get_tts_manager()
-        tts.speak("你好，这是AI助手的语音功能测试")
+        tts.speak("Hello, this is a voice function test of the AI assistant")
     finally:
-        # 确保测试结束后清理资源
+        # Ensure resources are cleaned up after testing
         cleanup_tts()
-    tts.save_to_file("这是保存的语音文件测试", "test_output.mp3")
+    tts.save_to_file("This is a saved voice file test", "test_output.mp3")

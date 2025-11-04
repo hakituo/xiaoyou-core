@@ -1,266 +1,279 @@
-# 小悠 AI (xiaoyou-core)
+# Xiaoyou AI (xiaoyou-core)
 
-一个轻量级、高性能的多平台AI聊天助手核心系统，特别优化了低配置电脑的运行性能。系统支持WebSocket实时通信、智能记忆管理、语音合成，以及多平台集成能力。
+A lightweight, high-performance multi-platform AI chat assistant core system, specifically optimized for running on low-spec computers. The system supports WebSocket real-time communication, intelligent memory management, text-to-speech synthesis, and multi-platform integration capabilities.
 
-## 🌟 功能特性
+## 🌟 Features
 
-### 核心功能
-- 📱 **多平台集成**：支持Web界面，预留QQ、微信平台集成接口
-- 💬 **实时通信**：基于WebSocket的高效异步消息传输系统
-- 🧠 **智能记忆系统**
-  - 短期上下文记忆（可配置长度和优先级）
-  - 自动和手动历史记录保存与加载
-  - 基于重要性的智能记忆裁剪算法
-  - 长期记忆数据库存储关键信息
-- 🔊 **语音合成**：双引擎支持（Edge TTS高质量云服务 + pyttsx3本地备份）
-- 💻 **系统集成**：实时系统状态监控与资源管理
+### Core Features
+- 📱 **Multi-platform Integration**: Web interface support with reserved interfaces for QQ and WeChat platforms
+- 💬 **Real-time Communication**: Efficient asynchronous message transmission system based on WebSocket
+- 🧠 **Intelligent Memory System**
+  - Short-term context memory (configurable length and priority)
+  - Automatic and manual history saving and loading
+  - Importance-based intelligent memory pruning algorithm
+  - Long-term memory database storage for key information
+- 🔊 **Text-to-Speech**: Dual-engine support (Edge TTS high-quality cloud service + pyttsx3 local backup)
+- 💻 **System Integration**: Real-time system status monitoring and resource management
 
-### 性能优化（适合低配置电脑）
-- 🚀 **资源优化策略**
-  - 动态延迟导入非核心依赖，显著减少启动时间和内存占用
-  - 智能缓存管理，使用LRU算法自动淘汰不常用项
-  - 严格的内存使用监控和限制
-  - 自动垃圾回收与资源清理机制
+### Performance Optimization (Suitable for Low-spec Computers)
+- 🚀 **Resource Optimization Strategies**
+  - Dynamic lazy loading of non-core dependencies, significantly reducing startup time and memory usage
+  - Intelligent cache management using LRU algorithm to automatically eliminate infrequently used items
+  - Strict memory usage monitoring and limitation
+  - Automatic garbage collection and resource cleanup mechanisms
 
-- 💾 **数据处理优化**
-  - 默认历史记录限制为10条，可动态调整
-  - 基于消息重要性的智能裁剪算法
-  - 文本长度限制防止资源滥用
-  - 批量处理与异步执行耗时操作
+- 💾 **Data Processing Optimization**
+  - Default history limit of 10 messages, dynamically adjustable
+  - Intelligent pruning algorithm based on message importance
+  - Text length limits to prevent resource abuse
+  - Batch processing and asynchronous execution of time-consuming operations
 
-- 🔌 **连接与并发管理**
-  - WebSocket心跳机制（30秒间隔，60秒超时）确保连接稳定
-  - 连接数限制（默认10个）防止资源耗尽
-  - 异步I/O模型最大化系统吞吐量
-  - 任务队列限制并发执行数量
+- 🔌 **Connection and Concurrency Management**
+  - WebSocket heartbeat mechanism (30-second interval, 60-second timeout) ensures connection stability
+  - Connection limit (default 10) prevents resource exhaustion
+  - Asynchronous I/O model maximizes system throughput (isolating I/O-intensive tasks through asyncio.to_thread)
+  - Task queue limits the number of concurrent executions
 
-- 🛡️ **稳定性保障**
-  - 完善的异常捕获和错误处理
-  - 自动重试机制提高可靠性
-  - 优雅退出确保资源正确释放
-  - 详细的日志系统便于问题诊断
+- 🛡️ **Stability Assurance**
+  - Comprehensive exception capture and error handling
+  - Automatic retry mechanism improves reliability
+  - Graceful shutdown ensures proper resource release
+  - Detailed logging system facilitates problem diagnosis
 
-### 命令系统
-- 💻 **系统命令**：
-  - `/system` - 获取当前系统信息与资源使用情况
-  - `/clear` - 清空当前对话历史记录
-  - `/memory` - 查看记忆系统状态与统计信息
-- 🔍 **高级功能**：
-  - `/save` - 将当前对话保存到文件
-  - `/load` - 从文件加载对话历史
-- 📋 **便捷工具**：
-  - `/help` - 查看所有可用命令及其用法
-  - `/setmemory [num]` - 设置历史记录最大长度（默认10条）
+### Performance Experiment Results
 
-## 🛠️ 技术栈
+#### LRU Cache Memory Optimization Test Results (Using psutil Real-time Sampling)
+- Without Cache:
+  - Average Memory Usage: 24.73 MB
+  - Peak Memory Usage: 25.00 MB
+- With LRU Cache:
+  - Average Memory Usage: 24.83 MB
+  - Peak Memory Usage: 25.11 MB
+- Memory Change Rate: -0.41%
 
-### 后端
-- **语言**: Python 3.7+
-- **Web框架**: Flask
-- **WebSocket**: 原生WebSockets
-- **数据库**: SQLite (长期记忆存储)
-- **AI集成**: 通义千问API (dashscope)
-- **语音合成**: Edge TTS（首选）+ pyttsx3（备用）
-- **工具库**: jieba, SnowNLP, python-dotenv, psutil
-- **向量存储**: ChromaDB（知识库检索）
+**Analysis**: Actual test results show a slight increase in memory usage for the cached version, which may be related to the specific test scenario and data access patterns. In scenarios with small data scale and simple access patterns, the memory overhead of the cache may exceed the optimization benefits.
 
-### 前端
-- **核心**: HTML5, CSS3, JavaScript
-- **UI**: 原生JavaScript实现
-- **通信**: WebSocket API
-- **本地存储**: localStorage
+### Command System
+- 💻 **System Commands**:
+  - `/system` - Get current system information and resource usage
+  - `/clear` - Clear current conversation history
+  - `/memory` - View memory system status and statistics
+- 🔍 **Advanced Features**:
+  - `/save` - Save current conversation to file
+  - `/load` - Load conversation history from file
+- 📋 **Convenient Tools**:
+  - `/help` - View all available commands and their usage
+  - `/setmemory [num]` - Set maximum history length (default 10 messages)
 
-### 系统架构
-- **异步处理**: 异步I/O模型
-- **缓存系统**: 自定义LRU缓存
-- **连接管理**: WebSocket心跳机制
-- **资源优化**: 动态延迟导入, 智能内存管理
+## 🛠️ Technology Stack
 
-## 📁 项目结构
+### Backend
+- **Language**: Python 3.7+
+- **Web Framework**: Flask
+- **WebSocket**: Native WebSockets
+- **Database**: SQLite (long-term memory storage)
+- **AI Integration**: Tongyi Qianwen API (dashscope)
+- **Text-to-Speech**: Edge TTS (primary) + pyttsx3 (backup)
+- **Tool Libraries**: jieba, SnowNLP, python-dotenv, psutil
+- **Vector Storage**: ChromaDB (knowledge base retrieval)
+
+### Frontend
+- **Core**: HTML5, CSS3, JavaScript
+- **UI**: Native JavaScript implementation
+- **Communication**: WebSocket API
+- **Local Storage**: localStorage
+
+### System Architecture
+- **Asynchronous Processing**: Asynchronous I/O model
+- **Cache System**: Custom LRU cache
+- **Connection Management**: WebSocket heartbeat mechanism
+- **Resource Optimization**: Dynamic lazy loading, intelligent memory management
+
+## 📁 Project Structure
 
 ```
 xiaoyou-core/
-├── app.py                  # Flask Web服务器
-├── ws_server.py            # WebSocket实时通信服务实现
-├── start.py                # 一键启动脚本
-├── bots/                   # 多平台集成模块
-│   ├── qq_bot.py           # QQ平台集成支持
-│   └── wx_bot.py           # 微信平台集成支持
-├── core/                   # 核心功能模块
-│   ├── llm_connector.py    # LLM连接器（含命令系统）
-│   ├── vector_search.py    # 向量检索与知识库集成
-│   ├── models/             # AI模型实现
-│   │   └── qianwen_model.py # 通义千问模型封装
-│   └── utils.py            # 工具函数与性能优化功能集合
-├── memory/                 # 记忆管理系统
-│   ├── memory_manager.py   # 上下文记忆与历史记录管理
-│   └── long_term_db.py     # 长期记忆数据库管理
-├── voice/                  # 语音文件存储目录
-├── history/                # 对话历史保存目录
-├── templates/              # 前端模板
-│   ├── index.html          # Web聊天主界面
-│   └── ultimate_xiaoyou_optimized.html  # 优化版界面
-├── static/                 # 前端静态资源
-│   ├── script.js           # 前端JavaScript交互逻辑
-│   └── style.css           # 前端界面样式
-├── .env                    # 环境变量配置
-├── long_term_memory.db     # 长期记忆数据库文件
-└── readme.md               # 项目说明文档
+├── app.py                  # Flask Web server
+├── ws_server.py            # WebSocket real-time communication service implementation
+├── start.py                # One-click startup script
+├── bots/                   # Multi-platform integration modules
+│   ├── qq_bot.py           # QQ platform integration support
+│   └── wx_bot.py           # WeChat platform integration support
+├── core/                   # Core functionality modules
+│   ├── llm_connector.py    # LLM connector (with command system)
+│   ├── vector_search.py    # Vector search and knowledge base integration
+│   ├── models/             # AI model implementations
+│   │   └── qianwen_model.py # Tongyi Qianwen model wrapper
+│   └── utils.py            # Utility functions and performance optimization features
+├── memory/                 # Memory management system
+│   ├── memory_manager.py   # Context memory and history management
+│   └── long_term_db.py     # Long-term memory database management
+├── voice/                  # Voice file storage directory
+├── history/                # Conversation history saving directory
+├── templates/              # Frontend templates
+│   ├── index.html          # Web chat main interface
+│   └── ultimate_xiaoyou_optimized.html  # Optimized interface
+├── static/                 # Frontend static resources
+│   ├── script.js           # Frontend JavaScript interaction logic
+│   └── style.css           # Frontend interface styles
+├── .env                    # Environment variable configuration
+├── long_term_memory.db     # Long-term memory database file
+└── README.md               # Project documentation
 ```
 
-## 🚀 快速开始
+## 🚀 Quick Start
 
-### 环境要求
+### Environment Requirements
 - Python 3.7+
-- 至少 1GB RAM（推荐 2GB+）
-- 至少 50MB 磁盘空间
-- 支持的操作系统：Windows, macOS, Linux
+- At least 1GB RAM (2GB+ recommended)
+- At least 50MB disk space
+- Supported operating systems: Windows, macOS, Linux
 
-### 安装配置
+### Installation
 
-1. 克隆或下载项目到本地
-2. 安装必要依赖：
+1. Clone or download the project locally
+2. Install necessary dependencies:
    ```bash
    pip install flask websockets python-dotenv jieba snownlp pyttsx3 chromadb
    
-   # 如需使用通义千问API，还需安装
+   # For Tongyi Qianwen API usage, also install
    pip install dashscope
    ```
 
-3. 配置环境变量：
-   编辑 `.env` 文件，填入以下配置：
+3. Configure environment variables:
+   Edit the `.env` file and fill in the following configuration:
    ```
-   # 通义千问 API Key (可选，如果不配置将使用模拟回复)
+   # Tongyi Qianwen API Key (optional, simulated responses will be used if not configured)
    QIANWEN_API_KEY=your_api_key_here
    
-   # 系统配置（可根据需要调整）
+   # System configuration (adjust as needed)
    MAX_HISTORY_LENGTH=10
    MAX_CONNECTIONS=10
    ```
 
-### 启动应用
+### Starting the Application
 
 ```bash
-# 直接运行启动脚本
+# Run the startup script directly
 python start.py
 ```
 
-应用启动后，默认在 http://localhost:5000 提供服务，同时通过WebSocket进行实时通信。打开浏览器访问该地址即可开始使用。
+Once started, the application serves at http://localhost:5000 by default, with WebSocket for real-time communication. Open this address in your browser to start using it.
 
-> 注意：一键启动功能会同时启动 WebSocket 服务器和 Flask Web 应用，无需分别运行。
+> Note: The one-click startup feature starts both the WebSocket server and Flask web application simultaneously, no need to run them separately.
 
-#### 高级用户选项：分别启动（用于调试）
+#### Advanced User Option: Separate Startup (for debugging)
 
-1. 先启动 WebSocket 服务器：
+1. First start the WebSocket server:
 ```bash
 python ws_server.py
 ```
 
-2. 在新窗口启动 Flask 应用：
+2. Start the Flask application in a new window:
 ```bash
 python app.py
 ```
 
-## ⚙️ 配置说明
+## ⚙️ Configuration
 
-### 系统核心配置
-- `MAX_HISTORY_LENGTH`: 最大历史记录长度（默认10条，可通过命令调整）
-- `MAX_CONNECTIONS`: 最大并发连接数限制（默认10个）
-- `HEARTBEAT_INTERVAL`: WebSocket心跳检测间隔（默认30秒）
-- `HEARTBEAT_TIMEOUT`: WebSocket连接超时时间（默认60秒）
+### System Core Configuration
+- `MAX_HISTORY_LENGTH`: Maximum history length (default 10 messages, adjustable via command)
+- `MAX_CONNECTIONS`: Maximum concurrent connection limit (default 10)
+- `HEARTBEAT_INTERVAL`: WebSocket heartbeat detection interval (default 30 seconds)
+- `HEARTBEAT_TIMEOUT`: WebSocket connection timeout (default 60 seconds)
 
-### 语音合成配置
-- TTS引擎自动选择（Edge TTS优先，失败自动回退到pyttsx3）
-- 支持语速和音量调整（有安全范围限制）
-- 语音文件自动缓存管理
+### Text-to-Speech Configuration
+- Automatic TTS engine selection (Edge TTS preferred, fallback to pyttsx3 on failure)
+- Support for speech rate and volume adjustment (with safety range limits)
+- Automatic voice file cache management
 
-### 性能优化选项
-- 延迟加载非核心依赖（jieba, snownlp等）
-- 智能缓存系统（LRU算法自动管理）
-- 文本长度限制防止资源滥用
+### Performance Optimization Options
+- Lazy loading of non-core dependencies (jieba, snownlp, etc.)
+- Intelligent cache system (automatically managed with LRU algorithm)
+- Text length limits prevent resource abuse
 
-## 💡 使用指南
+## 💡 Usage Guide
 
-### 基本对话
-1. 启动应用后，在浏览器中打开 http://localhost:5000
-2. 在输入框中输入消息，点击发送按钮或按回车键
-3. 对话内容会实时显示在聊天界面中
-4. AI回复后，可点击消息旁的🔊图标播放语音
+### Basic Conversation
+1. After starting the application, open http://localhost:5000 in your browser
+2. Enter messages in the input box, click the send button or press Enter
+3. Conversation content will be displayed in real-time in the chat interface
+4. After receiving an AI response, click the 🔊 icon next to the message to play audio
 
-### 命令系统使用
-在聊天输入框中输入以下命令：
+### Command System Usage
+Enter the following commands in the chat input box:
 
-- **查看帮助**：`/help` - 显示所有可用命令及其用法
-- **清空对话**：`/clear` - 清空当前对话历史记录
-- **保存历史**：`/save` - 将当前对话保存到文件
-- **加载历史**：`/load` - 从文件加载对话历史
-- **查看内存**：`/memory` - 查看当前记忆系统状态与统计信息
-- **调整记忆长度**：`/setmemory [num]` - 设置历史记录最大长度（默认10条）
-- **系统信息**：`/system` - 查看系统信息与资源使用情况
+- **View Help**: `/help` - Display all available commands and their usage
+- **Clear Conversation**: `/clear` - Clear current conversation history
+- **Save History**: `/save` - Save current conversation to file
+- **Load History**: `/load` - Load conversation history from file
+- **View Memory**: `/memory` - View current memory system status and statistics
+- **Adjust Memory Length**: `/setmemory [num]` - Set maximum history length (default 10 messages)
+- **System Information**: `/system` - View system information and resource usage
 
-### 记忆与历史管理
-- 对话历史会自动保存在 `history/` 目录下
-- 重要信息会存储在长期记忆数据库中
-- 使用 `/save` 和 `/load` 命令可以手动管理历史记录
-- 不同用户的历史记录相互独立（通过user_id区分）
-- 记忆系统会智能裁剪，优先保留重要消息
+### Memory and History Management
+- Conversation history is automatically saved in the `history/` directory
+- Important information is stored in the long-term memory database
+- Use `/save` and `/load` commands to manually manage history
+- Different users' history records are independent (distinguished by user_id)
+- The memory system intelligently prunes, prioritizing important messages
 
-## 🔧 故障排除
+## 🔧 Troubleshooting
 
-### 常见问题解决
-1. **WebSocket连接失败**
-   - 检查网络连接是否正常
-   - 确认防火墙没有阻止端口访问
-   - 查看服务日志确认WebSocket服务启动成功
-   - 尝试刷新页面或重启浏览器
+### Common Issues
+1. **WebSocket Connection Failure**
+   - Check if network connection is normal
+   - Confirm firewall isn't blocking port access
+   - Check service logs to confirm WebSocket service started successfully
+   - Try refreshing the page or restarting the browser
 
-2. **语音合成不工作**
-   - 检查pyttsx3库是否正确安装
-   - Edge TTS需要网络连接，pyttsx3为本地备份
-   - 确认系统音频设备设置正确
-   - 检查日志中的具体错误信息
+2. **Text-to-Speech Not Working**
+   - Check if pyttsx3 library is installed correctly
+   - Edge TTS requires network connection, pyttsx3 is the local backup
+   - Confirm system audio device settings are correct
+   - Check specific error information in logs
 
-3. **内存占用过高**
-   - 使用`/setmemory [较小值]`命令减小历史记录长度
-   - 定期使用`/clear`命令清空对话历史
-   - 重启应用释放资源
+3. **High Memory Usage**
+   - Use `/setmemory [smaller value]` command to reduce history length
+   - Regularly use `/clear` command to empty conversation history
+   - Restart the application to release resources
 
-4. **历史记录管理问题**
-   - 检查`history/`目录权限是否正确
-   - 确保磁盘空间充足
-   - 手动检查历史文件格式是否正确
+4. **History Management Issues**
+   - Check if `history/` directory permissions are correct
+   - Ensure sufficient disk space
+   - Manually check if history file format is correct
 
-### 日志与调试
-- 系统日志保存在`flask_app.log`和`startup.log`
-- 重要错误会同时显示在控制台和日志文件中
-- 调试时建议分别启动WebSocket和Flask服务
+### Logs and Debugging
+- System logs are saved in `flask_app.log` and `startup.log`
+- Important errors are displayed in both console and log files
+- For debugging, it's recommended to start WebSocket and Flask services separately
 
-## 📝 注意事项
+## 📝 Notes
 
-- **资源优化**：系统已针对低配置电脑优化，但仍建议定期重启以释放资源
-- **API密钥保护**：请妥善保管您的通义千问API密钥，避免泄露
-- **数据安全**：历史记录和记忆数据保存在本地，请注意文件系统安全
-- **语音功能**：Edge TTS需要网络连接，音质更佳；pyttsx3为离线备份方案
-- **连接限制**：默认最大并发连接数为10个，可根据系统性能调整
+- **Resource Optimization**: The system is optimized for low-spec computers, but regular restarts are still recommended to release resources
+- **API Key Protection**: Please keep your Tongyi Qianwen API key secure, avoid exposure
+- **Data Security**: History and memory data are stored locally, please pay attention to file system security
+- **Voice Features**: Edge TTS requires network connection with better sound quality; pyttsx3 is an offline backup solution
+- **Connection Limits**: Default maximum concurrent connections is 10, can be adjusted based on system performance
 
-## 🔮 未来规划
+## 🔮 Future Plans
 
-- [ ] 增强上下文理解和长期记忆能力
-- [ ] 进一步优化资源使用效率
-- [ ] 扩展更多第三方AI模型支持
-- [ ] 完善语音识别与合成功能
-- [ ] 增强多平台集成和适配
-- [ ] 优化用户界面和交互体验
-- [ ] 增加插件系统支持自定义功能扩展
+- [ ] Enhance context understanding and long-term memory capabilities
+- [ ] Further optimize resource usage efficiency
+- [ ] Expand support for more third-party AI models
+- [ ] Improve speech recognition and synthesis features
+- [ ] Enhance multi-platform integration and adaptation
+- [ ] Optimize user interface and interaction experience
+- [ ] Add plugin system to support custom functionality extensions
 
-## 📄 许可证
+## 📄 License
 
-本项目采用 MIT 许可证开源。
+This project is open-sourced under the MIT License.
 
 ```
 MIT License
 
-Copyright (c) 2025 小悠AI
+Copyright (c) 2025 Xiaoyou AI
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -283,6 +296,6 @@ SOFTWARE.
 
 ---
 
-小悠AI - 为低配置电脑优化的高性能AI聊天助手！
+Xiaoyou AI - A high-performance AI chat assistant optimized for low-spec computers!
 
 © 2025 hakituo

@@ -1,3 +1,8 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+# Copyright (c) 2025 Leslie Qi
+
 import asyncio
 import websockets
 import json
@@ -9,35 +14,35 @@ from core.llm_connector import query_model, task_manager
 from memory.memory_manager import MemoryManager
 from core.utils import tts_generate
 
-# 配置日志
+# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# 连接管理
+# Connection management
 global_clients = set()
-# 使用字典存储每个用户的MemoryManager实例
+# Use dictionary to store MemoryManager instances for each user
 user_memory_map = defaultdict(lambda: MemoryManager(user_id="default", max_length=10, auto_save_interval=300))
-# 心跳时间记录
+# Heartbeat time records
 socket_heartbeats = {}
-# 最大连接数
+# Maximum connections
 MAX_CONNECTIONS = 10
-# 心跳间隔（秒）
+# Heartbeat interval (seconds)
 HEARTBEAT_INTERVAL = 30
-# 心跳超时（秒）
+# Heartbeat timeout (seconds)
 HEARTBEAT_TIMEOUT = 60
 
 async def broadcast(msg, exclude_client=None):
-    """优化的广播函数，支持排除特定客户端和错误处理"""
+    """Optimized broadcast function that supports excluding specific clients and error handling"""
     if not global_clients:
         return
     
-    # 过滤掉可能已关闭的连接
-    # 使用getattr安全检查，对于不同WebSocket实现有兼容性
+    # Filter out possibly closed connections
+    # Use getattr for safe checking, compatible with different WebSocket implementations
     active_clients = []
     for c in global_clients:
         try:
-            # 尝试检查连接是否仍处于打开状态
-            # 对于websockets库，使用socket属性或其他方式判断
+            # Try to check if connection is still open
+            # For websockets library, use socket property or other methods to determine
             if hasattr(c, 'closed'):
                 if not c.closed:
                     active_clients.append(c)
@@ -46,91 +51,103 @@ async def broadcast(msg, exclude_client=None):
             elif hasattr(c, 'connection') and c.connection:
                 active_clients.append(c)
             else:
-                # 如果无法判断，尝试发送一个ping或简单消息
-                # 但为了安全起见，默认保留连接
+                # If unable to determine, try sending a ping or simple message
+                # But for safety, keep the connection by default
                 active_clients.append(c)
         except:
-            # 如果检查失败，排除该连接
+            # If check fails, exclude this connection
             pass
     
-    # 更新全局客户端集合
+    # Update global client set
     global_clients.clear()
     global_clients.update(active_clients)
     
     if not active_clients:
         return
     
-    # 创建发送任务列表
+    # Create list of send tasks
     send_tasks = []
     for client in active_clients:
         if client != exclude_client:
             send_tasks.append(send_with_retry(client, json.dumps(msg)))
     
     if send_tasks:
-        # 异步执行所有发送任务
+        # Execute all send tasks asynchronously
         results = await asyncio.gather(*send_tasks, return_exceptions=True)
-        # 处理发送失败的情况
+        # Handle failed sending cases
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                logger.error(f"广播消息失败到客户端: {result}")
+                logger.error(f"Failed to broadcast message to client: {result}")
 
 async def send_with_retry(websocket, message, max_retries=2):
-    """带重试机制的消息发送函数，增加连接状态预检查"""
-    # 先检查连接状态
+    """Message sending function with retry mechanism and connection status pre-check"""
+    # Validate inputs
+    if not websocket or not message:
+        logger.error("Invalid websocket or message parameter")
+        return False
+    
+    # Check connection status first
     if hasattr(websocket, 'closed') and websocket.closed:
-        logger.warning("连接已关闭，跳过发送")
+        logger.warning("Connection closed, skipping sending")
         return False
     
     retries = 0
     while retries <= max_retries:
         try:
-            # 使用shield防止取消操作影响发送
+            # Use shield to prevent cancellation from affecting sending
             await asyncio.shield(websocket.send(message))
             return True
-        except (websockets.exceptions.ConnectionClosedError, websockets.exceptions.ConnectionClosedOK):
-            # 连接已关闭，不再重试
-            logger.warning("连接已关闭，停止重试")
+        except (websockets.exceptions.ConnectionClosedError, websockets.exceptions.ConnectionClosedOK) as conn_err:
+            # Connection closed, stop retrying
+            logger.warning(f"Connection closed, stopping retry: {conn_err}")
             return False
+        except asyncio.TimeoutError:
+            # Handle timeout specifically
+            logger.warning(f"Message send timeout, retrying ({retries}/{max_retries})")
         except Exception as e:
-            retries += 1
-            if retries > max_retries:
-                logger.error(f"发送消息失败，已达到最大重试次数: {e}")
-                # 不再抛出异常，避免任务失败
-                return False
-            logger.warning(f"发送消息失败，正在重试 ({retries}/{max_retries}): {e}")
-            await asyncio.sleep(0.5)
+            logger.error(f"Failed to send message: {e}")
+
+        retries += 1
+        if retries > max_retries:
+            logger.error(f"Failed to send message, reached maximum retry attempts: {e}")
+            # No longer throw exceptions to avoid task failure
+            return False
+        logger.warning(f"Failed to send message, retrying ({retries}/{max_retries}): {e}")
+        # Exponential backoff with jitter
+        await asyncio.sleep(0.5 * (1.5 ** (retries - 1)))
+    
     return False
 
 async def handle_message(websocket, data):
-    """处理接收到的消息，使用任务管理器限制并发"""
+    """Process received messages using task manager to limit concurrency"""
     platform = data.get("platform", "unknown")
     user_id = data.get("user_id", "web")
     text = data.get("message", "").strip()
     
-    # 空消息不处理
+    # Skip empty messages
     if not text:
         return
     
     try:
-        # 检查是否是文件上传消息
+        # Check if it's a file upload message
         if data.get("file_info"):
             file_info = data["file_info"]
-            file_name = file_info.get("name", "未知文件")
+            file_name = file_info.get("name", "Unknown file")
             file_size = file_info.get("size", 0)
             
-            logger.info(f"收到文件上传请求 - 用户: {user_id}, 文件名: {file_name}, 大小: {file_size}字节")
+            logger.info(f"Received file upload request - User: {user_id}, File name: {file_name}, Size: {file_size} bytes")
             
-            # 由于千问3max模型可能不直接支持文件处理，我们提供一个友好的响应
-            file_response = f"我已收到您上传的文件 '{file_name}'。目前千问3max模型支持处理文字内容，如果您希望我分析文件内容，请您描述文件中的关键信息，我会尽力为您提供帮助。"
+            # Since Qianwen 3max model may not directly support file processing, we provide a friendly response
+            file_response = f"I have received your uploaded file '{file_name}'. Currently, the Qianwen 3max model supports processing text content. If you would like me to analyze the file content, please describe the key information in the file, and I will do my best to help you."
             
-            # 获取或创建用户的内存管理器
+            # Get or create memory manager for the user
             user_memory = user_memory_map[user_id]
             
-            # 添加消息到历史记录
+            # Add messages to history
             user_memory.add_message("user", text)
             user_memory.add_message("assistant", file_response)
             
-            # 准备响应数据
+            # Prepare response data
             msg_data = {
                 "type": "message",
                 "platform": platform,
@@ -140,35 +157,35 @@ async def handle_message(websocket, data):
                 "timestamp": time.time()
             }
             
-            # 发送响应给客户端
+            # Send response to client
             await send_with_retry(websocket, json.dumps(msg_data))
             return
         
-        # 检查是否是心跳消息
+        # Check if it's a heartbeat message
         if text == "__heartbeat__":
             socket_heartbeats[websocket] = time.time()
             await websocket.send(json.dumps({"type": "heartbeat"}))
             return
         
-        # 获取或创建用户的内存管理器
+        # Get or create memory manager for the user
         user_memory = user_memory_map[user_id]
         
-        # 使用任务管理器限制并发请求数
+        # Use task manager to limit concurrent requests
         response = await task_manager.run_task(query_model(text, user_memory))
         
-        # 异步生成TTS，但不阻塞响应
+        # Asynchronously generate TTS without blocking the response
         tts_path = ""
         try:
             tts_path = await tts_generate(response)
         except Exception as e:
-            logger.error(f"生成TTS失败: {e}")
-            # 即使TTS失败，也继续处理响应
+            logger.error(f"Failed to generate TTS: {e}")
+            # Continue processing response even if TTS fails
         
-        # 添加消息到历史记录
+        # Add message to history
         user_memory.add_message("user", text)
         user_memory.add_message("assistant", response)
         
-        # 准备响应数据
+        # Prepare response data
         msg_data = {
             "type": "message",
             "platform": platform,
@@ -176,150 +193,152 @@ async def handle_message(websocket, data):
             "text": text,
             "response": response,
             "tts": tts_path,
-            "audio_file": tts_path.split('/')[-1] if tts_path else None,  # 添加audio_file字段，只包含文件名
+            "audio_file": tts_path.split('/')[-1] if tts_path else None,  # Add audio_file field containing only the file name
             "timestamp": time.time()
         }
         
-        # 发送响应给当前客户端
+        # Send response to current client
         await send_with_retry(websocket, json.dumps(msg_data))
         
-        # 广播消息给其他客户端
+        # Broadcast message to other clients
         await broadcast(msg_data, exclude_client=websocket)
         
-        logger.info(f"处理消息完成 - 用户: {user_id}, 平台: {platform}, 消息长度: {len(text)}")
+        logger.info(f"Message processing completed - User: {user_id}, Platform: {platform}, Message length: {len(text)}")
     
     except json.JSONDecodeError:
-        error_msg = "无效的JSON格式"
+        error_msg = "Invalid JSON format"
         await websocket.send(json.dumps({"type": "error", "message": error_msg}))
-        logger.error(f"JSON解析错误: {data}")
+        logger.error(f"JSON parsing error: {data}")
     except Exception as e:
-        error_msg = f"处理消息时出错: {str(e)}"
+        error_msg = f"Error processing message: {str(e)}"
         await websocket.send(json.dumps({"type": "error", "message": error_msg}))
-        logger.error(f"处理消息错误: {e}", exc_info=True)
+        logger.error(f"Error processing message: {e}", exc_info=True)
 
 async def handler(websocket):
-    """优化的WebSocket连接处理函数"""
-    # 检查连接数限制
+    """Optimized WebSocket connection handling function"""
+    # Check connection limit
     if len(global_clients) >= MAX_CONNECTIONS:
-        await websocket.send(json.dumps({"type": "error", "message": "连接数已达上限，请稍后再试"}))
+        await websocket.send(json.dumps({"type": "error", "message": "Connection limit reached, please try again later"}))
         await websocket.close()
-        logger.warning("拒绝新连接，已达到最大连接数限制")
+        logger.warning("Rejected new connection, maximum connection limit reached")
         return
     
-    # 添加到客户端集合
+    # Add to client set
     global_clients.add(websocket)
     socket_heartbeats[websocket] = time.time()
     client_ip = websocket.remote_address[0] if websocket.remote_address else "unknown"
-    logger.info(f"新客户端连接: {client_ip}, 当前连接数: {len(global_clients)}")
+    logger.info(f"New client connected: {client_ip}, Current connections: {len(global_clients)}")
     
     try:
-        # 发送欢迎消息
+        # Send welcome message
         await websocket.send(json.dumps({
             "type": "welcome", 
-            "message": "连接成功，欢迎使用小悠AI！",
+            "message": "Connection successful, welcome to Xiaoyou AI!",
             "version": "1.0.0"
         }))
         
-        # 处理消息循环
+        # Message handling loop
         async for message in websocket:
             try:
                 data = json.loads(message)
-                # 异步处理消息，避免阻塞，使用task而不是直接create_task以便更好地追踪
+                # Process messages asynchronously to avoid blocking, use task for better tracking
                 task = asyncio.create_task(handle_message(websocket, data))
-                # 添加异常处理，避免任务异常未被捕获
-                task.add_done_callback(lambda t: logger.error(f"消息处理任务异常: {t.exception()}") if t.exception() else None)
+                # Add exception handling to avoid uncaught task exceptions
+                task.add_done_callback(lambda t: logger.error(f"Message processing task exception: {t.exception()}") if t.exception() else None)
             except json.JSONDecodeError:
-                await websocket.send(json.dumps({"type": "error", "message": "无效的JSON格式"}))
+                await websocket.send(json.dumps({"type": "error", "message": "Invalid JSON format"}))
     except websockets.exceptions.ConnectionClosedError as e:
-        logger.info(f"客户端连接异常关闭: {client_ip}, 错误代码: {e.code}, 原因: {e.reason}")
+        logger.info(f"Client connection closed abnormally: {client_ip}, Error code: {e.code}, Reason: {e.reason}")
     except websockets.exceptions.ConnectionClosedOK:
-        logger.info(f"客户端正常关闭连接: {client_ip}")
+        logger.info(f"Client connection closed normally: {client_ip}")
     except Exception as e:
-        logger.error(f"处理客户端时发生错误: {e}", exc_info=True)
+        logger.error(f"Error occurred while handling client: {e}", exc_info=True)
     finally:
-        # 清理资源
+        # Clean up resources
         global_clients.discard(websocket)
         socket_heartbeats.pop(websocket, None)
-        logger.info(f"客户端断开连接: {client_ip}, 当前连接数: {len(global_clients)}")
+        logger.info(f"Client disconnected: {client_ip}, Current connections: {len(global_clients)}")
 
 async def heartbeat_checker():
-    """定期检查连接心跳，清理超时连接"""
+    """Periodically check connection heartbeats and clean up timed-out connections"""
     while True:
         try:
             current_time = time.time()
             to_close = []
             
-            # 找出超时连接
+            # Find timed-out connections
             for websocket, last_heartbeat in socket_heartbeats.items():
                 if current_time - last_heartbeat > HEARTBEAT_TIMEOUT:
                     to_close.append(websocket)
-                    logger.info(f"检测到超时连接，准备关闭")
+                    logger.info(f"Detected timed-out connection, preparing to close")
             
-            # 关闭超时连接，使用更合适的错误码1001(going away)而非1008(policy violation)
+            # Close timed-out connections, using more appropriate error code 1001(going away) instead of 1008(policy violation)
             for websocket in to_close:
                 try:
-                    await websocket.close(code=1001, reason="连接超时")
+                    await websocket.close(code=1001, reason="Connection timed out")
                     socket_heartbeats.pop(websocket, None)
                     global_clients.discard(websocket)
                 except Exception as e:
-                    # 连接可能已经关闭，静默处理错误
+                    # Connection might already be closed, silently handle error
                     socket_heartbeats.pop(websocket, None)
                     global_clients.discard(websocket)
-                    logger.debug(f"关闭超时连接失败(可能已关闭): {e}")
+                    logger.debug(f"Failed to close timed-out connection (might already be closed): {e}")
             
-            # 发送心跳检查
+            # Send heartbeat checks
             for websocket in list(global_clients):
                 try:
-                    # 安全检查连接状态
+                    # Safely check connection status
                     if hasattr(websocket, 'closed') and websocket.closed:
-                        # 连接已关闭，清理资源
+                        # Connection closed, clean up resources
                         socket_heartbeats.pop(websocket, None)
                         global_clients.discard(websocket)
                         continue
                     
-                    # 使用更安全的方式发送心跳，避免在发送过程中发生错误
+                    # Use safer way to send heartbeat to avoid errors during transmission
                     await asyncio.shield(websocket.send(json.dumps({"type": "ping"})))
                 except Exception as e:
-                    # 连接可能已关闭，清理资源
+                    # Connection might be closed, clean up resources
                     socket_heartbeats.pop(websocket, None)
                     global_clients.discard(websocket)
-                    logger.debug(f"发送心跳失败(连接可能已关闭): {e}")
+                    logger.debug(f"Failed to send heartbeat (connection might be closed): {e}")
             
-            # 每隔一段时间检查一次
+            # Check at regular intervals
             await asyncio.sleep(HEARTBEAT_INTERVAL)
         except Exception as e:
-            logger.error(f"心跳检查出错: {e}", exc_info=True)
+            logger.error(f"Error in heartbeat check: {e}", exc_info=True)
             await asyncio.sleep(HEARTBEAT_INTERVAL)
 
 async def main():
-    """WebSocket服务器主函数"""
-    # 启动心跳检查任务
+    """WebSocket server main function"""
+    # Start heartbeat checker task
     asyncio.create_task(heartbeat_checker())
     
-    # 配置WebSocket服务器
+    # Configure WebSocket server
     server_config = {
         "host": "0.0.0.0",
         "port": 6789,
-        "max_size": 1 * 1024 * 1024,  # 限制最大消息大小为1MB
-        "ping_interval": None,  # 禁用内置ping，使用自定义心跳
+        "max_size": 1 * 1024 * 1024,  # Limit maximum message size to 1MB
+        "ping_interval": None,  # Disable built-in ping, use custom heartbeat
         "ping_timeout": None,
     }
     
     try:
         async with websockets.serve(handler, **server_config):
-            logger.info(f"WebSocket 服务启动成功: ws://{server_config['host']}:{server_config['port']}")
-            logger.info(f"最大连接数限制: {MAX_CONNECTIONS}")
-            logger.info(f"心跳间隔: {HEARTBEAT_INTERVAL}秒, 超时时间: {HEARTBEAT_TIMEOUT}秒")
-            # 保持服务器运行
+            logger.info(f"WebSocket service started successfully: ws://{server_config['host']}:{server_config['port']}")
+            logger.info(f"Maximum connection limit: {MAX_CONNECTIONS}")
+            logger.info(f"Heartbeat interval: {HEARTBEAT_INTERVAL}s, Timeout: {HEARTBEAT_TIMEOUT}s")
+            # Keep server running
             await asyncio.Future()
+    except KeyboardInterrupt:
+        logger.info("⚠️ WebSocket service stopping...")
     except Exception as e:
-        logger.error(f"❌ WebSocket 服务器异常: {e}", exc_info=True)
+        logger.error(f"❌ WebSocket server error: {e}", exc_info=True)
         raise
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("⚠️ WebSocket 服务已停止（用户中断）")
+        logger.info("⚠️ WebSocket service stopped (user interruption)")
     except Exception as e:
-        logger.critical(f"❌ WebSocket 服务启动失败: {e}", exc_info=True)
+        logger.critical(f"❌ WebSocket service failed to start: {e}", exc_info=True)

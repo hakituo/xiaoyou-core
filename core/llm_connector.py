@@ -9,29 +9,29 @@ from core.models.qianwen_model import QianwenModel as LLMModel
 
 
 # =======================================================
-# 1. 初始化模型实例
+# 1. Initialize Model Instance
 # =======================================================
 model = LLMModel()
 
-# 自定义AI人设配置
-# 你可以修改下面的内容来更改AI的角色设定
+# Custom AI Personality Configuration
+# You can modify the following content to change the AI's role setting
 CUSTOM_PERSONALITY = ""
-# 取消下面一行的注释并修改内容来自定义AI人设
-# CUSTOM_PERSONALITY = "你是一个专业的技术顾问，擅长解决编程问题..."
+# Uncomment the line below and modify the content to customize the AI personality
+# CUSTOM_PERSONALITY = "You are a professional technical advisor, skilled at solving programming problems..."
 
-# 如果设置了自定义人设，则应用它
+# Apply custom personality if set
 if CUSTOM_PERSONALITY:
     model.set_personality(CUSTOM_PERSONALITY) 
 
 
 # =======================================================
-# 2. 优化的命令系统（使用字典映射提高性能）
+# 2. Optimized Command System (Using Dictionary Mapping for Better Performance)
 # =======================================================
 class CommandHandler:
-    """优化的命令处理系统，使用字典映射代替if-elif链以提高性能"""
+    """Optimized command processing system that uses dictionary mapping instead of if-elif chains for better performance"""
     
     def __init__(self):
-        # 命令映射字典，键为命令名，值为处理函数
+        # Command mapping dictionary, keys are command names, values are handler functions
         self.commands = {
             'clear': self._handle_clear,
             'save': self._handle_save,
@@ -42,25 +42,25 @@ class CommandHandler:
             'help': self._handle_help,
         }
         
-        # 预编译帮助文本，避免重复生成
+        # Precompile help text to avoid repeated generation
         self._help_text = (
-            "可用命令:\n"
-            + "/clear - 清空历史记录\n"
-            + "/save - 保存历史记录到文件\n"
-            + "/load - 从文件加载历史记录\n"
-            + "/memory - 查看当前内存状态\n"
-            + "/setmemory [数字] - 设置历史记录最大长度\n"
-            + "/system - 查看系统信息\n"
-            + "/help - 显示此帮助信息"
+            "Available commands:\n"
+            + "/clear - Clear history\n"
+            + "/save - Save history to file\n"
+            + "/load - Load history from file\n"
+            + "/memory - View current memory status\n"
+            + "/setmemory [number] - Set maximum history length\n"
+            + "/system - View system information\n"
+            + "/help - Show this help information"
         )
     
     def handle(self, text, memory: MemoryManager):
         """
-        处理用户输入的命令
+        Process commands from user input
         
         Args:
-            text: 用户输入的文本
-            memory: 内存管理器实例
+            text: User input text
+            memory: Memory manager instance
         
         Returns:
             tuple: (is_command, response_text)
@@ -73,13 +73,13 @@ class CommandHandler:
             command = command_parts[0].lower()
             args = command_parts[1] if len(command_parts) > 1 else ""
             
-            # 使用字典查找命令处理函数，比if-elif链更高效
+            # Use dictionary lookup for command handler functions, more efficient than if-elif chains
             if command in self.commands:
                 return True, self.commands[command](memory, args)
             
-            return True, f"未知命令: {command}，使用 /help 查看可用命令"
+            return True, f"Unknown command: {command}, use /help to see available commands"
         except Exception as e:
-            return True, f"命令执行出错: {str(e)}"
+            return True, f"Command execution error: {str(e)}"
     
     def _handle_clear(self, memory, args):
         return memory.clear()
@@ -92,146 +92,142 @@ class CommandHandler:
     
     def _handle_memory(self, memory, args):
         stats = memory.get_stats()
-        return f"内存状态: 当前历史 {stats['current_length']}/{stats['max_length']} 条消息"
+        return f"Memory status: Current history {stats['current_length']}/{stats['max_length']} messages"
     
     def _handle_setmemory(self, memory, args):
         try:
             max_len = int(args)
-            # 添加边界检查，防止设置过小或过大的值
+            # Add boundary checks to prevent setting too small or too large values
             if max_len < 1 or max_len > 100:
-                return "请设置1-100之间的有效数字"
+                return "Please set a valid number between 1-100"
             return memory.set_max_length(max_len)
         except ValueError:
-            return "请输入有效的数字作为最大历史记录长度"
+            return "Please enter a valid number for the maximum history length"
     
     def _handle_system(self, memory, args):
-        # 直接在当前线程中执行，因为这是同步命令处理
+        # Execute directly in the current thread since this is synchronous command processing
         try:
             return get_system_info()
         except Exception as e:
-            print(f"获取系统信息错误: {str(e)}")
-            return "获取系统信息失败"
+            print(f"Error getting system info: {str(e)}")
+            return "Failed to get system information"
 
     
     def _handle_help(self, memory, args):
         return self._help_text
 
-# 创建命令处理器实例
+# Create command handler instance
 command_handler = CommandHandler()
 
-# 兼容旧接口的函数
+# Function compatible with old interface
 def handle_command(text, memory: MemoryManager):
-    """处理命令的同步接口，确保在同步上下文中正确执行"""
+    """Synchronous interface for command processing, ensuring correct execution in synchronous contexts"""
     try:
-        # 直接调用命令处理器的handle方法
+        # Directly call the command handler's handle method
         return command_handler.handle(text, memory)
     except Exception as e:
-        print(f"命令处理错误: {str(e)}")
+        print(f"Command processing error: {str(e)}")
         import traceback
         traceback.print_exc()
-        return False, f"命令处理出错: {str(e)}"
+        return False, f"Command processing error: {str(e)}"
 
-# 添加异步版本的命令处理器，用于异步上下文
+# Add async version of command processor for async context
 async def handle_command_async(text, memory: MemoryManager):
-    """异步版本的命令处理，适用于异步上下文"""
-    # 在单独线程中执行命令处理，避免阻塞事件循环
+    """Asynchronous version of command processing for async contexts"""
+    # Execute command processing in a separate thread to avoid blocking the event loop
     is_command, response = await asyncio.to_thread(handle_command, text, memory)
     return is_command, response
 
 
 # =======================================================
-# 3. 优化的LLM查询函数 (最终修正：async + asyncio.to_thread + 错误处理)
+# 3. Optimized LLM Query Function (Final Revision: async + asyncio.to_thread + Error Handling)
 # =======================================================
-def _assemble_user_content(text, keywords, system_info, emotion):
-    """优化的用户内容组装函数，减少字符串连接操作"""
-    keywords_str = "、".join(keywords) if keywords else "无"
-    # 使用格式化字符串而非多次拼接
-    return f"长期记忆: {system_info} | 用户情绪: {emotion} | 用户说: {text} (关键词:{keywords_str})"
+
 
 async def query_model(text, memory: MemoryManager):
     """
-    优化的LLM主查询逻辑，使用asyncio.to_thread包装阻塞函数，
-    增强错误处理，优化内存使用和并发处理。
+    Optimized LLM main query logic, using asyncio.to_thread to wrap blocking functions,
+    enhanced error handling, optimized memory usage and concurrent processing.
     """
     
-    # 首先检查是否为命令 (使用异步版本的命令处理器)
+    # First check if it's a command (using asynchronous command handler)
     is_command, command_response = await handle_command_async(text, memory)
     if is_command:
         return command_response
     
     try:
-        # 1. 顺序执行同步工具调用，避免协程问题
+        # 1. Sequentially execute synchronous tool calls to avoid coroutine issues
         try:
-            # 使用to_thread确保在单独线程中执行
+            # Use to_thread to ensure execution in a separate thread
             keywords = await asyncio.to_thread(extract_keywords, text)
             system_info = await asyncio.to_thread(get_system_info)
             emotion = await asyncio.to_thread(analyze_emotion, text)
         except Exception as e:
-            print(f"工具调用错误: {str(e)}")
-            # 设置默认值，确保即使工具调用失败也能继续
+            print(f"Tool call error: {str(e)}")
+            # Set default values to ensure continuation even if tool calls fail
             keywords = []
-            system_info = "系统信息获取失败"
+            system_info = "System information retrieval failed"
             emotion = None
         
-        # 2. 优化的长期记忆检索 (添加错误处理)
+        # 2. Optimized long-term memory retrieval (with error handling)
         long_mem = ""
         try:
             long_mem = await asyncio.to_thread(retrieve_long_term_memory, keywords)
         except Exception as e:
-            # 记录错误但不影响主要流程
-            print(f"长期记忆检索错误: {str(e)}")
+            # Log the error but don't affect the main process
+            print(f"Long-term memory retrieval error: {str(e)}")
         
-        # 3. 组装最终历史记录 (直接在当前线程执行，避免协程问题)
+        # 3. Assemble final history (execute directly in current thread to avoid coroutine issues)
         try:
-            keywords_str = "、".join(keywords) if isinstance(keywords, (list, tuple)) else str(keywords)
-            user_content = f"长期记忆: {system_info} | 用户情绪: {emotion} | 用户说: {text} (关键词:{keywords_str})"
+            keywords_str = ", ".join(keywords) if isinstance(keywords, (list, tuple)) else str(keywords)
+            user_content = f"Long-term memory: {system_info} | User emotion: {emotion} | User says: {text} (Keywords:{keywords_str})"
         except Exception as e:
-            print(f"组装内容错误: {str(e)}")
-            user_content = f"用户说: {text}"
+            print(f"Content assembly error: {str(e)}")
+            user_content = f"User says: {text}"
         
         history = memory.get_history() + [{"role": "user", "content": user_content}]
         
-        # 4. 调用LLM (添加错误处理和回退)
+        # 4. Call LLM (with error handling and fallback)
         try:
             reply_text = await asyncio.to_thread(model.generate, history)
             
-            # 5. 异步保存长期记忆，不阻塞主流程
-            # 创建后台任务保存，不等待其完成
+            # 5. Asynchronously save long-term memory without blocking the main process
+            # Create a background task for saving, without waiting for it to complete
             try:
                 asyncio.create_task(
                     asyncio.to_thread(save_long_term_memory, text, keywords_str)
                 )
             except Exception as e:
-                print(f"保存长期记忆时出错: {str(e)}")
+                print(f"Error saving long-term memory: {str(e)}")
             
             return reply_text
         except Exception as e:
-            error_msg = f"AI生成出错: {str(e)}"
-            print(traceback.format_exc())  # 详细日志用于调试
-            return f"抱歉，我暂时无法生成回复，请稍后再试。{error_msg}"
+            error_msg = f"AI generation error: {str(e)}"
+            print(traceback.format_exc())  # Detailed log for debugging
+            return f"Sorry, I'm temporarily unable to generate a response. Please try again later. {error_msg}"
     
     except Exception as e:
-        # 捕获所有异常，确保系统稳定运行
-        error_msg = f"处理请求时出错: {str(e)}"
-        print(traceback.format_exc())  # 详细日志用于调试
-        return f"系统处理出错: {error_msg}，请重试。"
+        # Catch all exceptions to ensure system stability
+        error_msg = f"Error processing request: {str(e)}"
+        print(traceback.format_exc())  # Detailed log for debugging
+        return f"System processing error: {error_msg}, please try again."
 
-# 添加一个简单的异步任务管理器来限制并发任务数量
+# Add a simple asynchronous task manager to limit the number of concurrent tasks
 class AsyncTaskManager:
     def __init__(self, max_concurrent_tasks=3):
         self.semaphore = asyncio.Semaphore(max_concurrent_tasks)
     
     async def run_task(self, coro):
-        """运行任务并限制并发数量"""
+        """Run task and limit concurrent count"""
         async with self.semaphore:
-            # 确保正确等待协程完成
+            # Ensure correct waiting for coroutine completion
             try:
                 return await coro
             except Exception as e:
-                print(f"任务执行错误: {str(e)}")
+                print(f"Task execution error: {str(e)}")
                 import traceback
                 traceback.print_exc()
-                return f"系统错误: {str(e)}"
+                return f"System error: {str(e)}"
 
-# 创建全局任务管理器实例
+# Create global task manager instance
 task_manager = AsyncTaskManager(max_concurrent_tasks=3)

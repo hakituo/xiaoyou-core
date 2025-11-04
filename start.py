@@ -8,115 +8,106 @@ import subprocess
 import time
 import multiprocessing
 
-# 配置日志
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("startup.log"),
+        logging.FileHandler("startup.log", encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
 
-# 添加项目路径到系统路径
+# Add project path to system path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-# 低配置电脑优化：减少内存占用
-gc.set_threshold(5000, 10, 10)  # 调整垃圾回收阈值
+# Low-spec computer optimization: reduce memory usage
+gc.set_threshold(5000, 10, 10)  # Adjust garbage collection thresholds
 
-# 尝试设置进程优先级（Windows系统）
+# Try to set process priority (Windows system)
 try:
     if sys.platform == 'win32':
         import win32api
         import win32process
         import win32con
-        # 设置为低于正常优先级，但不完全最低，以保证响应性
+        # Set to below normal priority but not the lowest to maintain responsiveness
         win32process.SetPriorityClass(
             win32api.GetCurrentProcess(), 
             win32process.BELOW_NORMAL_PRIORITY_CLASS
         )
-        logger.info("进程优先级已设置为低优先级")
+        logger.info("Process priority has been set to below normal")
 except Exception as e:
-    logger.warning(f"设置进程优先级失败: {e}")
+    logger.warning(f"Failed to set process priority: {e}")
 
-# 进程管理
+# Process management
 global_processes = []
 
-# 启动Flask应用的函数
-def start_flask_app():
-    try:
-        logger.info("正在启动Flask应用...")
-        # 直接调用app.py模块
-        from app import app
-        app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
-    except Exception as e:
-        logger.error(f"Flask应用启动失败: {e}", exc_info=True)
-        sys.exit(1)
 
-# 优雅退出处理
+
+# Graceful shutdown handling
 def signal_handler(sig, frame):
-    logger.info(f"收到信号 {sig}，准备退出...")
+    logger.info(f"Received signal {sig}, preparing to exit...")
     
-    # 停止所有子进程
+    # Stop all child processes
     for proc in global_processes:
         try:
             if proc.is_alive():
-                logger.info(f"终止进程: {proc.name}")
+                logger.info(f"Terminating process: {proc.name}")
                 proc.terminate()
-                proc.join(timeout=3)  # 等待进程结束，最多3秒
+                proc.join(timeout=3)  # Wait for process to end, maximum 3 seconds
         except Exception as e:
-            logger.error(f"终止进程失败: {e}")
+            logger.error(f"Failed to terminate process: {e}")
     
-    # 触发垃圾回收
+    # Trigger garbage collection
     gc.collect()
-    logger.info("资源已清理，退出程序")
+    logger.info("Resources cleaned up, exiting program")
     sys.exit(0)
 
-# 注册信号处理
+# Register signal handlers
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
-# 启动Flask应用的函数
+# Function to start Flask application
 def start_flask_app():
     try:
-        logger.info("正在启动Flask应用...")
-        # 直接调用app.py模块
+        logger.info("Starting Flask application...")
+        # Directly import app.py module
         from app import app
         app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
     except Exception as e:
-        logger.error(f"Flask应用启动失败: {e}", exc_info=True)
+        logger.error(f"Failed to start Flask application: {e}", exc_info=True)
         sys.exit(1)
 
 async def main_with_error_handling():
     try:
-        # 不再需要主题选择，直接启动服务
-        logger.info("准备启动服务...")
+        # Theme selection no longer needed, start services directly
+        logger.info("Preparing to start services...")
         
-        # 启动Flask应用进程
+        # Start Flask application process
         flask_process = multiprocessing.Process(target=start_flask_app, name='FlaskApp')
-        flask_process.daemon = True  # 设置为守护进程，主进程结束时自动终止
+        flask_process.daemon = True  # Set as daemon process, will automatically terminate when main process ends
         flask_process.start()
         global_processes.append(flask_process)
-        logger.info("Flask应用进程已启动")
+        logger.info("Flask application process has started")
         
-        # 等待Flask应用初始化
+        # Wait for Flask application initialization
         time.sleep(2)
         
-        # 延迟导入以减少启动时的内存占用
+        # Lazy import to reduce memory usage during startup
         from ws_server import main
         
-        logger.info("正在启动WebSocket服务...")
-        # 启动WebSocket服务器
+        logger.info("Starting WebSocket service...")
+        # Start WebSocket server
         await main()
     except ImportError as e:
-        logger.error(f"服务启动失败: {e}")
+        logger.error(f"Failed to start service: {e}")
     except asyncio.CancelledError:
-        logger.info("任务被取消")
+        logger.info("Task cancelled")
     except Exception as e:
-        logger.error(f"服务启动失败: {e}", exc_info=True)
+        logger.error(f"Failed to start service: {e}", exc_info=True)
     finally:
-        # 清理资源
+        # Clean up resources
         for proc in global_processes:
             try:
                 if proc.is_alive():
@@ -124,25 +115,25 @@ async def main_with_error_handling():
             except:
                 pass
         gc.collect()
-        logger.info("程序正常退出")
+        logger.info("Program exited normally")
 
 if __name__ == "__main__":
-    logger.info("小悠AI系统一键启动中...")
-    logger.info("正在准备启动Flask应用和WebSocket服务...")
+    logger.info("Xiaoyou AI system one-click startup in progress...")
+    logger.info("Preparing to start Flask application and WebSocket service...")
     
     try:
-        # 禁用多进程的fork模式，使用spawn模式更安全
+        # Disable multiprocessing fork mode, use spawn mode which is safer
         multiprocessing.set_start_method('spawn', force=True)
     except RuntimeError:
-        # 如果已经设置过则忽略
+        # Ignore if already set
         pass
     
     try:
-        # 使用更高效的事件循环
+        # Use more efficient event loop
         if sys.version_info >= (3, 7):
             asyncio.run(main_with_error_handling())
         else:
-            # 兼容旧版本Python
+            # Compatible with older Python versions
             loop = asyncio.get_event_loop()
             try:
                 loop.run_until_complete(main_with_error_handling())
@@ -153,8 +144,8 @@ if __name__ == "__main__":
                 except:
                     pass
     except KeyboardInterrupt:
-        logger.info("用户中断程序")
-        # 清理所有进程
+        logger.info("User interrupted program")
+        # Clean up all processes
         for proc in global_processes:
             try:
                 if proc.is_alive():
@@ -162,8 +153,8 @@ if __name__ == "__main__":
             except:
                 pass
     except Exception as e:
-        logger.critical(f"致命错误: {e}", exc_info=True)
-        # 清理所有进程
+        logger.critical(f"Fatal error: {e}", exc_info=True)
+        # Clean up all processes
         for proc in global_processes:
             try:
                 if proc.is_alive():

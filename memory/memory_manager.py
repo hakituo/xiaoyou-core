@@ -8,12 +8,12 @@ import threading
 class MemoryManager:
     def __init__(self, max_length=10, user_id="default", auto_save_interval=300):
         """
-        优化的内存管理器，降低默认max_length以减少内存占用，并添加自动保存功能
+        Optimized memory manager that reduces default max_length to decrease memory usage and adds auto-save functionality
         
         Args:
-            max_length: 历史记录最大条数
-            user_id: 用户ID，用于保存/加载历史记录
-            auto_save_interval: 自动保存间隔（秒），0表示禁用自动保存
+            max_length: Maximum number of history records
+            user_id: User ID for saving/loading history
+            auto_save_interval: Auto-save interval in seconds, 0 means disable auto-save
         """
         self.history = []
         self.max_length = max_length
@@ -21,27 +21,27 @@ class MemoryManager:
         self.history_dir = "history"
         self.auto_save_interval = auto_save_interval
         self.last_modified_time = time.time()
-        self.lock = threading.Lock()  # 添加线程锁以确保线程安全
+        self.lock = threading.Lock()  # Add thread lock to ensure thread safety
         
-        # 确保历史记录目录存在
+        # Ensure history directory exists
         try:
             os.makedirs(self.history_dir, exist_ok=True)
         except Exception as e:
-            print(f"创建历史目录失败: {e}")
+            print(f"Failed to create history directory: {e}")
         
-        # 启动自动保存线程
+        # Start auto-save thread
         if auto_save_interval > 0:
             self.auto_save_thread = threading.Thread(target=self._auto_save_loop, daemon=True)
             self.auto_save_thread.start()
 
     def add_message(self, role, content, is_important=False):
         """
-        添加一条对话记录，支持标记重要消息
+        Add a conversation record, with support for marking important messages
         
         Args:
-            role: 消息角色（user/assistant/system）
-            content: 消息内容
-            is_important: 是否为重要消息（重要消息更难被移除）
+            role: Message role (user/assistant/system)
+            content: Message content
+            is_important: Whether it's an important message (important messages are harder to remove)
         """
         with self.lock:
             message = {
@@ -54,39 +54,39 @@ class MemoryManager:
             self.history.append(message)
             self.last_modified_time = time.time()
             
-            # 限制历史记录长度，智能移除策略
+            # Limit history length with intelligent removal strategy
             self._trim_history()
             
             return message
     
     def _trim_history(self):
-        """智能修剪历史记录，优先保留重要消息"""
+        """Intelligently trim history, prioritizing important messages"""
         if len(self.history) > self.max_length:
-            # 区分重要和非重要消息
+            # Separate important and non-important messages
             important_messages = [msg for msg in self.history if msg.get('is_important', False)]
             normal_messages = [msg for msg in self.history if not msg.get('is_important', False)]
             
-            # 计算可以保留的非重要消息数量
+            # Calculate the number of non-important messages that can be retained
             max_normal = max(0, self.max_length - len(important_messages))
             
-            # 保留最新的非重要消息
+            # Keep the latest non-important messages
             if max_normal < len(normal_messages):
                 normal_messages = normal_messages[-max_normal:]
             
-            # 重新组合历史记录
+            # Recombine history records
             self.history = important_messages + normal_messages
             
-            # 如果还是超过限制，按时间戳排序并保留最新的
+            # If still exceeding the limit, sort by timestamp and keep the latest
             if len(self.history) > self.max_length:
                 self.history.sort(key=lambda x: x['timestamp'], reverse=True)
                 self.history = self.history[:self.max_length]
-                # 恢复时间顺序
+                # Restore chronological order
                 self.history.sort(key=lambda x: x['timestamp'])
 
     def get_history(self):
-        """返回当前历史对话，优化内存使用"""
+        """Return current conversation history, optimized for memory usage"""
         with self.lock:
-            # 只返回LLM需要的字段，减少内存占用
+            # Only return fields needed by LLM to reduce memory usage
             simplified_history = []
             for msg in self.history:
                 simplified_history.append({
@@ -96,18 +96,18 @@ class MemoryManager:
             return simplified_history.copy()
 
     def clear(self):
-        """手动清空历史"""
+        """Manually clear history"""
         with self.lock:
             self.history.clear()
             self.last_modified_time = time.time()
-            return "历史记录已清空"
+            return "History cleared"
     
     def save_history(self):
-        """保存历史记录到文件，使用压缩格式减少文件大小"""
+        """Save history to file, using compressed format to reduce file size"""
         try:
             file_path = os.path.join(self.history_dir, f"{self.user_id}.json")
             
-            # 序列化时处理可能的编码问题
+            # Handle potential encoding issues during serialization
             def safe_serialize(obj):
                 if isinstance(obj, dict):
                     return {str(k): safe_serialize(v) for k, v in obj.items()}
@@ -121,22 +121,22 @@ class MemoryManager:
             with self.lock:
                 safe_history = safe_serialize(self.history)
             
-            # 使用紧凑格式保存，减少文件大小
+            # Save using compact format to reduce file size
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(safe_history, f, ensure_ascii=False, separators=(',', ':'))
             
-            return f"历史记录已保存到 {file_path}（{os.path.getsize(file_path)} 字节）"
+            return f"History saved to {file_path} ({os.path.getsize(file_path)} bytes)"
         except Exception as e:
-            error_msg = f"保存历史记录失败: {str(e)}"
+            error_msg = f"Failed to save history: {str(e)}"
             print(error_msg)
             return error_msg
     
     def load_history(self):
-        """从文件加载历史记录"""
+        """Load history from file"""
         try:
             file_path = os.path.join(self.history_dir, f"{self.user_id}.json")
             if os.path.exists(file_path):
-                # 异步加载大文件，避免阻塞
+                # Async loading for large files to avoid blocking
                 with open(file_path, 'r', encoding='utf-8') as f:
                     loaded_history = json.load(f)
                 
@@ -144,39 +144,39 @@ class MemoryManager:
                     self.history = loaded_history
                     self.last_modified_time = time.time()
                 
-                # 确保加载后历史记录符合最大长度限制
+                # Ensure loaded history complies with maximum length limit
                 self._trim_history()
                 
-                return f"已加载保存的历史记录 ({len(self.history)} 条)"
+                return f"Loaded saved history ({len(self.history)} entries)"
             else:
-                return "未找到保存的历史记录"
+                return "No saved history found"
         except json.JSONDecodeError:
-            return "历史记录文件格式错误，无法加载"
+            return "History file format error, cannot load"
         except Exception as e:
-            error_msg = f"加载历史记录失败: {str(e)}"
+            error_msg = f"Failed to load history: {str(e)}"
             print(error_msg)
             return error_msg
     
     def set_max_length(self, max_length):
-        """设置历史记录最大长度，添加合理的边界检查"""
+        """Set maximum history length with reasonable boundary checks"""
         try:
-            if 1 <= max_length <= 100:  # 添加合理范围限制
+            if 1 <= max_length <= 100:  # Add reasonable range limit
                 with self.lock:
                     self.max_length = max_length
-                    # 如果当前历史超过新限制，智能截断
+                    # If current history exceeds new limit, intelligently truncate
                     self._trim_history()
-                return f"历史记录最大长度已设置为 {max_length}"
+                return f"Maximum history length set to {max_length}"
             else:
-                return "最大长度必须在1-100之间"
+                return "Maximum length must be between 1-100"
         except Exception as e:
-            return f"设置最大长度失败: {str(e)}"
+            return f"Failed to set maximum length: {str(e)}"
     
     def get_stats(self):
-        """获取内存统计信息，包含更多详细指标"""
+        """Get memory statistics with more detailed metrics"""
         with self.lock:
-            # 估算内存使用
+            # Estimate memory usage
             try:
-                # 使用sys.getsizeof估算对象大小
+                # Estimate object size using sys.getsizeof
                 history_size = sys.getsizeof(self.history)
                 for item in self.history:
                     history_size += sys.getsizeof(item)
@@ -194,7 +194,7 @@ class MemoryManager:
                     "last_modified_time": time.ctime(self.last_modified_time)
                 }
             except Exception:
-                # 如果内存计算失败，返回基本信息
+                # If memory calculation fails, return basic information
                 return {
                     "current_length": len(self.history),
                     "max_length": self.max_length,
@@ -202,21 +202,21 @@ class MemoryManager:
                 }
     
     def _auto_save_loop(self):
-        """自动保存循环线程"""
+        """Auto-save loop thread"""
         while True:
             try:
                 time.sleep(self.auto_save_interval)
-                # 只有在有修改且不是空历史时才保存
-                if self.history and (time.time() - self.last_modified_time > 60):  # 至少1分钟未保存才执行
+                # Only save if there are modifications and history is not empty
+                if self.history and (time.time() - self.last_modified_time > 60):  # Execute only if not saved for at least 1 minute
                     self.save_history()
-                    print(f"[{time.ctime()}] 自动保存 {self.user_id} 的历史记录")
+                    print(f"[{time.ctime()}] Auto-saved history for {self.user_id}")
             except Exception as e:
-                print(f"自动保存失败: {e}")
+                print(f"Auto-save failed: {e}")
     
     async def async_save_history(self):
-        """异步保存历史记录，避免阻塞事件循环"""
+        """Asynchronously save history to avoid blocking event loop"""
         return await asyncio.to_thread(self.save_history)
     
     async def async_load_history(self):
-        """异步加载历史记录，避免阻塞事件循环"""
+        """Asynchronously load history to avoid blocking event loop"""
         return await asyncio.to_thread(self.load_history)
