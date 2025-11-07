@@ -198,15 +198,6 @@ Leslie Qi – [[2991731868@qq.com](mailto:2991731868@qq.com)]
 
 ## 📄 License
 
-
-- [ ] Further optimize resource usage efficiency
-- [ ] Expand support for more third-party AI models
-- [ ] Improve speech recognition and synthesis features
-- [ ] Enhance multi-platform integration and adaptation
-- [ ] Optimize user interface and interaction experience
-- [ ] Add plugin system to support custom functionality extensions
->>>>>>> 75cb3a10fffad3cb59a287dc83793f38183baaa7
-
 This project is open-sourced under the MIT License.
 
 ```
