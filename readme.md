@@ -118,7 +118,6 @@ xiaoyou-core/
 ├── templates/
 ├── static/
 ├── .env
-├── long_term_memory.db
 └── readme.md
 ```
 
