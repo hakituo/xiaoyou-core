@@ -98,18 +98,27 @@
 
 ```
 xiaoyou-core/
-├── app.py
-├── ws_server.py
-├── start.py
+├── start.py             
+├── app_main.py                 
+├── trm_reflector.py        
+├── desktop_pet.py              
+├── .env                        
+├── long_term_memory.db
+├── readme.md
+├── requirements/
+│   ├── requirements_main.txt   
+│   └── requirements_trm.txt    
 ├── bots/
-│   ├── qq_bot.py
-│   └── wx_bot.py
+│   ├── wx_bots.py
+│   └── qq_bots.py                 
 ├── core/
-│   ├── llm_connector.py
+│   ├── trm_adapter.py        
+│   ├── llm_connector.py        
 │   ├── vector_search.py
-│   ├── models/
-│   │   └── qianwen_model.py
 │   └── utils.py
+├── multimodal/                 
+│   ├── tts_manager.py          
+│   └── stt_connector.py        
 ├── memory/
 │   ├── memory_manager.py
 │   └── long_term_db.py
@@ -117,8 +126,6 @@ xiaoyou-core/
 ├── history/
 ├── templates/
 ├── static/
-├── .env
-└── readme.md
 ```
 
 ---
