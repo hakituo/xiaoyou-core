@@ -98,67 +98,28 @@
 
 ```
 xiaoyou-core/
-├── start.py                                # 【系统启动入口】: 负责按顺序启动所有独立的 Python 进程。
-|                                           #    - 职责：使用 subprocess/multiprocessing 启动 app_main.py, trm_reflector.py 和 desktop_pet.py。
-|
-├── app_main.py                             # 【核心服务】Agent Core Server (WebSocket)
-|                                           #    - 职责：WebSocket 通信、用户连接/内存/心跳管理、任务调度中心。
-|                                           #    - 关键：所有 I/O（TRM/TTS/STT/DB）都必须通过 **asyncio 异步调用** 或 **to_thread()** 执行。
-|
-├── trm_reflector.py                        # 【微服务】TRM/STT 推理 I/O 终点 (FastAPI Server)
-|                                           #    - 职责：提供异步 HTTP 接口，接收 app_main 的请求，并执行耗时的推理操作（LLM Query, STT Decode, Image Generation）。
-|                                           #    - 关键：在此处模拟或接入真正的 LLM/STT 模型 API。
-|
-├── desktop_pet.py                          # 【客户端】桌宠 UI 应用程序 (PyQt Lottie)
-|                                           #    - 职责：独立的桌面客户端进程，通过 WebSocket 连接 app_main.py。
-|                                           #    - 关键：处理 Lottie 动画渲染、用户输入、TTS 音频播放。
-|
-├── .env                                    # 【配置】本地环境变量文件
-|                                           #    - 职责：存储端口号、API Keys、模型路径、默认 LLM 名称等配置信息。
-|
-├── long_term_memory.db                     # 【数据】持久化数据库文件
-|                                           #    - 职责：实际的 SQLite 数据库文件，用于存储所有用户的历史、配置和向量索引。
-|
-├── README.md                               # 【文档】项目说明文件
-|                                           #    - 职责：包含项目简介、安装步骤、运行指南和所有服务的端口信息。
-|
-├── requirements/                           # 【依赖】依赖配置文件目录
-│   ├── requirements_main.txt               #    - 依赖项：websockets, httpx, PyQt6, Lottie, asyncio, logging
-│   └── requirements_trm.txt                #    - 依赖项：fastapi, uvicorn, LLM SDK, Whisper/STT 库
-|
-├── bots/                                   # 【适配层】第三方平台适配器
-│   ├── wx_bot.py                           #    - 职责：微信机器人客户端。启动后，通过 WebSocket 连接到 app_main.py 转发消息。
-│   └── qq_bot.py                           #    - 职责：QQ 机器人客户端。
-|
-├── core/                                   # 【核心逻辑】Agent 的大脑和逻辑层
-│   ├── trm_adapter.py                      #    - 职责：【异步通信】负责封装所有对 trm_reflector.py (HTTP) 的异步调用逻辑。
-│   ├── llm_connector.py                    #    - 职责：【业务逻辑】保留了 LLM Prompt 模板、Token 计算、安全过滤等业务逻辑（供 trm_adapter.py 引用）。
-│   ├── vector_search.py                    #    - 职责：向量搜索的核心算法和索引管理。
-│   └── utils.py                            #    - 职责：通用的辅助函数（如 JSON 序列化、时间戳处理、日志格式化）。
-|
-├── multimodal/                             # 【多模态】STT/TTS 调度和执行
-│   ├── tts_manager.py                      #    - 职责：【TTS 引擎】封装 TTS SDK，提供线程安全的**同步**方法（供 app_main.py 调用 to_thread()）。
-│   └── stt_connector.py                    #    - 职责：【STT 异步连接】负责封装所有对 trm_reflector.py (STT 接口) 的异步调用逻辑。
-|
-├── memory/                                 # 【记忆系统】数据读写和管理
-│   ├── memory_manager.py                   #    - 职责：【逻辑层】封装业务逻辑，如上下文压缩、历史检索、使用 long_term_db.py 驱动。
-│   └── long_term_db.py                     #    - 职责：【驱动层】封装所有低级的数据库连接、查询、写入操作 (SQL/ORM)。
-|
-├── voice/                                  # 【I/O 数据】语音缓存和运行时文件
-|                                           #    - 职责：运行时存放 TTS 生成的音频文件缓存 (.mp3) 和 STT 待处理的原始音频文件。
-|
-├── history/                                # 【I/O 数据】日志和会话审计
-|                                           #    - 职责：存放详细的系统日志 (system.log)、API 请求日志、和非数据库形式的会话记录。
-|
-├── templates/                              # 【前端视图】Web 应用的 HTML 结构
-│   ├── ultimate_xiaoyou_optimized.html     #    - 职责：主要的 Web Chat 客户端视图，包含所有 HTML/JS/CSS（或引用 static）。
-│   └── error.html                          #    - 职责：通用错误页面模板。
-|
-└── static/                                 # 【静态资源】Web 客户端引用的不可变资源
-    ├── css/style.css                       #    - 职责：Web Chat 客户端的样式表。
-    ├── lottie/pet_idle.json                #    - 职责：桌宠和 UI 动画的 Lottie JSON 数据。
-    ├── images/                             #    - 职责：预定义的图片，如用户/Agent 头像、图标、背景纹理。
-    └── generated/                          #    - 职责：AI **运行时生成** 的图片输出文件夹（供 Web 异步访问）。
+├── app.py
+├── ws_server.py
+├── start.py
+├── bots/
+│   ├── qq_bot.py
+│   └── wx_bot.py
+├── core/
+│   ├── llm_connector.py
+│   ├── vector_search.py
+│   ├── models/
+│   │   └── qianwen_model.py
+│   └── utils.py
+├── memory/
+│   ├── memory_manager.py
+│   └── long_term_db.py
+├── voice/
+├── history/
+├── templates/
+├── static/
+├── .env
+├── long_term_memory.db
+└── readme.md
 ```
 
 ---
