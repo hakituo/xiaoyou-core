@@ -1,0 +1,33 @@
+# 核心依赖
+asyncio>=3.4.3
+websockets>=12.0
+httpx>=0.25.0
+python-dotenv>=1.0.0
+
+# 内存管理
+redis>=5.0.1  # 可选，用于分布式记忆存储
+
+# 语音处理 (可选)
+edge-tts>=6.1.8  # Edge TTS支持
+sounddevice>=0.4.6  # 音频录制
+pydub>=0.25.1  # 音频处理
+
+# UI支持 (桌宠界面)
+PyQt6>=6.5.0  # UI框架
+pyqt6-tools>=6.5.0.1  # Qt工具
+pyside6-lottie>=6.5.0  # Lottie动画支持
+
+# 机器学习/情感分析 (可选)
+scikit-learn>=1.3.0
+nltk>=3.8.1
+
+# 图像生成 (可选)
+pillow>=10.0.0
+
+# 性能监控
+psutil>=5.9.5  # 系统资源监控
+
+# 开发工具
+pytest>=7.4.0
+black>=23.9.0
+flake8>=6.1.0
