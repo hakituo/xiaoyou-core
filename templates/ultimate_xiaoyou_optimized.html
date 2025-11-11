@@ -150,14 +150,14 @@ body {
   display:flex;gap:10px;align-items:center;padding:12px;
   background:rgba(255,255,255,0.02);border-top:1px solid var(--border);
 }
-.voice-btn{
+.voice-btn,.file-upload-label{
   width:42px;height:42px;border-radius:50%;
   background:linear-gradient(135deg,var(--accent1),var(--accent2));
   border:none;color:white;cursor:pointer;display:flex;
   align-items:center;justify-content:center;transition:transform .2s;
 }
-.voice-btn:hover{transform:scale(1.05);}
-.voice-btn:active{transform:scale(0.95);}
+.voice-btn:hover,.file-upload-label:hover{transform:scale(1.05);}
+.voice-btn:active,.file-upload-label:active{transform:scale(0.95);}
 #user-input{
   flex:1;padding:12px 16px;border-radius:999px;
   border:1px solid var(--border);background:rgba(255,255,255,0.02);
@@ -196,14 +196,21 @@ body {
   <main class="panel">
     <section id="chat" aria-live="polite"></section>
     <div class="input-row">
-      <!-- Temporarily removed voice input button as SST is not supported -->
-        <!-- <button id="voice-btn" class="voice-btn" aria-label="Voice Input">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-            <line x1="12" y1="19" x2="12" y2="22"></line>
-          </svg>
-        </button> -->
+      <button id="voice-btn" class="voice-btn" aria-label="Voice Input">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+          <line x1="12" y1="19" x2="12" y2="22"></line>
+        </svg>
+      </button>
+      <label id="file-upload-label" class="file-upload-label" aria-label="Upload File">
+        <input type="file" id="file-upload" accept="image/*,audio/*" style="display: none;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+      </label>
       <input id="user-input" placeholder="Type your message..." />
       <button id="send-btn" class="button-send">Send</button>
     </div>
@@ -215,7 +222,7 @@ const chat=document.getElementById('chat');
 const input=document.getElementById('user-input');
 const sendBtn=document.getElementById('send-btn');
 const themeToggle=document.getElementById('themeToggle');
-const WS_URL="ws://localhost:6789";
+const WS_URL="ws://localhost:6790";
 let ws=null,typingElem=null,typingShown=false;
 
 // helper
@@ -237,12 +244,128 @@ function hideTyping(){
 function sendMsg(){
   const t=input.value.trim();if(!t)return;input.value='';
   chat.appendChild(createMsg(t,'user'));scrollBottom();showTyping();
-  if(ws&&ws.readyState===1){ws.send(JSON.stringify({message:t}));}
+  if(ws&&ws.readyState===1){ws.send(JSON.stringify({type:"text",platform:"web",user_id:"default_user",text:t}));}
   else setTimeout(hideTyping,1000);
 }
 
 input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg();}});
 sendBtn.addEventListener('click',sendMsg);
+
+// Voice input functionality
+const voiceBtn=document.getElementById('voice-btn');
+let isRecording=false;
+let mediaRecorder=null;
+let audioChunks=[];
+
+voiceBtn.addEventListener('click',toggleVoiceRecording);
+
+function toggleVoiceRecording(){
+  if(!isRecording){
+    startVoiceRecording();
+  }else{
+    stopVoiceRecording();
+  }
+}
+
+function startVoiceRecording(){
+  navigator.mediaDevices.getUserMedia({audio:true})
+    .then(stream=>{
+      isRecording=true;
+      voiceBtn.style.background='linear-gradient(135deg, #ef4444, #dc2626)';
+      voiceBtn.style.boxShadow='0 0 20px rgba(239, 68, 68, 0.5)';
+      
+      mediaRecorder=new MediaRecorder(stream);
+      audioChunks=[];
+      
+      mediaRecorder.addEventListener('dataavailable',event=>{
+        audioChunks.push(event.data);
+      });
+      
+      mediaRecorder.addEventListener('stop',()=>{
+        const audioBlob=new Blob(audioChunks,{type:'audio/wav'});
+        sendAudioMessage(audioBlob);
+        stream.getTracks().forEach(track=>track.stop());
+      });
+      
+      mediaRecorder.start();
+    })
+    .catch(error=>{
+      console.error('Voice recording error:',error);
+      alert('无法访问麦克风，请检查权限设置');
+    });
+}
+
+function stopVoiceRecording(){
+  isRecording=false;
+  voiceBtn.style.background='linear-gradient(135deg,var(--accent1),var(--accent2))';
+  voiceBtn.style.boxShadow='none';
+  
+  if(mediaRecorder){mediaRecorder.stop();}
+}
+
+function sendAudioMessage(audioBlob){
+  showTyping();
+  
+  const formData=new FormData();
+  formData.append('audio',audioBlob,'recording.wav');
+  
+  fetch('/api/stt',{method:'POST',body:formData})
+    .then(response=>response.json())
+    .then(data=>{
+      if(data.text){
+        // Show the transcribed text as user message
+        chat.appendChild(createMsg('语音输入: '+data.text,'user'));
+        scrollBottom();
+        
+        // Send the transcribed text to the AI
+if(ws&&ws.readyState===1){
+  ws.send(JSON.stringify({type:'voice',platform:'web',user_id:'default_user',text:data.text}));
+}else{
+          setTimeout(hideTyping,1000);
+        }
+      }
+    })
+    .catch(error=>{
+      console.error('STT request failed:',error);
+      hideTyping();
+      alert('语音识别失败，请重试');
+    });
+}
+
+// File upload functionality
+const fileUpload=document.getElementById('file-upload');
+fileUpload.addEventListener('change',handleFileUpload);
+
+function handleFileUpload(event){
+  const file=event.target.files[0];
+  if(!file)return;
+  
+  showTyping();
+  chat.appendChild(createMsg('上传文件: '+file.name,'user'));
+  scrollBottom();
+  
+  const formData=new FormData();
+  formData.append('file',file);
+  
+  fetch('/api/upload',{method:'POST',body:formData})
+    .then(response=>response.json())
+    .then(data=>{
+      // Send the file information to the AI via WebSocket
+if(ws&&ws.readyState===1){
+  ws.send(JSON.stringify({type:'file',platform:'web',user_id:'default_user',text:'分析这个文件: '+file.name,file_data:data}));
+}else{
+        setTimeout(hideTyping,1000);
+      }
+    })
+    .catch(error=>{
+      console.error('File upload failed:',error);
+      hideTyping();
+      alert('文件上传失败，请重试');
+    });
+  
+  // Reset file input to allow uploading the same file again
+  event.target.value='';
+}
 
 // Voice output functionality - playing local audio files
 function addPlayButton(messageElement, audioUrl){
@@ -298,7 +421,7 @@ function receiveMessage(content, audioFile){
   
   // If there's an audio file, add a play button
   if(audioFile){
-    // Construct URL path for audio file
+    // Construct URL path for audio file - match Flask route '/voice/<path:filename>'
     const audioUrl=`/voice/${audioFile}`;
     addPlayButton(messageElement, audioUrl);
   } else {

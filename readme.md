@@ -1,231 +1,143 @@
-# XiaoYou AI (xiaoyou-core)
+# 小优核心 (XiaoYou Core)
 
-**A lightweight, high-performance AI chat assistant core system, optimized for low-spec computers.** Supports WebSocket real-time communication, smart memory management, voice synthesis, and multi-platform integration.
+<div align="center">
+  <strong>面向资源受限环境的高性能异步AI Agent核心系统</strong>
+</div>
 
----
+## 项目简介
 
-## 🌟 Features
+小优核心是一个专为资源受限环境设计的AI Agent基础设施，提供高效的LLM推理、多模态交互和实时通信能力。系统采用异步并发架构，优化资源利用，支持多种部署场景。
 
-### Core Features
+## 核心特性
 
-* **Multi-platform integration**: Web interface ready, with hooks for QQ and WeChat integration
-* **Real-time communication**: Efficient asynchronous messaging via WebSocket
-* **Smart memory system**
+- **高性能LLM推理引擎**
+  - 支持多种模型适配
+  - 高效缓存机制，提升推理速度
+  - 异步处理架构，优化资源利用
 
-  * Short-term context memory (configurable length & priority)
-  * Automatic/manual history saving and loading
-  * Importance-based memory pruning
-  * Long-term memory storage in database
-* **Voice synthesis**: Dual-engine support (Edge TTS cloud service + pyttsx3 offline backup)
-* **System integration**: Real-time system monitoring and resource management
-* **Performance optimized**: Runs smoothly even on low-spec computers
+- **实时通信与交互**
+  - WebSocket服务器，支持并发连接
+  - 完善的心跳机制和错误处理
+  - 支持多种消息类型处理
 
-### Resource Optimization
+- **多模态处理能力**
+  - 语音识别(ASR)集成
+  - 文本转语音(TTS)支持
+  - 图像处理能力
 
-* Lazy-load non-core dependencies to reduce startup time & memory usage
-* Smart caching using LRU algorithm
-* Strict memory monitoring & limits
-* Automatic garbage collection & resource cleanup
+- **智能记忆管理**
+  - 上下文管理
+  - 长期记忆存储
+  - 向量检索功能
 
-### Data Handling
+- **灵活配置系统**
+  - 统一配置管理
+  - 环境变量覆盖支持
+  - 多环境适配
 
-* Default history length: 10 messages (adjustable)
-* Importance-based pruning
-* Text length limits to avoid overuse
-* Batch processing & async handling of heavy tasks
+## 实验与研究
 
-### Connections & Concurrency
+项目包含丰富的实验脚本和研究成果，位于`paper/`目录下：
 
-* WebSocket heartbeat every 30s, 60s timeout
-* Default max connections: 10
-* Async I/O for maximum throughput
-* Task queue with concurrency limit
+- **综合实验框架**：`paper/experiment/`目录包含完整的性能测试和评估脚本
+- **多语言论文**：提供中文和英文两种语言的技术论文
+- **实验结果分析**：详细的性能测试报告和优化建议
 
-### Stability
+## 快速开始
 
-* Full error handling & exception capture
-* Auto-retry for better reliability
-* Graceful shutdown releasing resources
-* Detailed logging for debugging
+### 环境要求
 
----
+- Python 3.8+
+- CUDA支持（推荐）或CPU模式
+- 最低2GB可用内存
 
-## 💻 Commands
-
-**System Commands**
-
-```
-/system   - Show current system info & resource usage
-/clear    - Clear current conversation history
-/memory   - Check memory system status & stats
-/save     - Save current conversation to file
-/load     - Load conversation history from file
-/help     - Show all commands
-/setmemory [n] - Set max history length (default 10)
-```
-
----
-
-## 🛠️ Tech Stack
-
-### Backend
-
-* Python 3.7+
-* Flask
-* WebSocket (native)
-* SQLite for long-term memory
-* AI integration: TongYi QianWen API (dashscope)
-* Voice synthesis: Edge TTS (primary) + pyttsx3 (backup)
-* Libraries: jieba, SnowNLP, python-dotenv, psutil
-* Vector DB: ChromaDB
-
-### Frontend
-
-* HTML5, CSS3, JavaScript
-* WebSocket API for communication
-* LocalStorage for browser storage
-
-### System Architecture
-
-* Async I/O
-* Custom LRU cache
-* WebSocket heartbeat & connection management
-* Lazy-load non-core dependencies & smart memory management
-
----
-
-## 📁 Project Structure
-
-```
-xiaoyou-core/
-├── app.py
-├── ws_server.py
-├── start.py
-├── bots/
-│   ├── qq_bot.py
-│   └── wx_bot.py
-├── core/
-│   ├── llm_connector.py
-│   ├── vector_search.py
-│   ├── models/
-│   │   └── qianwen_model.py
-│   └── utils.py
-├── memory/
-│   ├── memory_manager.py
-│   └── long_term_db.py
-├── voice/
-├── history/
-├── templates/
-├── static/
-├── .env
-├── long_term_memory.db
-└── readme.md
-```
-
----
-
-## 🚀 Quick Start
-
-### Requirements
-
-* Python 3.7+
-* Minimum 1GB RAM (2GB+ recommended)
-* Minimum 50MB disk space
-* Windows, macOS, Linux
-
-### Install Dependencies
+### 安装依赖
 
 ```bash
-pip install flask websockets python-dotenv jieba snownlp pyttsx3 chromadb
-pip install dashscope  # for TongYi QianWen API
+# 基础依赖
+pip install -r requirements/requirements.txt
+
+# 多模态功能依赖（可选）
+pip install -r multimodal_requirements.txt
 ```
 
-### Configure Environment Variables (.env)
+### 配置设置
 
-```
-QIANWEN_API_KEY=your_api_key_here
-MAX_HISTORY_LENGTH=10
-MAX_CONNECTIONS=10
+1. 复制配置示例文件
+```bash
+cp config/config_example.py config/config.py
 ```
 
-### Start the App
+2. 根据需要修改配置项，包括：
+   - 模型路径和参数
+   - 服务器配置
+   - 多模态功能开关
+
+### 启动服务
 
 ```bash
+# 启动Flask Web服务
 python start.py
+
+# 启动WebSocket服务
+python ws_server.py
 ```
 
-Open browser at `http://localhost:5000` to start chatting.
-
-### Advanced (Debugging)
-
-```bash
-python ws_server.py  # WebSocket only
-python app.py        # Flask server only
-```
-
----
-
-## 💡 Usage
-
-* Use `/help` to check all commands
-* Click 🔊 icon to play AI voice replies
-* History auto-saves to `history/`
-* Important info stored in long-term memory
-* Each user has independent history via `user_id`
-
-## 🔧 Troubleshooting
-
-* **WebSocket issues**: check network/firewall, confirm server is running
-* **Voice issues**: pyttsx3 installed, Edge TTS needs network, check audio device & logs
-* **Memory/performance**: reduce history with `/setmemory`, clear with `/clear`, restart to free resources
-* **Logs**: stored in `flask_app.log` & `startup.log`
-
----
-
-## 🔮 Roadmap
-
-* Better context & long-term memory
-* More performance optimization
-* Support more third-party AI models
-* Improve speech recognition & synthesis
-* Multi-platform integration & UI/UX improvements
-* Plugin system for custom extensions
-* I will make a table pet and put it on Steam, and of course it is also free and open source
-
-## 🤝 Contact
-
-Leslie Qi – [[2991731868@qq.com](mailto:2991731868@qq.com)]
-
-## 📄 License
-
-This project is open-sourced under the MIT License.
+## 项目结构
 
 ```
-MIT License
-
-Copyright (c) 2025 Xiaoyou AI
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+├── config/          # 配置文件和示例
+├── core/            # 核心功能模块
+│   ├── text_infer.py        # LLM推理核心
+│   ├── llm_connector.py     # 模型连接管理
+│   ├── cache.py             # 缓存实现
+│   └── vector_search.py     # 向量检索
+├── memory/          # 内存管理模块
+├── multimodal/      # 多模态处理
+├── paper/           # 论文和实验资料
+│   ├── CN/          # 中文论文
+│   ├── EN/          # 英文论文
+│   └── experiment/  # 实验脚本
+├── scripts/         # 工具脚本
+├── static/          # 静态资源
+├── templates/       # HTML模板
+├── start.py         # Flask应用入口
+└── ws_server.py     # WebSocket服务器
 ```
 
----
+## 主要模块说明
 
-Xiaoyou AI - A high-performance AI chat assistant optimized for low-spec computers!
+### LLM推理引擎
+- **core/text_infer.py**: 实现高效的文本推理逻辑
+- **core/llm_connector.py**: 管理不同模型的连接和交互
+- **core/model_adapter.py**: 为各种模型提供统一接口
 
-© 2025 hakituo
+### 通信系统
+- **ws_server.py**: 处理WebSocket连接和消息
+- **app.py**: Flask应用主逻辑
+
+### 记忆与检索
+- **memory/memory_manager.py**: 管理上下文和长期记忆
+- **memory/long_term_db.py**: 长期记忆存储实现
+- **core/vector_search.py**: 向量相似度搜索
+
+### 多模态能力
+- **multimodal/stt_connector.py**: 语音识别连接
+- **multimodal/tts_manager.py**: 文本转语音管理
+- **multimodal/image_gen.py**: 图像处理功能
+
+## 文档资源
+
+项目提供详细的文档，位于`docs/`目录：
+- **安装指南**: `MANUAL_INSTALL_GUIDE.md`
+- **模型部署**: `MODEL_DEPLOYMENT_GUIDE.md`
+- **项目结构**: `PROJECT_STRUCTURE.md`
+- **缓存实现**: `cache_implementation.md`
+
+## 贡献指南
+
+欢迎提交Issue和Pull Request来改进项目。在贡献前，请先查看相关文档了解项目结构和规范。
+
+## 许可证
+
+本项目采用MIT许可证。详见[LICENSE](LICENSE)文件。

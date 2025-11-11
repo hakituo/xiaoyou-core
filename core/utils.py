@@ -1,10 +1,7 @@
-import json, os, hashlib, logging, time
-from functools import wraps
+import os, logging, time
 import asyncio
-import inspect
 from threading import Lock
-from collections import OrderedDict
-from datetime import datetime
+from multimodal.tts_manager import get_tts_manager
 
 # Configure logging
 logging.basicConfig(
@@ -13,281 +10,157 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Lazy imports to reduce memory usage at startup
-# These modules will be dynamically imported when needed
+# Text-to-Speech Generation Function
 
-# =======================================================
-# 1. High-performance Cache Decorator (Optimized Version)
-# =======================================================
-
-class CacheManager:
-    def __init__(self, max_size=100, ttl=3600):
-        self.cache = OrderedDict()  # Use OrderedDict for LRU caching
-        self.lock = Lock()
-        self.max_size = max_size  # Maximum number of cache items
-        self.ttl = ttl  # Cache expiration time (seconds)
+class TTSTaskManager:
+    def __init__(self):
+        self.task_lock = Lock()
+        self.current_tasks = set()
+        self.max_concurrent_tasks = 1  # Limit to 1 concurrent TTS task
     
-    def get(self, key):
-        with self.lock:
-            if key in self.cache:
-                value, timestamp = self.cache[key]
-                # Check if expired
-                if time.time() - timestamp < self.ttl:
-                    # Update access order (LRU)
-                    self.cache.move_to_end(key)
-                    return value
-                else:
-                    # Delete expired item
-                    del self.cache[key]
-            return None
+    def add_task(self, task_id):
+        with self.task_lock:
+            # Wait if we've reached the maximum concurrent tasks
+            while len(self.current_tasks) >= self.max_concurrent_tasks:
+                time.sleep(0.1)
+            self.current_tasks.add(task_id)
     
-    def set(self, key, value):
-        with self.lock:
-            # If cache is full, remove least recently used item
-            if len(self.cache) >= self.max_size and key not in self.cache:
-                self.cache.popitem(last=False)
-            # Store value and timestamp
-            self.cache[key] = (value, time.time())
+    def remove_task(self, task_id):
+        with self.task_lock:
+            if task_id in self.current_tasks:
+                self.current_tasks.remove(task_id)
+
+# Global TTS task manager instance
+_tts_task_manager = TTSTaskManager()
+
+
+async def tts_generate(text, output_path="output.wav", voice="default", speed=1.0):
+    """
+    Generate speech from text using the specified voice and speed.
     
-    def clear(self):
-        with self.lock:
-            self.cache.clear()
-
-# Create global cache manager instance
-cache_manager = CacheManager(max_size=50, ttl=1800)  # Reduced cache size and expiration time to save memory
-
-
-def cache_result(func):
-    @wraps(func)
-    async def wrapper(*args, **kwargs):
-        try:
-            # Cache key generation optimized for low-config computers
-            # Only use first few parameters and subset of keyword arguments to generate key
-            serializable_args = []
-            for i, arg in enumerate(args[:3]):  # Only use first 3 parameters
-                if hasattr(arg, 'get_history') and callable(arg.get_history):
-                    # Safely handle MemoryManager objects
-                    try:
-                        serializable_args.append(str(arg.get_history()[:10]))  # Only take first 10 items of history
-                    except Exception:
-                        serializable_args.append(str(type(arg)))
-                elif inspect.iscoroutine(arg) or inspect.isawaitable(arg) or callable(arg):
-                    # Don't serialize functions, coroutines, or callable objects
-                    serializable_args.append(str(type(arg)))
-                else:
-                    try:
-                        # Try to convert argument to JSON serializable form
-                        json.dumps(arg)
-                        serializable_args.append(arg)
-                    except (TypeError, OverflowError):
-                        # For non-serializable objects, use type name
-                        serializable_args.append(str(type(arg)))
-            
-            # Only use first 3 keyword arguments
-            limited_kwargs = dict(list(kwargs.items())[:3])
-            
-            # Generate cache key
-            key_parts = [func.__name__, str(serializable_args), str(limited_kwargs)]
-            key = hashlib.md5(''.join(key_parts).encode()).hexdigest()
-            
-            # Try to get result from cache
-            cached_result = cache_manager.get(key)
-            if cached_result is not None:
-                logger.debug(f"Cache hit: {func.__name__}")
-                return cached_result
-            
-            # Execute function
-            if inspect.iscoroutinefunction(func):
-                res = await func(*args, **kwargs)
-            else:
-                # For synchronous functions, use thread pool
-                res = await asyncio.to_thread(func, *args, **kwargs)
-            
-            # Only cache serializable results of moderate size
+    Args:
+        text: Text to convert to speech
+        output_path: Path to save the output audio file
+        voice: Voice to use ("default" for system default)
+        speed: Speech speed multiplier (0.5 to 2.0)
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    # Import hashlib only when needed
+    import hashlib
+    
+    task_id = f"tts_{hashlib.md5(text.encode()).hexdigest()[:8]}"
+    
+    try:
+        # Add task to the manager to limit concurrency
+        _tts_task_manager.add_task(task_id)
+        
+        # 修复目录和文件路径处理
+        abs_output_path = os.path.abspath(output_path)
+        output_dir = os.path.dirname(abs_output_path)
+        
+        # 确保目录存在 - 使用exist_ok=True避免目录已存在时的错误
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
+        
+        # 如果文件已存在，先删除
+        if os.path.exists(abs_output_path):
             try:
-                if res is not None and sys.getsizeof(res) < 500000:  # Less than 500KB
-                    cache_manager.set(key, res)
-                    logger.debug(f"Cache updated: {func.__name__}")
-            except Exception as cache_error:
-                logger.warning(f"Cache storage failed: {cache_error}")
-            
-            return res
-        except Exception as e:
-            logger.error(f"Cache decorator error: {e}", exc_info=True)
-            # Even if cache handling fails, try to execute the original function
-            if inspect.iscoroutinefunction(func):
-                return await func(*args, **kwargs)
-            else:
-                return func(*args, **kwargs)
-    return wrapper
-
-# =======================================================
-# 2. Optimized TTS Logic
-# =======================================================
-# Lazy imports to reduce startup time
-vector_search = None
-vector_lock = Lock()
-
-async def init_vector_search():
-    """Asynchronously initialize vector_search instance"""
-    global vector_search
-    with vector_lock:
-        if vector_search is None:
-            try:
-                # Dynamic import to reduce startup time
-                from .vector_search import VectorSearch
-                vector_search = await asyncio.to_thread(VectorSearch)
-                logger.info("VectorSearch instance initialized successfully")
+                os.remove(abs_output_path)
+                logger.info(f"Removed existing file: {abs_output_path}")
             except Exception as e:
-                logger.error(f"VectorSearch initialization failed: {e}")
-                raise
-    return vector_search
+                logger.warning(f"Failed to remove existing file: {e}")
+        
+        # Use asyncio.to_thread to avoid blocking the event loop
+        result = await asyncio.to_thread(
+            _tts_generate_sync,
+            text, abs_output_path, voice, speed
+        )
+        
+        return result
+    except Exception as e:
+        logger.error(f"TTS generation failed: {e}")
+        return False
+    finally:
+        # Always remove the task from the manager
+        _tts_task_manager.remove_task(task_id)
 
-async def tts_generate(text: str):
-    """Generate speech using vector module's TTS functionality (optimized version)"""
+
+def _tts_generate_sync(text, output_path, voice, speed):
+    """
+    Synchronous implementation of TTS generation using multimodal TTSManager.
+    """
     try:
-        # Parameter validation
+        # Validate input
         if not text or not isinstance(text, str):
-            logger.warning("Invalid TTS input")
-            return None
+            logger.warning("Invalid text input for TTS")
+            return False
         
-        # Text length limit to prevent processing overly long text
-        if len(text) > 500:
-            text = text[:500]
-            logger.warning("TTS text too long, truncated")
+        # 确保output_path是绝对路径
+        abs_output_path = os.path.abspath(output_path)
+        output_dir = os.path.dirname(abs_output_path)
         
-        # Ensure vector_search instance is initialized
-        vs = await init_vector_search()
+        # 彻底清理：检查并删除可能存在的同名目录
+        if os.path.exists(abs_output_path) and os.path.isdir(abs_output_path):
+            logger.warning(f"Output path exists but is a directory, removing: {abs_output_path}")
+            import shutil
+            shutil.rmtree(abs_output_path)
         
-        # Use asyncio's thread pool executor to avoid blocking event loop
-        audio_path = await asyncio.to_thread(vs.text_to_speech, text)
+        # 确保输出目录存在
+        if os.path.exists(output_dir) and not os.path.isdir(output_dir):
+            logger.warning(f"Output directory exists but is not a directory, removing: {output_dir}")
+            os.remove(output_dir)
+        os.makedirs(output_dir, exist_ok=True)
+        logger.debug(f"Ensured output directory exists: {output_dir}")
         
-        # Validate result
-        if audio_path and os.path.exists(audio_path):
-            logger.debug(f"TTS generated successfully: {audio_path}")
-            return audio_path
-        else:
-            logger.warning("TTS generation failed, returned path is invalid")
-            return None
+        # 检查并删除已存在的文件
+        if os.path.exists(abs_output_path):
+            try:
+                os.remove(abs_output_path)
+                logger.debug(f"Removed existing output file: {abs_output_path}")
+            except Exception as e:
+                logger.error(f"Failed to remove existing output file: {e}")
+                return False
+        
+        # Get the TTS manager instance
+        tts_manager = get_tts_manager()
+        
+        # Use TTS manager to generate speech with local engines only
+        logger.info(f"Generating local TTS for text: {text[:50]}...")
+        generated_file = tts_manager.text_to_speech(text, voice=voice, speed=speed, use_local=True)
+        
+        # 增强的错误检查
+        if not generated_file:
+            logger.error("TTS manager failed to generate speech (returned None)")
+            return False
+        
+        # 确保generated_file是文件而不是目录
+        if not os.path.isfile(generated_file):
+            if os.path.isdir(generated_file):
+                logger.error(f"Generated path is a directory, not a file: {generated_file}")
+            else:
+                logger.error(f"Generated file does not exist or is not a file: {generated_file}")
+            return False
+        
+        logger.debug(f"Successfully generated TTS file: {generated_file}")
+        
+        # 如果TTS管理器生成的文件与请求的输出路径不同，复制它
+        if generated_file != abs_output_path:
+            import shutil
+            try:
+                # 再次确保目标目录存在
+                os.makedirs(output_dir, exist_ok=True)
+                # 复制文件
+                shutil.copy2(generated_file, abs_output_path)
+                logger.info(f"Copied TTS file to: {abs_output_path}")
+            except Exception as copy_error:
+                logger.error(f"Failed to copy TTS file: {copy_error}", exc_info=True)
+                return False
+        
+        logger.info(f"TTS generated successfully: {abs_output_path}")
+        return True
+        
     except Exception as e:
-        logger.error(f"TTS error: {e}", exc_info=True)
-        return None
-
-# =======================================================
-# 3. Optimized Utility Functions
-# =======================================================
-
-# Lazy imports for jieba and SnowNLP
-_jieba_loaded = False
-_snownlp_loaded = False
-_psutil_loaded = False
-
-def load_jieba():
-    global _jieba_loaded
-    if not _jieba_loaded:
-        try:
-            import jieba.analyse
-            _jieba_loaded = True
-            logger.info("Jieba library loaded successfully")
-        except ImportError:
-            logger.error("Failed to load Jieba library")
-            raise
-
-def load_snownlp():
-    global _snownlp_loaded
-    if not _snownlp_loaded:
-        try:
-            from snownlp import SnowNLP
-            _snownlp_loaded = True
-            logger.info("SnowNLP library loaded successfully")
-        except ImportError:
-            logger.error("Failed to load SnowNLP library")
-            raise
-
-def load_psutil():
-    global _psutil_loaded
-    if not _psutil_loaded:
-        try:
-            import psutil
-            _psutil_loaded = True
-            logger.info("psutil library loaded successfully")
-        except ImportError:
-            logger.error("Failed to load psutil library")
-            raise
-
-def extract_keywords(text, topK=3):
-    """Optimized keyword extraction function"""
-    try:
-        if not text or not isinstance(text, str):
-            return []
-        
-        # Dynamically load jieba
-        load_jieba()
-        import jieba.analyse
-        
-        # Text length limit
-        if len(text) > 1000:
-            text = text[:1000]
-        
-        # Extract keywords
-        return jieba.analyse.extract_tags(text, topK=topK)
-    except Exception as e:
-        logger.error(f"Keyword extraction failed: {e}")
-        return []
-# 
-def analyze_emotion(text):
-    """Optimized emotion analysis function"""
-    try:
-        if not text or not isinstance(text, str):
-            return None
-        
-        # Dynamically load SnowNLP
-        load_snownlp()
-        from snownlp import SnowNLP
-        
-        # Text length limit
-        if len(text) > 500:
-            text = text[:500]
-        
-        # Analyze emotion
-        s = SnowNLP(text)
-        return round(s.sentiments, 4)
-    except Exception as e:
-        logger.error(f"Emotion analysis failed: {e}")
-        return None
-# 
-def get_system_info():
-    """Optimized system information retrieval function"""
-    try:
-        # Dynamically load psutil
-        load_psutil()
-        import psutil
-        
-        # Use more efficient way to get system information
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Get CPU and memory information only when needed
-        try:
-            cpu = psutil.cpu_percent(interval=0.1)  # Use shorter sampling interval
-            mem = psutil.virtual_memory().percent
-            return f"[System Info: Time {now}, CPU {cpu}%, Memory {mem}%]"
-        except:
-            # If resource usage can't be obtained, only return time
-            return f"[System Info: Time {now}]"
-    except Exception as e:
-        logger.error(f"Failed to get system information: {e}")
-        # Return minimal system information
-        return f"[System Info: Time {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]"
-
-# Ensure no unnecessary dependencies are imported
-import sys
-
-# Resource cleanup function
-def cleanup_utils():
-    """Clean up resources used by utility functions"""
-    try:
-        # Clear cache
-        cache_manager.clear()
-        logger.info("Utility function cache cleared")
-    except Exception as e:
-        logger.error(f"Failed to clean up utility function resources: {e}")
+        logger.error(f"TTS generation error using TTS manager: {e}", exc_info=True)
+        return False

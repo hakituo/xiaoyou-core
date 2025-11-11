@@ -1,37 +1,39 @@
 import asyncio
 import os
-import traceback
-
-from core.utils import get_system_info, analyze_emotion, extract_keywords, cache_result
+import logging
 from memory.memory_manager import MemoryManager
-from memory.long_term_db import retrieve_long_term_memory, save_long_term_memory
-from core.models.qianwen_model import QianwenModel as LLMModel 
+# 导入我们新创建的文本推理模块
+from core.text_infer import load_model, generate_response
+from PIL import Image
+import numpy as np
+import io
+import base64
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 
 # =======================================================
 # 1. Initialize Model Instance
 # =======================================================
-model = LLMModel()
+# 预先加载模型以提高首次响应速度
+try:
+    load_model()
+except Exception:
+    pass
 
 # Custom AI Personality Configuration
-# You can modify the following content to change the AI's role setting
 CUSTOM_PERSONALITY = ""
-# Uncomment the line below and modify the content to customize the AI personality
-# CUSTOM_PERSONALITY = "You are a professional technical advisor, skilled at solving programming problems..."
-
-# Apply custom personality if set
-if CUSTOM_PERSONALITY:
-    model.set_personality(CUSTOM_PERSONALITY) 
 
 
 # =======================================================
-# 2. Optimized Command System (Using Dictionary Mapping for Better Performance)
+# 2. Command System
 # =======================================================
 class CommandHandler:
-    """Optimized command processing system that uses dictionary mapping instead of if-elif chains for better performance"""
+    """Command processing system using dictionary mapping for efficient command handling"""
     
     def __init__(self):
-        # Command mapping dictionary, keys are command names, values are handler functions
+        # Command mapping dictionary
         self.commands = {
             'clear': self._handle_clear,
             'save': self._handle_save,
@@ -42,17 +44,17 @@ class CommandHandler:
             'help': self._handle_help,
         }
         
-        # Precompile help text to avoid repeated generation
-        self._help_text = (
-            "Available commands:\n"
-            + "/clear - Clear history\n"
-            + "/save - Save history to file\n"
-            + "/load - Load history from file\n"
-            + "/memory - View current memory status\n"
-            + "/setmemory [number] - Set maximum history length\n"
-            + "/system - View system information\n"
-            + "/help - Show this help information"
-        )
+        # Precompile help text
+        self._help_text = "\n".join([
+            "Available commands:",
+            "/clear - Clear history",
+            "/save - Save history to file",
+            "/load - Load history from file",
+            "/memory - View current memory status",
+            "/setmemory [number] - Set maximum history length",
+            "/system - View system information",
+            "/help - Show this help information"
+        ])
     
     def handle(self, text, memory: MemoryManager):
         """
@@ -68,18 +70,14 @@ class CommandHandler:
         if not text.startswith('/'):
             return False, ""
         
-        try:
-            command_parts = text[1:].strip().split(' ', 1)
-            command = command_parts[0].lower()
-            args = command_parts[1] if len(command_parts) > 1 else ""
-            
-            # Use dictionary lookup for command handler functions, more efficient than if-elif chains
-            if command in self.commands:
-                return True, self.commands[command](memory, args)
-            
-            return True, f"Unknown command: {command}, use /help to see available commands"
-        except Exception as e:
-            return True, f"Command execution error: {str(e)}"
+        command_parts = text[1:].strip().split(' ', 1)
+        command = command_parts[0].lower()
+        args = command_parts[1] if len(command_parts) > 1 else ""
+        
+        if command in self.commands:
+            return True, self.commands[command](memory, args)
+        
+        return True, f"Unknown command: {command}, use /help to see available commands"
     
     def _handle_clear(self, memory, args):
         return memory.clear()
@@ -105,12 +103,9 @@ class CommandHandler:
             return "Please enter a valid number for the maximum history length"
     
     def _handle_system(self, memory, args):
-        # Execute directly in the current thread since this is synchronous command processing
-        try:
-            return get_system_info()
-        except Exception as e:
-            print(f"Error getting system info: {str(e)}")
-            return "Failed to get system information"
+        """Handle system information command"""
+        import sys
+        return f"System Information:\nPython: {sys.version}\nMemory status: {memory.get_stats()}\n"
 
     
     def _handle_help(self, memory, args):
@@ -121,22 +116,13 @@ command_handler = CommandHandler()
 
 # Function compatible with old interface
 def handle_command(text, memory: MemoryManager):
-    """Synchronous interface for command processing, ensuring correct execution in synchronous contexts"""
-    try:
-        # Directly call the command handler's handle method
-        return command_handler.handle(text, memory)
-    except Exception as e:
-        print(f"Command processing error: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return False, f"Command processing error: {str(e)}"
+    """Process user commands synchronously"""
+    return command_handler.handle(text, memory)
 
-# Add async version of command processor for async context
 async def handle_command_async(text, memory: MemoryManager):
-    """Asynchronous version of command processing for async contexts"""
-    # Execute command processing in a separate thread to avoid blocking the event loop
-    is_command, response = await asyncio.to_thread(handle_command, text, memory)
-    return is_command, response
+    """Process user commands asynchronously"""
+    # For simplicity, we'll just call the synchronous version
+    return await asyncio.to_thread(handle_command, text, memory)
 
 
 # =======================================================
@@ -144,90 +130,104 @@ async def handle_command_async(text, memory: MemoryManager):
 # =======================================================
 
 
+def _process_image_file(file_path):
+    """
+    Process image file for analysis
+    
+    Args:
+        file_path: Path to the image file
+    
+    Returns:
+        str: Base64 encoded image data
+    """
+    try:
+        # Check if file exists
+        if not os.path.exists(file_path):
+            logger.error(f"Image file not found: {file_path}")
+            return None
+        
+        # Open and process the image
+        with open(file_path, 'rb') as f:
+            image_data = f.read()
+            
+        # Encode image to base64
+        encoded_image = base64.b64encode(image_data).decode('utf-8')
+        return encoded_image
+    except Exception as e:
+        logger.error(f"Error processing image file: {e}")
+        return None
+
+def _is_image_query(text):
+    """
+    Check if the query contains image-related keywords
+    
+    Args:
+        text: User input text
+    
+    Returns:
+        bool: True if contains image keywords
+    """
+    image_keywords = ['图片', '图像', '照片', '分析', '描述', '显示', '内容', '识别', '是什么']
+    return any(keyword in text for keyword in image_keywords)
+
 async def query_model(text, memory: MemoryManager):
     """
-    Optimized LLM main query logic, using asyncio.to_thread to wrap blocking functions,
-    enhanced error handling, optimized memory usage and concurrent processing.
-    """
+    Main query function to process user input and generate response
     
-    # First check if it's a command (using asynchronous command handler)
+    Args:
+        text: User input text
+        memory: Memory manager instance
+    
+    Returns:
+        str: Generated response
+    """
+    # First check if it's a command
     is_command, command_response = await handle_command_async(text, memory)
     if is_command:
         return command_response
     
+    # Add user message to history
+    user_content = f"User says: {text}"
+    
+    # Create history
+    history = memory.get_history()
+    
+    # Check if we need to handle image-related content
+    if _is_image_query(text):
+        # Look for recent file uploads in history that might contain image paths
+        image_paths = []
+        for msg in reversed(history):
+            if msg.get('role') == 'user' and 'image' in msg.get('content', '').lower():
+                # Extract potential image path from message content
+                if 'file_path' in msg.get('content', ''):
+                    # This is a placeholder - in a real implementation, you would extract the actual path
+                    image_paths.append("/path/to/recent/image.jpg")
+                break
+        
+        # If we found image paths, process the first one
+        if image_paths:
+            encoded_image = _process_image_file(image_paths[0])
+            if encoded_image:
+                # Add multimodal prompt to user content
+                user_content += "\n[Image analysis request]"
+                logger.info("Processing image analysis request")
+    
+    # Add the current user message to history
+    history = history + [{"role": "user", "content": user_content}]
+    
+    # Generate response
     try:
-        # 1. Sequentially execute synchronous tool calls to avoid coroutine issues
-        try:
-            # Use to_thread to ensure execution in a separate thread
-            keywords = await asyncio.to_thread(extract_keywords, text)
-            system_info = await asyncio.to_thread(get_system_info)
-            emotion = await asyncio.to_thread(analyze_emotion, text)
-        except Exception as e:
-            print(f"Tool call error: {str(e)}")
-            # Set default values to ensure continuation even if tool calls fail
-            keywords = []
-            system_info = "System information retrieval failed"
-            emotion = None
+        # For image analysis, we'll add a special prompt to guide the model
+        if _is_image_query(text):
+            # Prepend system message for image analysis
+            system_prompt = {"role": "system", "content": "You are an AI assistant that can analyze images. Please provide a detailed description of the image content, including objects, text, colors, and overall scene. Then address the user's specific question about the image."}
+            history_with_system = [system_prompt] + history
+            reply_text = await asyncio.to_thread(generate_response, history_with_system)
+        else:
+            # Standard text generation
+            reply_text = await asyncio.to_thread(generate_response, history)
         
-        # 2. Optimized long-term memory retrieval (with error handling)
-        long_mem = ""
-        try:
-            long_mem = await asyncio.to_thread(retrieve_long_term_memory, keywords)
-        except Exception as e:
-            # Log the error but don't affect the main process
-            print(f"Long-term memory retrieval error: {str(e)}")
-        
-        # 3. Assemble final history (execute directly in current thread to avoid coroutine issues)
-        try:
-            keywords_str = ", ".join(keywords) if isinstance(keywords, (list, tuple)) else str(keywords)
-            user_content = f"Long-term memory: {system_info} | User emotion: {emotion} | User says: {text} (Keywords:{keywords_str})"
-        except Exception as e:
-            print(f"Content assembly error: {str(e)}")
-            user_content = f"User says: {text}"
-        
-        history = memory.get_history() + [{"role": "user", "content": user_content}]
-        
-        # 4. Call LLM (with error handling and fallback)
-        try:
-            reply_text = await asyncio.to_thread(model.generate, history)
-            
-            # 5. Asynchronously save long-term memory without blocking the main process
-            # Create a background task for saving, without waiting for it to complete
-            try:
-                asyncio.create_task(
-                    asyncio.to_thread(save_long_term_memory, text, keywords_str)
-                )
-            except Exception as e:
-                print(f"Error saving long-term memory: {str(e)}")
-            
-            return reply_text
-        except Exception as e:
-            error_msg = f"AI generation error: {str(e)}"
-            print(traceback.format_exc())  # Detailed log for debugging
-            return f"Sorry, I'm temporarily unable to generate a response. Please try again later. {error_msg}"
-    
+        return reply_text
     except Exception as e:
-        # Catch all exceptions to ensure system stability
-        error_msg = f"Error processing request: {str(e)}"
-        print(traceback.format_exc())  # Detailed log for debugging
-        return f"System processing error: {error_msg}, please try again."
-
-# Add a simple asynchronous task manager to limit the number of concurrent tasks
-class AsyncTaskManager:
-    def __init__(self, max_concurrent_tasks=3):
-        self.semaphore = asyncio.Semaphore(max_concurrent_tasks)
-    
-    async def run_task(self, coro):
-        """Run task and limit concurrent count"""
-        async with self.semaphore:
-            # Ensure correct waiting for coroutine completion
-            try:
-                return await coro
-            except Exception as e:
-                print(f"Task execution error: {str(e)}")
-                import traceback
-                traceback.print_exc()
-                return f"System error: {str(e)}"
-
-# Create global task manager instance
-task_manager = AsyncTaskManager(max_concurrent_tasks=3)
+        logger.error(f"Error generating response: {e}")
+        return "抱歉，我暂时无法生成响应。请稍后再试。"

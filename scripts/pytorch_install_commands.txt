@@ -1,0 +1,10 @@
+# 使用国内镜像源加速PyTorch下载的命令
+
+# 方法1：使用清华大学镜像源
+pip install torch torchvision torchaudio --index-url https://pypi.tuna.tsinghua.edu.cn/simple/ --extra-index-url https://download.pytorch.org/whl/cu121
+
+# 方法2：使用阿里云镜像源
+pip install torch torchvision torchaudio --index-url https://mirrors.aliyun.com/pypi/simple/ --extra-index-url https://download.pytorch.org/whl/cu121
+
+# 方法3：指定版本并使用镜像源（CUDA 11.8）
+pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://pypi.tuna.tsinghua.edu.cn/simple/ --extra-index-url https://download.pytorch.org/whl/cu118

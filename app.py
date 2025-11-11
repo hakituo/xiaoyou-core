@@ -4,17 +4,23 @@ import sys
 import gc
 import logging
 import time
+import uuid
 from datetime import timedelta
 from functools import wraps
 from collections import deque
 from threading import Lock
+from werkzeug.utils import secure_filename
+
+# 导入配置
+from config.config import Config
+config = Config()
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, config.LOG_LEVEL),
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("flask_app.log"),
+        logging.FileHandler(config.LOG_FILE),
         logging.StreamHandler()
     ]
 )
@@ -27,58 +33,31 @@ app = Flask(__name__, static_folder='static')
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = timedelta(days=1)
 
 # Performance optimization configuration
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Limit request body size to 16MB
-app.config['TEMPLATES_AUTO_RELOAD'] = False  # Disable template auto-reloading
+app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
+app.config['TEMPLATES_AUTO_RELOAD'] = False
 
 # Global variables for rate limiting
 rate_limit_data = deque(maxlen=100)  # Store recent request times
 rate_limit_lock = Lock()
 RATE_LIMIT_WINDOW = 60  # 60 seconds
-RATE_LIMIT_MAX_REQUESTS = 60  # Maximum 60 requests per minute
+RATE_LIMIT_MAX_REQUESTS = config.MAX_REQUESTS_PER_MINUTE
 
 # Memory monitoring
 last_gc_time = time.time()
 GC_INTERVAL = 300  # Garbage collection every 5 minutes
 
-# Cache decorator (commented out unused code)
-# class SimpleCache:
-#     def __init__(self, timeout=3600):
-#         self.cache = {}
-#         self.timeout = timeout
-#         self.lock = Lock()
-#     
-#     def __call__(self, f):
-#         @wraps(f)
-#         def decorated_function(*args, **kwargs):
-#             key = f.__name__ + str(args[:2]) + str(tuple(sorted(kwargs.items())[:2]))
-#             
-#             with self.lock:
-#                 current_time = time.time()
-#                 if key in self.cache:
-#                     value, timestamp = self.cache[key]
-#                     if current_time - timestamp < self.timeout:
-#                         return value
-#             
-#             result = f(*args, **kwargs)
-#             
-#             if result and sys.getsizeof(result) < 1024 * 1024:
-#                 with self.lock:
-#                     self.cache[key] = (result, time.time())
-#                     if len(self.cache) > 100:
-#                         self._cleanup()
-#             
-#             return result
-#         
-#         def _cleanup(self):
-#             current_time = time.time()
-#             self.cache = {k: v for k, v in self.cache.items() if current_time - v[1] < self.timeout}
-#         
-#         decorated_function._cleanup = lambda: _cleanup(self)
-#         return decorated_function
+# Upload configuration
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+ALLOWED_AUDIO_EXTENSIONS = {'wav', 'mp3', 'm4a', 'ogg'}
+MAX_CONTENT_LENGTH = config.MAX_CONTENT_LENGTH
 
-# Cache instance (not currently used)
+# Create upload folder if it doesn't exist
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Memory optimization middleware - simplified version
+
+
+# Memory optimization middleware
 @app.before_request
 def before_request():
     global last_gc_time
@@ -89,7 +68,6 @@ def before_request():
         try:
             gc.collect()
             last_gc_time = current_time
-            logger.info("Garbage collection completed")
         except Exception as e:
             logger.error(f"Failed to perform garbage collection: {e}")
 
@@ -107,7 +85,6 @@ def rate_limit():
                 
                 # Check if rate limit is exceeded
                 if len(rate_limit_data) >= RATE_LIMIT_MAX_REQUESTS:
-                    logger.warning(f"Rate limit triggered: {request.remote_addr}")
                     return jsonify({"error": "Too many requests, please try again later"}), 429
                 
                 # Record new request
@@ -130,8 +107,7 @@ def request_entity_too_large(e):
 
 @app.errorhandler(Exception)
 def internal_server_error(e):
-    logger.error(f"Internal server error: {str(e)}", exc_info=True)
-    return render_template("error.html", error="Internal server error"), 500
+    return jsonify({"error": "Internal server error occurred"}), 500
 
 @app.route("/")
 @rate_limit()
@@ -144,7 +120,8 @@ def index():
 @app.route('/voice/<path:filename>')
 @rate_limit()
 def serve_voice(filename):
-    voice_dir = os.path.join(app.root_path, 'voice')
+    # Voice files moved to multimodal/voice directory
+    voice_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'multimodal', 'voice')
     
     # Security check: prevent directory traversal attacks
     if '..' in filename or '\\' in filename:
@@ -165,35 +142,109 @@ def serve_voice(filename):
 def health_check():
     return jsonify({
         "status": "healthy",
-        "time": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "version": "1.0.0"
-    })
+        "service": "xiaoyou-core"
+    }), 200
+
+# Helper functions
+def allowed_file(filename, allowed_extensions):
+    """Check if the file has an allowed extension"""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_extensions
+
+# API endpoints for file upload and STT
+@app.route('/api/upload', methods=['POST'])
+@rate_limit()
+def upload_file():
+    """Handle file uploads (images/audio)"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file part'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No selected file'}), 400
+        
+        # Generate unique filename to avoid conflicts
+        filename = secure_filename(file.filename)
+        unique_filename = f"{uuid.uuid4()}_{filename}"
+        file_path = os.path.join(UPLOAD_FOLDER, unique_filename)
+        
+        # Save the file
+        file.save(file_path)
+        
+        # Determine file type and return appropriate data
+        file_ext = filename.rsplit('.', 1)[1].lower()
+        file_type = 'image' if file_ext in ALLOWED_IMAGE_EXTENSIONS else 'audio'
+        
+        return jsonify({
+            'success': True,
+            'filename': unique_filename,
+            'original_filename': filename,
+            'file_path': file_path,
+            'file_type': file_type
+        })
+        
+    except Exception as e:
+        logger.error(f"File upload error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/stt', methods=['POST'])
+@rate_limit()
+def speech_to_text():
+    """Convert speech to text using STT functionality"""
+    try:
+        if 'audio' not in request.files:
+            return jsonify({'error': 'No audio file provided'}), 400
+        
+        audio_file = request.files['audio']
+        if audio_file.filename == '':
+            return jsonify({'error': 'No selected audio file'}), 400
+        
+        # Check if the file extension is allowed
+        if not allowed_file(audio_file.filename, ALLOWED_AUDIO_EXTENSIONS):
+            return jsonify({'error': 'File type not allowed'}), 400
+        
+        # Save the audio file temporarily
+        filename = f"{uuid.uuid4()}_{secure_filename(audio_file.filename)}"
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        audio_file.save(filepath)
+        
+        # Import STT connector and process the audio
+        from multimodal.stt_connector import STTConnector
+        stt_connector = STTConnector()
+        text = stt_connector.transcribe(filepath)
+        
+        # Clean up the temporary file
+        try:
+            os.remove(filepath)
+        except:
+            pass
+        
+        return jsonify({'text': text})
+        
+    except Exception as e:
+        logger.error(f"STT conversion error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 # Resource cleanup function
 def cleanup_resources():
-    # Force garbage collection
-    try:
-        gc.collect()
-    except Exception as e:
-        logger.error(f"Failed to perform garbage collection during resource cleanup: {e}")
+    """Clean up resources before shutdown"""
+    # Add any cleanup logic here
+    pass
 
 if __name__ == "__main__":
     try:
-        # Final optimization configuration for low-spec computers
         app.run(
             host="0.0.0.0", 
             port=5000, 
             debug=False, 
             threaded=True,
-            processes=1,  # Single process mode to reduce memory usage
-            use_reloader=False,  # Disable reloader to reduce resource usage
-            load_dotenv=False,  # Disable dotenv loading to improve startup speed
-            passthrough_errors=False  # Capture all errors
+            processes=1,
+            use_reloader=False,
+            load_dotenv=False
         )
     except KeyboardInterrupt:
-        logger.info("Flask application interrupted by user")
         cleanup_resources()
-    except Exception as e:
-        logger.critical(f"Failed to start Flask application: {e}", exc_info=True)
+        sys.exit(0)
+    except Exception:
         cleanup_resources()
         sys.exit(1)

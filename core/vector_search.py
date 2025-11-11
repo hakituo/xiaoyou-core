@@ -57,7 +57,7 @@ class VectorSearch:
                 
                 # Try to load TTS manager
                 try:
-                    from voice.tts_manager import get_tts_manager
+                    from multimodal.tts_manager import get_tts_manager
                 except ImportError:
                     logger.warning("TTS manager not found, speech synthesis functionality will be unavailable")
                     get_tts_manager = None
@@ -211,7 +211,7 @@ class VectorSearch:
             # Generate output file path
             if not output_file:
                 file_id = hashlib.md5((text + str(time.time())[:8]).encode()).hexdigest()[:8]
-                output_file = f"voice/{file_id}.mp3"
+                output_file = f"multimodal/voice/{file_id}.mp3"
             
             # Generate speech using TTS manager
             audio_path = self.tts_manager.generate_speech(text, output_file)

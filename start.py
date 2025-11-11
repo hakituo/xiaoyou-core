@@ -8,6 +8,10 @@ import subprocess
 import time
 import multiprocessing
 
+# 导入配置
+from config.config import Config
+config = Config()
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -89,7 +93,7 @@ async def main_with_error_handling():
         flask_process.daemon = True  # Set as daemon process, will automatically terminate when main process ends
         flask_process.start()
         global_processes.append(flask_process)
-        logger.info("Flask application process has started")
+        logger.info(f"Flask application process has started on port {config.SERVER_PORT}")
         
         # Wait for Flask application initialization
         time.sleep(2)

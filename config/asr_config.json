@@ -1,0 +1,9 @@
+{
+  "model_path": "D:\\AI\\xiaoyou-core\\models\\whisper",
+  "model_type": "whisper",
+  "sample_rate": 16000,
+  "language": "zh-CN",
+  "enable_vad": true,
+  "enable_punctuation": true,
+  "use_gpu": true
+}

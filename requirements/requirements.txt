@@ -5,10 +5,10 @@ httpx>=0.25.0
 python-dotenv>=1.0.0
 
 # 内存管理
-redis>=5.0.1  # 可选，用于分布式记忆存储
+# redis  # 可选，用于分布式记忆存储（暂时注释掉，后续按需安装）
 
 # 语音处理 (可选)
-edge-tts>=6.1.8  # Edge TTS支持
+coqui-tts[zh]>=0.25.0  # Coqui TTS中文支持
 sounddevice>=0.4.6  # 音频录制
 pydub>=0.25.1  # 音频处理
 
@@ -31,3 +31,10 @@ psutil>=5.9.5  # 系统资源监控
 pytest>=7.4.0
 black>=23.9.0
 flake8>=6.1.0
+
+# 模型依赖
+transformers>=4.46.0
+accelerate
+torch
+tiktoken
+einops

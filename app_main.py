@@ -31,7 +31,7 @@ except ImportError:
 
 # TTS管理器导入
 try:
-    from voice.tts_manager import get_tts_manager
+    from multimodal.tts_manager import get_tts_manager
 except ImportError:
     # 如果voice包中的tts_manager不可用，尝试直接导入
     try:

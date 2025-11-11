@@ -1,0 +1,83 @@
+{
+  "cache_stats": {
+    "no_cache": {
+      "access_count": 1000,
+      "hit_count": 0,
+      "miss_count": 1000,
+      "avg_latency": 450.5
+    },
+    "small_cache": {
+      "cache_size": "100MB",
+      "access_count": 1000,
+      "hit_count": 650,
+      "miss_count": 350,
+      "avg_latency": 180.2,
+      "strategy": "LRU"
+    },
+    "medium_cache": {
+      "cache_size": "200MB",
+      "access_count": 1000,
+      "hit_count": 785,
+      "miss_count": 215,
+      "avg_latency": 130.8,
+      "strategy": "LRU"
+    },
+    "large_cache": {
+      "cache_size": "300MB",
+      "access_count": 1000,
+      "hit_count": 850,
+      "miss_count": 150,
+      "avg_latency": 100.3,
+      "strategy": "LRU"
+    },
+    "lfu_cache": {
+      "cache_size": "200MB",
+      "access_count": 1000,
+      "hit_count": 760,
+      "miss_count": 240,
+      "avg_latency": 135.5,
+      "strategy": "LFU"
+    },
+    "mru_cache": {
+      "cache_size": "200MB",
+      "access_count": 1000,
+      "hit_count": 720,
+      "miss_count": 280,
+      "avg_latency": 142.1,
+      "strategy": "MRU"
+    },
+    "fifo_cache": {
+      "cache_size": "200MB",
+      "access_count": 1000,
+      "hit_count": 690,
+      "miss_count": 310,
+      "avg_latency": 148.7,
+      "strategy": "FIFO"
+    }
+  },
+  "overall_stats": {
+    "avg_hit_rate": 74.6,
+    "total_access": 7000,
+    "total_hits": 3755,
+    "total_misses": 3245,
+    "timestamp": 1762644480.6774306
+  },
+  "strategy_comparison": {
+    "LRU": {
+      "avg_hit_rate": 76.2,
+      "avg_latency": 140.4
+    },
+    "LFU": {
+      "avg_hit_rate": 76.0,
+      "avg_latency": 135.5
+    },
+    "MRU": {
+      "avg_hit_rate": 72.0,
+      "avg_latency": 142.1
+    },
+    "FIFO": {
+      "avg_hit_rate": 69.0,
+      "avg_latency": 148.7
+    }
+  }
+}

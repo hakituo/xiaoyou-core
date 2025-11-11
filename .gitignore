@@ -2,6 +2,15 @@
 .env
 .env.local
 .env.*.local
+.env.*
+
+# 敏感信息文件
+secret.*
+key.*
+*_token*
+*_api_key*
+*_secret*
+*credentials*
 
 # Python编译文件
 __pycache__/
@@ -18,8 +27,8 @@ logs/
 history/
 
 # 语音文件目录
-voice/*.mp3
-voice/*.wav
+multimodal/voice/*.mp3
+multimodal/voice/*.wav
 
 # 数据库文件
 *.db
@@ -48,5 +57,37 @@ coverage/
 # 打包文件
 *.egg-info/
 build/
+
+# 模型文件（不要提交到GitHub）
+models/
+
+# 论文相关文件（除了实验脚本）
+paper/paper.pdf
+paper/paper.tex
+paper/*.html
+paper/*.aux
+paper/*.out
+paper/*.log
+paper/CN/*.html
+paper/EN/*.html
+!paper/experiment/
+paper/experiment/*.pdf
+paper/experiment/experiment_results/
+
+# 虚拟环境目录
+venv_*/
 dist/
 *.whl
+
+# 输出和临时文件目录
+tts_output/
+output/audio/
+uploads/
+
+# 临时测试脚本
+test_coqui_tts_direct.py
+analyze_audio.py
+demo_multimodal.py
+demo_new_models.py
+desktop_pet.py
+md_to_format.py

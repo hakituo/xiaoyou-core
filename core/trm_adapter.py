@@ -1,10 +1,23 @@
-# 异步通信：负责封装所有对 trm_reflector.py (HTTP) 的异步调用逻辑
-import os
-import logging
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 import asyncio
-import httpx
-import json
-from typing import Dict, Any, Optional
+import logging
+import tempfile
+import os
+from typing import List, Dict, Any, Optional
+
+# 导入核心模块
+from core.llm_connector import query_model
+from memory.memory_manager import MemoryManager
+
+# 尝试导入STT连接器
+try:
+    from multimodal.stt_connector import get_stt_connector
+    stt_available = True
+except ImportError:
+    logging.warning("STT连接器未找到，语音识别功能将不可用")
+    stt_available = False
 
 # 配置日志
 logging.basicConfig(
@@ -13,259 +26,190 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 class TRMAdapter:
-    """TRM异步通信适配器"""
+    """
+    TRM (Text, Recognition, Multimedia) 适配器
+    提供统一的接口来访问LLM和STT功能
+    """
     
     def __init__(self):
-        # 从环境变量获取TRM服务地址，默认localhost:8000
-        self.trm_base_url = os.getenv("TRM_BASE_URL", "http://localhost:8000")
-        self.timeout = int(os.getenv("TRM_TIMEOUT", "30"))
-        self._client = None
+        """
+        初始化TRM适配器
+        """
+        self.stt_connector = None
+        self._initialize_stt_if_available()
+        logger.info("TRM适配器初始化完成")
     
-    @property
-    def client(self) -> httpx.AsyncClient:
-        """获取或创建httpx异步客户端"""
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(
-                timeout=self.timeout,
-                follow_redirects=True
-            )
-        return self._client
+    def _initialize_stt_if_available(self):
+        """
+        如果STT可用，初始化STT连接器
+        """
+        if stt_available:
+            try:
+                # STT连接器的初始化将在第一次使用时异步完成
+                logger.info("STT功能可用，将在需要时初始化")
+            except Exception as e:
+                logger.error(f"初始化STT连接器失败: {e}")
+    
+    async def _ensure_stt_connector(self):
+        """
+        确保STT连接器已初始化
+        """
+        if stt_available and not self.stt_connector:
+            try:
+                self.stt_connector = await asyncio.to_thread(get_stt_connector)
+                logger.info("STT连接器初始化成功")
+            except Exception as e:
+                logger.error(f"获取STT连接器失败: {e}")
+                raise
+    
+    async def query_llm_async(self, user_id: str, prompt: str, history: List[Dict[str, Any]]) -> str:
+        """
+        异步查询LLM模型
+        
+        Args:
+            user_id: 用户ID
+            prompt: 用户输入的提示文本
+            history: 历史对话记录
+            
+        Returns:
+            str: 模型生成的响应文本
+        """
+        try:
+            logger.info(f"[TRM] 处理用户 {user_id} 的LLM请求")
+            
+            # 创建临时内存管理器来处理查询
+            memory = MemoryManager(user_id=user_id)
+            
+            # 将历史记录添加到内存管理器
+            for msg in history:
+                memory.add_message(msg.get('role', 'user'), msg.get('content', ''))
+            
+            # 使用LLM连接器进行查询
+            response = await query_model(prompt, memory)
+            
+            logger.info(f"[TRM] 成功获取LLM响应，长度: {len(response)} 字符")
+            return response
+            
+        except Exception as e:
+            logger.error(f"[TRM] LLM查询失败: {e}", exc_info=True)
+            # 返回友好的错误信息而不是抛出异常，这样系统可以继续运行
+            return f"抱歉，我在处理您的请求时遇到了问题。错误详情: {str(e)}"
+    
+    async def transcribe_audio_async(self, audio_data: bytes) -> str:
+        """
+        异步转录音频数据
+        
+        Args:
+            audio_data: 音频数据（字节）
+            
+        Returns:
+            str: 转录的文本
+        """
+        try:
+            logger.info(f"[TRM] 处理音频转录请求，数据大小: {len(audio_data)} 字节")
+            
+            # 确保STT连接器可用
+            if not stt_available:
+                raise RuntimeError("STT功能不可用，请检查依赖安装")
+            
+            await self._ensure_stt_connector()
+            
+            # 将音频数据保存到临时文件
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
+                temp_file.write(audio_data)
+                temp_file_path = temp_file.name
+            
+            try:
+                # 使用STT连接器进行转录
+                result = await self.stt_connector.transcribe_audio_file(temp_file_path, language="zh-CN")
+                
+                # 提取转录文本
+                transcription = result.get("text", "")
+                
+                logger.info(f"[TRM] 音频转录成功: {transcription[:50]}...")
+                return transcription
+                
+            finally:
+                # 清理临时文件
+                if os.path.exists(temp_file_path):
+                    try:
+                        os.remove(temp_file_path)
+                    except:
+                        pass
+                        
+        except Exception as e:
+            logger.error(f"[TRM] 音频转录失败: {e}", exc_info=True)
+            # 返回友好的错误信息而不是抛出异常
+            return f"语音识别失败: {str(e)}"
     
     async def close(self):
-        """关闭httpx客户端"""
-        if self._client and not self._client.is_closed:
-            await self._client.aclose()
-            self._client = None
+        """
+        关闭适配器，释放资源
+        """
+        try:
+            if self.stt_connector:
+                await self.stt_connector.close()
+                self.stt_connector = None
+                logger.info("TRM适配器资源已释放")
+        except Exception as e:
+            logger.error(f"关闭TRM适配器时出错: {e}")
     
     async def __aenter__(self):
-        """异步上下文管理器入口"""
+        """
+        异步上下文管理器入口
+        """
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """异步上下文管理器出口"""
+        """
+        异步上下文管理器出口
+        """
         await self.close()
-    
-    async def _make_request(
-        self,
-        method: str,
-        endpoint: str,
-        data: Optional[Dict[str, Any]] = None,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """通用请求方法"""
-        url = f"{self.trm_base_url}{endpoint}"
-        headers = {
-            "Content-Type": "application/json",
-            **kwargs.pop("headers", {})
-        }
-        
-        try:
-            logger.info(f"TRM请求: {method} {endpoint}")
-            
-            if method.lower() == "get":
-                response = await self.client.get(url, params=data, headers=headers, **kwargs)
-            else:
-                response = await self.client.post(url, json=data, headers=headers, **kwargs)
-            
-            response.raise_for_status()
-            result = response.json()
-            logger.info(f"TRM请求成功: {endpoint}")
-            return result
-            
-        except httpx.HTTPError as e:
-            logger.error(f"TRM HTTP错误 ({endpoint}): {str(e)}")
-            raise Exception(f"TRM服务通信失败: {str(e)}")
-        except Exception as e:
-            logger.error(f"TRM请求失败 ({endpoint}): {str(e)}")
-            raise
-    
-    async def llm_query(
-        self,
-        prompt: str,
-        model: str = "default",
-        max_tokens: int = 1024,
-        temperature: float = 0.7,
-        **kwargs
-    ) -> str:
-        """
-        异步调用LLM查询接口
-        
-        Args:
-            prompt: 查询提示词
-            model: 模型名称
-            max_tokens: 最大生成长度
-            temperature: 温度参数
-            **kwargs: 其他参数
-            
-        Returns:
-            LLM生成的文本
-        """
-        data = {
-            "prompt": prompt,
-            "model": model,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            **kwargs
-        }
-        
-        result = await self._make_request("POST", "/api/llm/query", data=data)
-        return result.get("result", "")
-    
-    async def stt_decode(
-        self,
-        audio_path: str,
-        language: str = "auto",
-        **kwargs
-    ) -> str:
-        """
-        异步调用语音转文字接口
-        
-        Args:
-            audio_path: 音频文件路径
-            language: 语言代码，默认自动检测
-            **kwargs: 其他参数
-            
-        Returns:
-            转写后的文本
-        """
-        data = {
-            "audio_path": audio_path,
-            "language": language,
-            **kwargs
-        }
-        
-        result = await self._make_request("POST", "/api/stt/decode", data=data)
-        return result.get("text", "")
-    
-    async def image_generate(
-        self,
-        prompt: str,
-        style: str = "default",
-        size: str = "1024x1024",
-        **kwargs
-    ) -> str:
-        """
-        异步调用图像生成接口
-        
-        Args:
-            prompt: 图像生成提示词
-            style: 图像风格
-            size: 图像尺寸
-            **kwargs: 其他参数
-            
-        Returns:
-            生成的图像路径
-        """
-        data = {
-            "prompt": prompt,
-            "style": style,
-            "size": size,
-            **kwargs
-        }
-        
-        result = await self._make_request("POST", "/api/image/generate", data=data)
-        return result.get("image_path", "")
-    
-    async def health_check(self) -> bool:
-        """
-        检查TRM服务健康状态
-        
-        Returns:
-            服务是否健康
-        """
-        try:
-            result = await self._make_request("GET", "/health")
-            return result.get("status") == "healthy"
-        except:
-            return False
-    
-    async def batch_llm_queries(
-        self,
-        queries: list[Dict[str, Any]],
-        concurrency_limit: int = 5
-    ) -> list[Dict[str, Any]]:
-        """
-        并发批量处理LLM查询
-        
-        Args:
-            queries: 查询列表，每项包含查询参数
-            concurrency_limit: 并发限制
-            
-        Returns:
-            查询结果列表
-        """
-        semaphore = asyncio.Semaphore(concurrency_limit)
-        
-        async def _process_query(query):
-            async with semaphore:
-                try:
-                    result = await self.llm_query(**query)
-                    return {"success": True, "result": result, "query": query}
-                except Exception as e:
-                    logger.error(f"批量查询失败: {str(e)}")
-                    return {"success": False, "error": str(e), "query": query}
-        
-        tasks = [_process_query(q) for q in queries]
-        return await asyncio.gather(*tasks)
 
-# 创建全局TRM适配器实例
-trm_adapter = None
+
+# 全局适配器实例，用于快速访问
+global_trm_adapter = None
+
 
 def get_trm_adapter() -> TRMAdapter:
     """
-    获取TRM适配器实例（单例模式）
+    获取全局TRM适配器实例
     
     Returns:
-        TRMAdapter实例
+        TRMAdapter: 适配器实例
     """
-    global trm_adapter
-    if trm_adapter is None:
-        trm_adapter = TRMAdapter()
-    return trm_adapter
+    global global_trm_adapter
+    
+    if global_trm_adapter is None:
+        global_trm_adapter = TRMAdapter()
+    
+    return global_trm_adapter
 
-async def initialize_trm_adapter():
-    """
-    初始化TRM适配器
-    """
-    adapter = get_trm_adapter()
-    # 验证连接
-    is_healthy = await adapter.health_check()
-    if is_healthy:
-        logger.info("TRM适配器初始化成功")
-    else:
-        logger.warning("TRM服务可能不可用，将在需要时重试")
-    return adapter
 
-async def shutdown_trm_adapter():
-    """
-    关闭TRM适配器
-    """
-    global trm_adapter
-    if trm_adapter:
-        await trm_adapter.close()
-        trm_adapter = None
-        logger.info("TRM适配器已关闭")
+# 导出模块中的主要类和函数
+__all__ = ['TRMAdapter', 'get_trm_adapter']
 
-# 示例使用
-async def example_usage():
-    """示例使用方法"""
-    async with TRMAdapter() as adapter:
-        try:
-            # LLM查询示例
-            response = await adapter.llm_query(
-                prompt="你好，请介绍一下自己",
-                model="gpt-3.5-turbo",
-                max_tokens=500
-            )
-            print(f"LLM响应: {response}")
-            
-            # 健康检查
-            is_healthy = await adapter.health_check()
-            print(f"TRM服务状态: {'健康' if is_healthy else '不健康'}")
-            
-        except Exception as e:
-            print(f"错误: {str(e)}")
 
+# 测试代码
 if __name__ == "__main__":
-    asyncio.run(example_usage())
+    import asyncio
+    
+    async def test_adapter():
+        adapter = TRMAdapter()
+        
+        # 测试LLM查询
+        try:
+            response = await adapter.query_llm_async(
+                "test_user", 
+                "你好，你是谁？", 
+                []
+            )
+            print(f"LLM测试响应: {response}")
+        except Exception as e:
+            print(f"LLM测试失败: {e}")
+        
+        await adapter.close()
+    
+    asyncio.run(test_adapter())

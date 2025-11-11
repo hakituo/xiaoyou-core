@@ -4,6 +4,10 @@ import sys
 import asyncio
 import time
 import threading
+import logging
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 class MemoryManager:
     def __init__(self, max_length=10, user_id="default", auto_save_interval=300):
@@ -60,28 +64,43 @@ class MemoryManager:
             return message
     
     def _trim_history(self):
-        """Intelligently trim history, prioritizing important messages"""
+        """Intelligently trim history using LRU strategy with importance weighting"""
         if len(self.history) > self.max_length:
-            # Separate important and non-important messages
-            important_messages = [msg for msg in self.history if msg.get('is_important', False)]
-            normal_messages = [msg for msg in self.history if not msg.get('is_important', False)]
+            # Calculate importance score for each message
+            # Score = base_importance * (recency_factor + importance_boost)
+            now = time.time()
+            for msg in self.history:
+                # Base score starts with timestamp for recency
+                recency_factor = 1.0
+                if len(self.history) > 1:
+                    # Normalize timestamp to 0-1 range
+                    oldest_time = min(self.history, key=lambda x: x['timestamp'])['timestamp']
+                    newest_time = max(self.history, key=lambda x: x['timestamp'])['timestamp']
+                    time_range = newest_time - oldest_time if newest_time > oldest_time else 1
+                    recency_factor = (msg['timestamp'] - oldest_time) / time_range
+                
+                # Add importance boost for important messages
+                importance_boost = 2.0 if msg.get('is_important', False) else 0.0
+                
+                # Calculate final score
+                msg['_score'] = recency_factor + importance_boost
             
-            # Calculate the number of non-important messages that can be retained
-            max_normal = max(0, self.max_length - len(important_messages))
+            # Sort by score in descending order (highest first)
+            self.history.sort(key=lambda x: x.get('_score', 0), reverse=True)
             
-            # Keep the latest non-important messages
-            if max_normal < len(normal_messages):
-                normal_messages = normal_messages[-max_normal:]
+            # Keep top messages up to max_length
+            self.history = self.history[:self.max_length]
             
-            # Recombine history records
-            self.history = important_messages + normal_messages
+            # Remove temporary score field
+            for msg in self.history:
+                if '_score' in msg:
+                    del msg['_score']
             
-            # If still exceeding the limit, sort by timestamp and keep the latest
-            if len(self.history) > self.max_length:
-                self.history.sort(key=lambda x: x['timestamp'], reverse=True)
-                self.history = self.history[:self.max_length]
-                # Restore chronological order
-                self.history.sort(key=lambda x: x['timestamp'])
+            # Restore chronological order
+            self.history.sort(key=lambda x: x['timestamp'])
+            
+            # Log trimming action
+            logger.debug(f"History trimmed to {len(self.history)} messages (max: {self.max_length})")
 
     def get_history(self):
         """Return current conversation history, optimized for memory usage"""
