@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 class ModelSettings(BaseModel):
     text_path: str = Field(default="models/llm/Qwen2.5-7B-Instruct-Q4_K_M.gguf")
     sd_path: str = Field(default="models/img/check_point/nsfw_v10.safetensors")
-    vl_path: str = Field(default="models/llm/Qwen2-VL-2B-Instruct.gguf")
+    vl_path: str = Field(default="models/vision/Qwen2-VL-2B")
     tts_api: str = Field(default="http://127.0.0.1:9880")
     device: str = Field(default="cuda")
 

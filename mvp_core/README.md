@@ -40,7 +40,7 @@
         "model": {
             "text_path": "models/llm/Qwen2.5-7B-Instruct-Q4_K_M.gguf",
             "sd_path": "models/img/check_point/nsfw_v10.safetensors",
-            "vl_path": "models/llm/Qwen2-VL-2B-Instruct.gguf",
+            "vl_path": "models/vision/Qwen2-VL-2B",
             "tts_api": "http://127.0.0.1:9880",
             "device": "cuda"
         }
