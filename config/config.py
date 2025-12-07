@@ -27,7 +27,7 @@ class Config:
     LONG_TERM_MEMORY_DB = "long_term_memory.db"  # 长期记忆数据库文件
     
     # 模型配置
-    DEFAULT_MODEL = "qianwen-turbo"
+    DEFAULT_MODEL = "qwen3-max-2025-09-23"
     MODEL_PATH = "./models/"  # 本地模型路径
     
     # 语音配置
@@ -41,7 +41,7 @@ class Config:
     CACHE_TTL = 3600  # 缓存过期时间（秒）
     
     # API配置
-    QIANWEN_API_KEY = "your_api_key_here"  # 通义千问API密钥
+    QIANWEN_API_KEY = "sk-7d1c6e7f8a9b4c5d8e9f0a1b2c3d4e5f"  # 通义千问API密钥
     
     # 日志配置
     LOG_LEVEL = "INFO"  # "DEBUG", "INFO", "WARNING", "ERROR"

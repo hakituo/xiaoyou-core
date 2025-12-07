@@ -377,15 +377,21 @@ class TTSManager:
                 self._initialized = True
                 return self.coqui_tts_available
 
-    def _generate_audio_with_coqui(self, text, output_file, speed=None):
+    def _generate_audio_with_coqui(self, text, output_file, speed=None, emotion=None):
         """使用Coqui TTS生成音频文件"""
         try:
             # 使用Coqui TTS生成音频
+            kwargs = {"text": text, "file_path": output_file}
+            
             if speed and speed != 1.0:
-                # 调整语速
-                self.tts.tts_to_file(text=text, file_path=output_file, speed=speed)
-            else:
-                self.tts.tts_to_file(text=text, file_path=output_file)
+                kwargs["speed"] = speed
+            
+            # 如果支持情感参数（Coqui某些模型支持emotion参数）
+            # 注意：标准API可能不支持emotion，这里仅作保留扩展
+            # if emotion:
+            #     kwargs["emotion"] = emotion
+
+            self.tts.tts_to_file(**kwargs)
             
             logger.debug(f"Generated audio with Coqui TTS: {output_file}")
             return True
@@ -393,12 +399,14 @@ class TTSManager:
             logger.error(f"Coqui TTS generation failed: {e}")
             return False
 
-    def _generate_cache_key(self, text, speed=None):
+    def _generate_cache_key(self, text, speed=None, emotion=None):
         """Generate cache key for TTS request"""
         # 使用文本和Coqui TTS标识生成缓存键
         key_parts = [text, "coqui_tts"]
         if speed:
             key_parts.append(str(speed))
+        if emotion:
+            key_parts.append(str(emotion))
         return hashlib.md5("|".join(key_parts).encode()).hexdigest()
 
     def _cleanup_cache(self):
@@ -435,13 +443,14 @@ class TTSManager:
                 self.last_cache_clean = current_time
                 logger.info(f"Cleaned {len(expired_keys)} expired cache items")
 
-    def text_to_speech(self, text, speed=None):
+    def text_to_speech(self, text, speed=None, emotion=None):
         """
         将文本转换为语音
         
         Args:
             text: 要转换的文本
             speed: 语速，默认为1.0
+            emotion: 情感参数 (可选)
         
         Returns:
             生成的音频文件路径
@@ -463,7 +472,7 @@ class TTSManager:
         self._check_and_clean_cache()
         
         # 生成缓存键
-        cache_key = self._generate_cache_key(text, speed)
+        cache_key = self._generate_cache_key(text, speed, emotion)
         
         # 检查缓存
         with self._lock:
@@ -493,7 +502,7 @@ class TTSManager:
         # 使用Coqui TTS生成音频
         try:
             logger.info(f"正在生成音频，文本内容: {text[:50]}...")
-            success = self._generate_audio_with_coqui(text, filepath, speed)
+            success = self._generate_audio_with_coqui(text, filepath, speed, emotion)
             
             if success and os.path.exists(filepath):
                 # 添加到缓存
@@ -550,6 +559,32 @@ class TTSManager:
             logger.info("TTS manager closed")
         except Exception as e:
             logger.error(f"Error closing TTS manager: {e}")
+
+    def synthesize_and_play(self, text: str, speed: float = 1.0, emotion: str = None):
+        """
+        Synthesize speech and play it (Mock implementation for server environment)
+        In a real server, this would return the audio file path or stream it.
+        
+        Args:
+            text: Text to synthesize
+            speed: Speech speed
+            emotion: Emotion parameter
+        """
+        try:
+            # Generate audio file
+            file_path = self.text_to_speech(text, speed=speed, emotion=emotion)
+            
+            # In a server environment, we might not want to play it locally
+            # But for compatibility with existing code:
+            logger.info(f"Audio generated at: {file_path}")
+            
+            # Mock playback delay
+            time.sleep(len(text) * 0.1)
+            
+            return file_path
+        except Exception as e:
+            logger.error(f"Error in synthesize_and_play: {e}")
+            return None
 
 # Singleton instance
 _tts_manager_instance = None

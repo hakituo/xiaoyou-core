@@ -1,0 +1,153 @@
+Initialized native services in: C:\Users\29917\.gradle\native
+Initialized jansi services in: C:\Users\29917\.gradle\native
+The client will now receive all logging from the daemon (pid: 59328). The daemon log file: C:\Users\29917\.gradle\daemon\9.2.1\daemon-59328.out.log
+Starting 11th build in daemon [uptime: 3 hrs 15 mins 11.679 secs, performance: 100%, GC rate: 0.00/s, heap usage: 0% of 512 MiB, non-heap usage: 30% of 384 MiB]
+Using 32 worker leases.
+Operational build model parameters: {requiresToolingModels=false, parallelProjectExecution=false, configureOnDemand=false, configurationCache=false, configurationCacheParallelStore=false, configurationCacheParallelLoad=true, isolatedProjects=false, parallelProjectConfiguration=false, intermediateModelCache=false, parallelToolingApiActions=false, invalidateCoupledProjects=false, modelAsProjectDependency=false, resilientModelBuilding=false}
+Now considering [D:\AI\xiaoyou-core\android] as hierarchies to watch
+Watching the file system is configured to be enabled if available
+File system watching is active
+Starting Build
+Settings evaluated using settings file 'D:\AI\xiaoyou-core\android\settings.gradle'.
+Projects loaded. Root project using build file 'D:\AI\xiaoyou-core\android\build.gradle'.
+Included projects: [root project 'AvelineAndroid', project ':app']
+
+> Configure project :
+Evaluating root project 'AvelineAndroid' using build file 'D:\AI\xiaoyou-core\android\build.gradle'.
+
+> Configure project :app
+Evaluating project ':app' using build file 'D:\AI\xiaoyou-core\android\app\build.gradle'.
+Using default execution profile
+Using Kotlin Gradle Plugin gradle82 variant
+Parsed shrinker version: 8.3.36
+All projects evaluated.
+Task name matched 'clean'
+Task name matched 'assembleRelease'
+Selected primary task 'clean' from project :
+Selected primary task 'assembleRelease' from project :
+Tasks to be executed: [task ':clean', task ':app:clean', task ':app:buildKotlinToolingMetadata', task ':app:checkKotlinGradlePluginConfigurationErrors', task ':app:preBuild', task ':app:preReleaseBuild', task ':app:checkReleaseAarMetadata', task ':app:generateReleaseResValues', task ':app:mapReleaseSourceSetPaths', task ':app:generateReleaseResources', task ':app:mergeReleaseResources', task ':app:packageReleaseResources', task ':app:parseReleaseLocalResources', task ':app:createReleaseCompatibleScreenManifests', task ':app:extractDeepLinksRelease', task ':app:processReleaseMainManifest', task ':app:processReleaseManifest', task ':app:processReleaseManifestForPackage', task ':app:processReleaseResources', task ':app:compileReleaseKotlin', task ':app:javaPreCompileRelease', task ':app:compileReleaseJavaWithJavac', task ':app:extractProguardFiles', task ':app:generateReleaseLintVitalReportModel', task ':app:lintVitalAnalyzeRelease', task ':app:lintVitalReportRelease', task ':app:lintVitalRelease', task ':app:mergeReleaseJniLibFolders', task ':app:mergeReleaseNativeLibs', task ':app:stripReleaseDebugSymbols', task ':app:extractReleaseNativeSymbolTables', task ':app:mergeReleaseNativeDebugMetadata', task ':app:checkReleaseDuplicateClasses', task ':app:mergeReleaseArtProfile', task ':app:expandReleaseArtProfileWildcards', task ':app:mergeReleaseGeneratedProguardFiles', task ':app:processReleaseJavaRes', task ':app:mergeReleaseJavaResource', task ':app:minifyReleaseWithR8', task ':app:compileReleaseArtProfile', task ':app:mergeReleaseShaders', task ':app:compileReleaseShaders', task ':app:generateReleaseAssets', task ':app:mergeReleaseAssets', task ':app:compressReleaseAssets', task ':app:extractReleaseVersionControlInfo', task ':app:processApplicationManifestReleaseForBundle', task ':app:bundleReleaseResources', task ':app:shrinkReleaseRes', task ':app:optimizeReleaseResources', task ':app:collectReleaseDependencies', task ':app:sdkReleaseDependencyData', task ':app:writeReleaseAppMetadata', task ':app:writeReleaseSigningConfigVersions', task ':app:packageRelease', task ':app:createReleaseApkListingFileRedirect', task ':app:assembleRelease']
+Tasks that were excluded: []
+Resolve mutations for :clean (Thread[Execution worker,5,main]) started.
+:clean (Thread[Execution worker,5,main]) started.
+
+> Task :clean
+Caching disabled for task ':clean' because:
+  Build cache is disabled
+Task ':clean' is not up-to-date because:
+  Task has not declared any outputs despite executing actions.
+Resolve mutations for :app:clean (Thread[Execution worker,5,main]) started.
+:app:clean (Thread[Execution worker Thread 11,5,main]) started.
+destroyer locations for task group 0 (Thread[Execution worker Thread 12,5,main]) started.
+
+> Task :app:clean
+Caching disabled for task ':app:clean' because:
+  Build cache is disabled
+Task ':app:clean' is not up-to-date because:
+  Task has not declared any outputs despite executing actions.
+Not watching anything anymore
+Resolve mutations for :app:buildKotlinToolingMetadata (Thread[Execution worker Thread 11,5,main]) started.
+:app:buildKotlinToolingMetadata (Thread[Execution worker Thread 23,5,main]) started.
+
+> Task :app:buildKotlinToolingMetadata
+Caching disabled for task ':app:buildKotlinToolingMetadata' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Task ':app:buildKotlinToolingMetadata' is not up-to-date because:
+  Output property 'outputDirectory' file D:\AI\xiaoyou-core\android\app\build\kotlinToolingMetadata has been removed.
+  Output property 'outputDirectory' file D:\AI\xiaoyou-core\android\app\build\kotlinToolingMetadata\kotlin-tooling-metadata.json has been removed.
+Resolve mutations for :app:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker Thread 23,5,main]) started.
+:app:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker Thread 23,5,main]) started.
+
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+Caching disabled for task ':app:checkKotlinGradlePluginConfigurationErrors' because:
+  Build cache is disabled
+Task ':app:checkKotlinGradlePluginConfigurationErrors' is not up-to-date because:
+  Task has not declared any outputs despite executing actions.
+Resolve mutations for :app:preBuild (Thread[Execution worker Thread 23,5,main]) started.
+:app:preBuild (Thread[Execution worker Thread 23,5,main]) started.
+
+> Task :app:preBuild UP-TO-DATE
+Skipping task ':app:preBuild' as it has no actions.
+Resolve mutations for :app:preReleaseBuild (Thread[Execution worker Thread 23,5,main]) started.
+:app:preReleaseBuild (Thread[Execution worker Thread 31,5,main]) started.
+
+> Task :app:preReleaseBuild UP-TO-DATE
+Skipping task ':app:preReleaseBuild' as it has no actions.
+Resolve mutations for :app:checkReleaseAarMetadata (Thread[Execution worker Thread 31,5,main]) started.
+:app:checkReleaseAarMetadata (Thread[Execution worker Thread 18,5,main]) started.
+
+> Task :app:checkReleaseAarMetadata FAILED
+
+[Incubating] Problems report is available at: file:///D:/AI/xiaoyou-core/android/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:checkReleaseAarMetadata'.
+> Configuration `:app:releaseRuntimeClasspath` contains AndroidX dependencies, but the `android.useAndroidX` property is not enabled, which may cause runtime issues.
+  Set `android.useAndroidX=true` in the `gradle.properties` file and retry.
+  The following AndroidX dependencies are detected:
+  :app:releaseRuntimeClasspath -> androidx.core:core-ktx:1.12.0
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.annotation:annotation:1.6.0
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.annotation:annotation:1.6.0 -> androidx.annotation:annotation-jvm:1.6.0
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.core:core:1.12.0
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.annotation:annotation-experimental:1.3.0
+  :app:releaseRuntimeClasspath -> androidx.appcompat:appcompat:1.6.1 -> androidx.appcompat:appcompat-resources:1.6.1 -> androidx.collection:collection:1.1.0
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.core:core:1.12.0 -> androidx.concurrent:concurrent-futures:1.0.0
+  :app:releaseRuntimeClasspath -> androidx.appcompat:appcompat:1.6.1 -> androidx.appcompat:appcompat-resources:1.6.1 -> androidx.vectordrawable:vectordrawable-animated:1.1.0 -> androidx.interpolator:interpolator:1.0.0
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.lifecycle:lifecycle-runtime:2.5.1
+  :app:releaseRuntimeClasspath -> androidx.appcompat:appcompat:1.6.1 -> androidx.savedstate:savedstate:1.2.0 -> androidx.arch.core:core-common:2.1.0
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.lifecycle:lifecycle-runtime:2.5.1 -> androidx.arch.core:core-runtime:2.1.0
+  :app:releaseRuntimeClasspath -> androidx.appcompat:appcompat:1.6.1 -> androidx.savedstate:savedstate:1.2.0 -> androidx.lifecycle:lifecycle-common:2.5.1
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.core:core:1.12.0 -> androidx.versionedparcelable:versionedparcelable:1.1.1
+  :app:releaseRuntimeClasspath -> androidx.appcompat:appcompat:1.6.1
+  :app:releaseRuntimeClasspath -> androidx.appcompat:appcompat:1.6.1 -> androidx.activity:activity:1.6.0
+  :app:releaseRuntimeClasspath -> androidx.appcompat:appcompat:1.6.1 -> androidx.lifecycle:lifecycle-viewmodel:2.5.1
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.fragment:fragment:1.3.6 -> androidx.lifecycle:lifecycle-viewmodel-savedstate:2.5.1
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.fragment:fragment:1.3.6 -> androidx.lifecycle:lifecycle-livedata-core:2.5.1
+  :app:releaseRuntimeClasspath -> androidx.appcompat:appcompat:1.6.1 -> androidx.savedstate:savedstate:1.2.0
+  :app:releaseRuntimeClasspath -> androidx.appcompat:appcompat:1.6.1 -> androidx.activity:activity:1.6.0 -> androidx.tracing:tracing:1.0.0
+  :app:releaseRuntimeClasspath -> androidx.appcompat:appcompat:1.6.1 -> androidx.appcompat:appcompat-resources:1.6.1
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.vectordrawable:vectordrawable:1.1.0
+  :app:releaseRuntimeClasspath -> androidx.appcompat:appcompat:1.6.1 -> androidx.appcompat:appcompat-resources:1.6.1 -> androidx.vectordrawable:vectordrawable-animated:1.1.0
+  :app:releaseRuntimeClasspath -> androidx.appcompat:appcompat:1.6.1 -> androidx.cursoradapter:cursoradapter:1.0.0
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.drawerlayout:drawerlayout:1.1.1
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.drawerlayout:drawerlayout:1.1.1 -> androidx.customview:customview:1.1.0
+  :app:releaseRuntimeClasspath -> androidx.appcompat:appcompat:1.6.1 -> androidx.emoji2:emoji2:1.2.0
+  :app:releaseRuntimeClasspath -> androidx.appcompat:appcompat:1.6.1 -> androidx.emoji2:emoji2:1.2.0 -> androidx.lifecycle:lifecycle-process:2.4.1
+  :app:releaseRuntimeClasspath -> androidx.appcompat:appcompat:1.6.1 -> androidx.emoji2:emoji2:1.2.0 -> androidx.startup:startup-runtime:1.1.1
+  :app:releaseRuntimeClasspath -> androidx.appcompat:appcompat:1.6.1 -> androidx.emoji2:emoji2-views-helper:1.2.0
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.fragment:fragment:1.3.6
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.fragment:fragment:1.3.6 -> androidx.viewpager:viewpager:1.0.0
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.fragment:fragment:1.3.6 -> androidx.loader:loader:1.0.0
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.fragment:fragment:1.3.6 -> androidx.loader:loader:1.0.0 -> androidx.lifecycle:lifecycle-livedata:2.0.0
+  :app:releaseRuntimeClasspath -> androidx.appcompat:appcompat:1.6.1 -> androidx.resourceinspection:resourceinspection-annotation:1.0.1
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.cardview:cardview:1.0.0
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.coordinatorlayout:coordinatorlayout:1.1.0
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.constraintlayout:constraintlayout:2.0.1
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.constraintlayout:constraintlayout:2.0.1 -> androidx.constraintlayout:constraintlayout-solver:2.0.1
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.dynamicanimation:dynamicanimation:1.0.0
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.dynamicanimation:dynamicanimation:1.0.0 -> androidx.legacy:legacy-support-core-utils:1.0.0
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.dynamicanimation:dynamicanimation:1.0.0 -> androidx.legacy:legacy-support-core-utils:1.0.0 -> androidx.documentfile:documentfile:1.0.0
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.dynamicanimation:dynamicanimation:1.0.0 -> androidx.legacy:legacy-support-core-utils:1.0.0 -> androidx.localbroadcastmanager:localbroadcastmanager:1.0.0
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.dynamicanimation:dynamicanimation:1.0.0 -> androidx.legacy:legacy-support-core-utils:1.0.0 -> androidx.print:print:1.0.0
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.recyclerview:recyclerview:1.1.0
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.transition:transition:1.2.0
+  :app:releaseRuntimeClasspath -> com.google.android.material:material:1.9.0 -> androidx.viewpager2:viewpager2:1.0.0
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --debug option to get more log output.
+> Run with --scan to generate a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.2.1/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 1s
+5 actionable tasks: 5 executed
+Watched directory hierarchies: [D:\AI\xiaoyou-core\android]

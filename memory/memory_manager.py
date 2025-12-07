@@ -5,12 +5,13 @@ import asyncio
 import time
 import threading
 import logging
+from config.integrated_config import get_settings
 
 # Configure logger
 logger = logging.getLogger(__name__)
 
 class MemoryManager:
-    def __init__(self, max_length=10, user_id="default", auto_save_interval=300):
+    def __init__(self, max_length=None, user_id="default", auto_save_interval=None):
         """
         Optimized memory manager that reduces default max_length to decrease memory usage and adds auto-save functionality
         
@@ -19,10 +20,18 @@ class MemoryManager:
             user_id: User ID for saving/loading history
             auto_save_interval: Auto-save interval in seconds, 0 means disable auto-save
         """
+        settings = get_settings()
+        
+        if max_length is None:
+            max_length = settings.memory.default_history_length
+            
+        if auto_save_interval is None:
+            auto_save_interval = settings.memory.auto_save_interval
+            
         self.history = []
         self.max_length = max_length
         self.user_id = user_id
-        self.history_dir = "history"
+        self.history_dir = settings.memory.history_dir
         self.auto_save_interval = auto_save_interval
         self.last_modified_time = time.time()
         self.lock = threading.Lock()  # Add thread lock to ensure thread safety
@@ -31,7 +40,7 @@ class MemoryManager:
         try:
             os.makedirs(self.history_dir, exist_ok=True)
         except Exception as e:
-            print(f"Failed to create history directory: {e}")
+            logger.error(f"Failed to create history directory: {e}")
         
         # Start auto-save thread
         if auto_save_interval > 0:
@@ -147,7 +156,7 @@ class MemoryManager:
             return f"History saved to {file_path} ({os.path.getsize(file_path)} bytes)"
         except Exception as e:
             error_msg = f"Failed to save history: {str(e)}"
-            print(error_msg)
+            logger.error(error_msg)
             return error_msg
     
     def load_history(self):
@@ -173,20 +182,20 @@ class MemoryManager:
             return "History file format error, cannot load"
         except Exception as e:
             error_msg = f"Failed to load history: {str(e)}"
-            print(error_msg)
+            logger.error(error_msg)
             return error_msg
     
     def set_max_length(self, max_length):
         """Set maximum history length with reasonable boundary checks"""
         try:
-            if 1 <= max_length <= 100:  # Add reasonable range limit
+            if max_length > 0:  # Ensure positive length
                 with self.lock:
                     self.max_length = max_length
                     # If current history exceeds new limit, intelligently truncate
                     self._trim_history()
                 return f"Maximum history length set to {max_length}"
             else:
-                return "Maximum length must be between 1-100"
+                return "Maximum length must be positive"
         except Exception as e:
             return f"Failed to set maximum length: {str(e)}"
     
@@ -228,9 +237,9 @@ class MemoryManager:
                 # Only save if there are modifications and history is not empty
                 if self.history and (time.time() - self.last_modified_time > 60):  # Execute only if not saved for at least 1 minute
                     self.save_history()
-                    print(f"[{time.ctime()}] Auto-saved history for {self.user_id}")
+                    logger.info(f"Auto-saved history for {self.user_id}")
             except Exception as e:
-                print(f"Auto-save failed: {e}")
+                logger.error(f"Auto-save failed: {e}")
     
     async def async_save_history(self):
         """Asynchronously save history to avoid blocking event loop"""

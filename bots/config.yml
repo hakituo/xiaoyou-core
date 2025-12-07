@@ -1,0 +1,76 @@
+# go-cqhttp 配置文件
+
+account:
+  uin: 3406280693  # QQ账号
+  password:  # 密码为空时使用扫码登录
+  encrypt: false  # 是否加密密码
+  login_mode: qrcode  # 使用二维码登录方式
+  status: 0  # 在线状态 请参考 https://docs.go-cqhttp.org/guide/config.html#在线状态
+  relogin:
+    delay: 3  # 重连延迟, 单位秒
+    interval: 3  # 重连间隔
+    max-times: 0  # 最大重连次数, 0为无限制
+  protocol: 1  # 强制使用手表协议 (protocol 1 = Watch)
+  # 移除自定义device配置，使用更简洁的配置方式确保协议生效
+  # 暂时禁用sign-server以避免登录问题
+  # sign-server:
+  #   addr: http://signserver.example.com:8080/sign
+  #   key: xiaoyou_qq_bot_complex_sign_key_2024
+
+heartbeat:
+  disabled: false  # 是否禁用心跳
+  interval: 5  # 心跳间隔时间，单位秒
+
+message:
+  post-format: array  # 消息格式，可选：string, array
+  ignore-invalid-cqcode: false  # 是否忽略无效的CQ码
+  force-fragment: false  # 是否强制分片发送
+  fix-url: false  # 是否自动修复url
+  report-self-message: false  # 是否上报自己的消息
+  remove-reply-at: false  # 是否移除回复时的@
+  extra-reply-data: false  # 是否转发额外的回复数据
+
+sync:
+  delay: 3000  # 同步延迟时间，单位毫秒
+  timeout: 5  # 超时时间，单位秒
+
+http:
+  host: 127.0.0.1  # HTTP服务器监听地址
+  port: 5700  # HTTP服务器端口
+  timeout: 3600  # 超时时间，单位秒
+  post:
+    - url: http://127.0.0.1:8080/qq/message  # 消息上报地址，与XiaoYou机器人保持一致
+      secret: ''  # 密钥，为空则不验证
+
+ws:
+  host: 127.0.0.1  # WebSocket服务器监听地址
+  port: 6700  # WebSocket服务器端口
+
+ws-reverse:
+  universal: ws://127.0.0.1:8080/qq/ws  # 反向WebSocket地址，与XiaoYou机器人保持一致
+
+cache:
+  image: data/image  # 图片缓存路径
+  video: data/video  # 视频缓存路径
+  file: data/file  # 文件缓存路径
+
+log:
+  level: info  # 日志等级，可选：trace,debug,info,warn,error,fatal
+  timestamp: true  # 是否显示时间戳
+  long-file: false  # 是否显示长文件名
+
+debug:
+  ignore-missing-files: false  # 是否忽略缺失的文件
+  show-traceback: false  # 是否显示详细错误
+
+# 基础事件过滤器
+filter:
+  - type: black-list  # 黑名单
+    list: []  # 黑名单列表
+  - type: white-list  # 白名单
+    list: []  # 白名单列表
+
+# 安全配置
+security:
+  ignore-invalid-cqcode: true  # 忽略无效CQ码
+  report-self-message: true  # 上报自己的消息

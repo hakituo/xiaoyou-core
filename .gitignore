@@ -74,6 +74,9 @@ paper/EN/*.html
 paper/experiment/*.pdf
 paper/experiment/experiment_results/
 
+# 报告文件排除
+System_Architecture_and_Performance_Report.*
+
 # 虚拟环境目录
 venv_*/
 dist/
@@ -81,7 +84,7 @@ dist/
 
 # 输出和临时文件目录
 tts_output/
-output/audio/
+output/
 uploads/
 
 # 临时测试脚本

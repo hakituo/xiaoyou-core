@@ -1,0 +1,111 @@
+# 应用程序主要配置
+
+# 服务器配置
+server:
+  port: 8000
+  debug_mode: false
+  max_content_length: 16777216  # 16MB
+  max_requests_per_minute: 60
+
+# WebSocket配置
+websocket:
+  port: 8999
+  heartbeat_interval: 30  # 秒
+  timeout: 60  # 秒
+  max_connections: 10
+  max_concurrent_queries: 5  # 添加并发查询限制
+
+# 日志配置
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  file: "flask_app.log"
+
+# 对话历史配置
+history:
+  default_length: 10
+  max_length: 50
+  directory: "./history/"
+
+# 内存管理配置
+memory:
+  pruning_threshold: 0.3
+  long_term_db: "long_term_memory.db"
+
+# 模型配置
+model:
+  default: "qianwen-turbo"
+  path: "./models/"
+  # 模型加载选项
+  load_options:
+    # 是否自动调整精度 (fp16/bf16/fp32)
+    auto_dtype: true
+    # 是否使用量化 (优先尝试4bit，然后是8bit)
+    quantization: true
+    # 强制使用NF4 4位量化格式
+    nf4_quantization: true
+    # 量化相关配置
+    quantization_config:
+      load_in_4bit: true
+      bnb_4bit_quant_type: "nf4"
+      bnb_4bit_compute_dtype: "float16"
+      bnb_4bit_use_double_quant: true
+    # 是否使用模型并行 (适用于大模型)
+    model_parallel: true
+    # 最大内存使用比例 (0.0-1.0)
+    max_memory_ratio: 0.9
+    # 加载超时时间 (秒)
+    timeout: 300
+
+# 语音配置
+voice:
+  enabled: true
+  default_engine: "gpt-sovits"
+  default_voice: "zh-CN-XiaoxiaoNeural"
+  default_speed: 1.0
+  reference_audio: "ref_audio\\female\\ref_calm.wav"
+  gpt_sovits:
+    gpt_model_path: "d:\\AI\\xiaoyou-core\\models\\voice\\流萤-e10.ckpt"
+    sovits_model_path: "d:\\AI\\xiaoyou-core\\models\\voice\\Aveline_Violet_Mix.pth"
+
+# 缓存配置
+cache:
+  size: 1000  # LRU缓存大小
+  ttl: 3600  # 缓存过期时间（秒）
+
+# 本地配置，不使用外部API
+api:
+  # qianwen_api_key已移除，系统完全使用本地模型
+
+# 内容限制
+limits:
+  max_text_length: 4096
+  # 消息处理超时时间（秒）
+  message_timeout: 120
+
+# 静态文件路径
+paths:
+  static_dir: "./static/"
+  templates_dir: "./templates/"
+
+# 跨域配置
+cors:
+  enabled: true
+  allowed_origins: ["*"]  # 生产环境应该限制为特定域名
+
+# 环境特定配置
+environments:
+  development:
+    debug_mode: true
+    logging_level: "DEBUG"
+    history_default_length: 20
+  
+  production:
+    debug_mode: false
+    logging_level: "WARNING"
+    cors_enabled: true
+  
+  testing:
+    debug_mode: true
+    testing: true
+    logging_level: "DEBUG"
+    websocket_max_connections: 2

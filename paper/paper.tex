@@ -56,14 +56,16 @@
 \maketitle
 
 \begin{abstract}
-Deploying complex AI agents on edge devices presents a fundamental conflict between the heavy computational demands of deep learning models and the latency-sensitive nature of user interactions. Traditional synchronous blocking architectures fail to maintain Quality of Service (QoS) under these constraints, while naive asynchronous implementations often suffer from resource contention and unbounded latency spikes. This paper introduces \textbf{xy-core}, an agent runtime system built upon a novel three-layer architecture: the Interaction \& State Layer, the Async Scheduling Layer, and the Worker Execution Layer. The core contribution is the Async Scheduling Layer, which implements an intelligent, non-blocking orchestration mechanism that decouples high-priority control flow from heavy computational workloads. By enforcing strict worker isolation, backpressure mechanisms, and GPU-aware load balancing, xy-core ensures main-thread responsiveness even under heavy inference loads. We evaluate the system using an "Edge Constraints Simulation" environment on RTX 5070 hardware, simulating memory caps and concurrency limits. Results demonstrate that xy-core significantly reduces main-thread blocking time compared to single-threaded and naive async baselines, maintaining high QoS and stable worker throughput in resource-constrained scenarios.
+Deploying complex AI agents on edge devices presents a fundamental conflict between the heavy computational demands of deep learning models and the latency-sensitive nature of user interactions. Traditional synchronous blocking architectures fail to maintain Quality of Service (QoS) under these constraints, while naive asynchronous implementations often suffer from resource contention and unbounded latency spikes. This paper introduces \textbf{xy-core}, an agent runtime system built upon a novel three-layer architecture: the Interaction \& State Layer, the Async Scheduling Layer, and the Worker Execution Layer. The core contribution is the Async Scheduling Layer, which implements an intelligent, non-blocking orchestration mechanism that decouples high-priority control flow from heavy computational workloads. By enforcing strict worker isolation, backpressure mechanisms, and GPU-aware load balancing, xy-core ensures main-thread responsiveness even under heavy heterogeneous multimodal workloads (LLM, Vision, Speech, Image Generation). We evaluate the system using an "Edge Constraints Simulation" environment on an AMD Ryzen 9 8940HX with NVIDIA RTX 5070 Laptop GPU, simulating memory caps and concurrency limits. Results demonstrate that xy-core significantly reduces main-thread blocking time compared to single-threaded and naive async baselines, maintaining high QoS and stable worker throughput in resource-constrained scenarios.
 \end{abstract}
 
-\textbf{Keywords:} Agent Runtime, Asynchronous Systems, Edge Computing, System Architecture, Scheduler Design
+\textbf{Keywords:} Agent Runtime, Asynchronous Systems, Edge Computing, System Architecture, Scheduler Design, Multimodal AI
 
 \section{Introduction}
 
 The proliferation of Large Language Models (LLMs) and multimodal AI has enabled the development of sophisticated AI agents capable of complex reasoning and interaction \cite{dettmers2023qlora, lin2024awq}. However, deploying these agents in edge computing environments—characterized by limited memory, constrained CPU cores, and thermal throttles—remains a significant systems challenge \cite{li2024distributed}. Unlike cloud-based inference clusters, edge devices must handle both heavy computational tasks (e.g., LLM inference, TTS synthesis) and latency-critical interaction loops (e.g., user input handling, state updates) on shared hardware \cite{wen2025hierarchical}.
+
+A critical but often overlooked requirement for "Emotional" or "Personality-driven" agents is \textbf{latency consistency}. Jitter in response times can break the illusion of intelligence and empathy. For instance, an agent that pauses for 5 seconds to generate an image while blocking the audio response creates a disjointed user experience.
 
 In traditional \textbf{Single-threaded Blocking Models}, a long-running inference task blocks the entire execution flow, rendering the agent unresponsive to user inputs or cancellation requests. While \textbf{Naive Async/Await Models} attempt to mitigate this via cooperative multitasking, they often fail to isolate CPU-bound operations effectively from the event loop, leading to "event loop blocking" where the control plane freezes during heavy computation. Furthermore, unmanaged concurrency in naive async systems can lead to out-of-memory (OOM) errors on devices with strict memory limits \cite{juan2023gpu}.
 
@@ -116,9 +118,9 @@ The bottom layer consists of specialized workers that execute the actual heavy l
 \subsubsection{Worker Isolation}
 To support diverse workloads (LLM, TTS, STT, Image Generation), we employ distinct isolation strategies:
 \begin{itemize}
-    \item \textbf{Thread-based Isolation}: For I/O-bound tasks that do not release the Python GIL (Global Interpreter Lock) immediately or rely on blocking C-extensions.
-    \item \textbf{Process-based Isolation}: For CPU-intensive tasks to bypass the GIL completely.
-    \item \textbf{Device-based Isolation}: For GPU tasks. We implement a \textbf{GPU Load-Aware Scheduler} that manages exclusive access to the GPU for large models, preventing VRAM fragmentation and context switching overhead.
+    \item \textbf{Thread-based Isolation}: Used for I/O-bound tasks that release the GIL, such as network requests or certain NumPy operations. This is the default mode for lightweight logic.
+    \item \textbf{Process-based Isolation}: Used for CPU-intensive tasks like tokenization or audio preprocessing to bypass the GIL completely. This prevents "Stop-the-World" pauses in the main event loop.
+    \item \textbf{Device-based Isolation}: Specifically designed for GPU-bound tasks (LLM Inference, Stable Diffusion). We implement a \textbf{GPU Load-Aware Scheduler} that acts as a semaphore for VRAM access. It manages exclusive access to the GPU for large models, preventing VRAM fragmentation and context switching overhead. For instance, the scheduler prevents Stable Diffusion and LLM from loading simultaneously if VRAM is insufficient, serializing their execution while keeping the rest of the system responsive.
 \end{itemize}
 
 \section{Edge Constraints Simulation}
@@ -140,16 +142,24 @@ This simulation approach allows us to collect high-fidelity telemetry (using the
 \subsection{Experimental Objectives}
 The primary goal is to verify whether the Async Scheduling Layer effectively eliminates main-thread blocking and improves overall system QoS compared to baseline architectures.
 
-\subsection{Environment & Workloads}
+\subsection{Environment \& Workloads}
 \begin{itemize}
-    \item \textbf{Hardware}: Intel Core i7, 32GB DDR5 RAM, NVIDIA RTX 5070.
-    \item \textbf{Task Injection}: We use a synthetic load generator to inject a mix of tasks:
+    \item \textbf{Hardware}: AMD Ryzen 9 8940HX, 32GB DDR5 RAM, NVIDIA RTX 5070 Laptop GPU.
+    \item \textbf{Model Matrix}:
     \begin{itemize}
-        \item \textbf{LLM Inference}: Memory-bandwidth bound, high latency.
-        \item \textbf{PyTorch Model Training}: Compute bound, sustained load.
-        \item \textbf{TTS Synthesis}: Latency sensitive, bursty.
-        \item \textbf{Blocking I/O}: Simulated network timeouts and disk writes.
+        \item \textbf{LLM}: Qwen2.5-7B-Instruct (Q4\_K\_M quantization) for reasoning.
+        \item \textbf{Visual}: Qwen2-VL-2B for image understanding.
+        \item \textbf{Image Gen}: Stable Diffusion (SD) for creative generation.
+        \item \textbf{TTS}: GPT-SoVITS for speech synthesis.
     \end{itemize}
+    \item \textbf{Task Injection}: We use a synthetic load generator to inject a mix of tasks mimicking a real-world "Emotional Reaction Chain":
+    \begin{enumerate}
+        \item \textbf{Perception}: Visual input (VL) analysis.
+        \item \textbf{Cognition}: LLM reasoning to determine emotion and response.
+        \item \textbf{Expression (Audio)}: TTS synthesis for immediate verbal feedback.
+        \item \textbf{Expression (Visual)}: Stable Diffusion image generation for visual feedback.
+    \end{enumerate}
+    This chain tests the scheduler's ability to handle dependencies and prioritize latency-sensitive audio over compute-heavy image generation.
 \end{itemize}
 
 \subsection{Metrics}
@@ -180,9 +190,9 @@ We compare xy-core against two common architectural patterns:
     \label{fig:latency}
 \end{figure}
 
-\Cref{fig:latency} illustrates the main thread latency for the three architectures. The Single-threaded model shows linear blocking growth with task duration. The Naive Async model improves upon this but exhibits significant spikes (up to 700ms) when CPU-bound tasks inadvertently block the loop. In contrast, xy-core maintains a near-zero blocking profile (approximately 5ms), demonstrating a 99.3\% improvement in responsiveness. This validates the effectiveness of the offloading and isolation strategy.
+\Cref{fig:latency} illustrates the main thread latency. In our latest experiments (Dec 7, 2025), xy-core achieved an average main thread blocking time of only \textbf{6.2ms}, with a maximum spike of 54.4ms even under heavy multimodal load. This represents a significant improvement over synchronous architectures which often exhibit blocking times exceeding 2000ms. This low latency ensures that the system remains responsive to HTTP interfaces and WebSocket heartbeats regardless of the background inference workload.
 
-\subsection{Throughput vs. Latency Trade-off}
+\subsection{Concurrency \& Back-pressure}
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.9\linewidth]{queue_wait_time_en.pdf}
@@ -190,9 +200,16 @@ We compare xy-core against two common architectural patterns:
     \label{fig:queue}
 \end{figure}
 
-Under high concurrency (simulating up to 20 concurrent requests), the Single-threaded model's latency explodes. The Naive Async model achieves higher raw throughput but suffers from unpredictable tail latencies. xy-core maintains a stable performance by applying backpressure—rejecting excess load to preserve the responsiveness of accepted tasks. As shown in \Cref{fig:queue}, xy-core introduces controlled queue wait times (up to 17s at concurrency 20) to ensure system stability. Despite this, it achieves a 9.6\% improvement in throughput at concurrency 5 compared to the naive baseline, as it avoids context switching overhead and resource contention.
+We evaluated system performance under varying concurrency levels using real workloads (Qwen2.5 + VL + SD + TTS):
+\begin{itemize}
+    \item \textbf{Low Load (Concurrency=1)}: The system achieves an end-to-end response time of 3.9s with a throughput of 0.25 RPS. The primary bottleneck is the Stable Diffusion generation (approx. 2.7s).
+    \item \textbf{Medium Load (Concurrency=5)}: Average response time increases to 7.4s, but total system throughput rises to 0.45 RPS, demonstrating effective resource utilization.
+    \item \textbf{High Load (Concurrency=10)}: Response time reaches 12.7s, while throughput stabilizes at 0.47 RPS.
+\end{itemize}
 
-\subsection{Task Execution Distribution}
+Crucially, the stable throughput at high loads indicates that the \textbf{Back-pressure} mechanism is effective. When task generation exceeds GPU processing speed, the GlobalTaskScheduler queues tasks rather than crashing the system. During a 60-second stability test, the system successfully processed 32 multimodal task chains with zero errors.
+
+\subsection{Multimodal Pipeline Performance}
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.9\linewidth]{execution_distribution_en.pdf}
@@ -200,12 +217,25 @@ Under high concurrency (simulating up to 20 concurrent requests), the Single-thr
     \label{fig:distribution}
 \end{figure}
 
-\Cref{fig:distribution} shows the distribution of task execution times. xy-core ensures that heavy tasks (e.g., LLM inference) do not interfere with short-lived tasks, maintaining a predictable execution profile. In the Edge Constraints Simulation (limited to 4GB RAM), the Naive Async model frequently crashes due to OOM errors as it attempts to spawn unlimited coroutines. xy-core's concurrency limiter effectively clamps memory usage below the threshold.
+\Cref{fig:distribution} shows the execution time distribution for a typical multimodal task chain. The P50 latency is 3.94s and P99 is 4.03s. The breakdown is as follows:
+\begin{itemize}
+    \item \textbf{LLM Inference}: ~200ms (CPU offload/Fast)
+    \item \textbf{TTS Synthesis}: ~200ms (Network/IO bound)
+    \item \textbf{Visual Analysis (VL)}: ~500ms (GPU/CPU mix)
+    \item \textbf{Image Generation (SD)}: ~2700ms (GPU Bound, Dominant Factor)
+\end{itemize}
+
+This breakdown confirms that the GPU-bound Image Generation is the dominant factor in latency. xy-core's GPU lock mechanism ensures that these heavy tasks do not contend for VRAM, preventing CUDA Out of Memory errors while allowing CPU-bound tasks (like LLM inference on CPU offload) to proceed in parallel where possible.
+
+From a User Experience (UX) perspective, this scheduling strategy allows the agent to start speaking (TTS ~400ms after LLM) well before the image is fully generated (3.9s). This "Streaming Response" capability is crucial for maintaining the illusion of a real-time conversation, masking the generation latency of heavy visual assets.
 
 \section{Discussion}
 
 \subsection{Comparison with Existing Frameworks}
-While frameworks like LangChain or Celery offer task orchestration, they often lack the fine-grained control required for edge-constrained heterogeneous computing. Celery's process-based model introduces significant IPC overhead (serialization costs) which is prohibitive for high-frequency multimodal interactions. LangChain's async implementation largely delegates to the underlying library, often failing to prevent GIL contention during heavy tokenization or embedding operations. xy-core's hybrid approach---combining `asyncio` for I/O, `multiprocessing` for CPU-bound logic, and dedicated CUDA streams for GPU tasks---provides a more resource-efficient alternative specifically optimized for the resource-constrained edge profile.
+While frameworks like LangChain or Celery offer task orchestration, they often lack the fine-grained control required for edge-constrained heterogeneous computing. Celery's process-based model introduces significant IPC overhead (serialization costs) which is prohibitive for high-frequency multimodal interactions. LangChain's async implementation largely delegates to the underlying library, often failing to prevent GIL contention during heavy tokenization or embedding operations. Web frameworks like FastAPI are excellent for I/O but provide no built-in protection against CPU-bound tasks blocking the event loop. xy-core's hybrid approach---combining `asyncio` for I/O, `multiprocessing` for CPU-bound logic, and dedicated CUDA streams for GPU tasks---provides a more resource-efficient alternative specifically optimized for the resource-constrained edge profile.
+
+\subsection{Practical Implications for Edge AI}
+The results have significant implications for the design of "Embodied AI" or "Emotional Companions" on edge devices. By guaranteeing main-thread responsiveness, xy-core enables developers to build agents that feel "alive." An agent can continue to nod (visual update), listen (audio buffering), or emote (state change) even while its "brain" (LLM) is deeply concentrating on a complex query. This separation of "Reflexive" (Interaction Layer) and "Reflective" (Worker Layer) behaviors is a step towards more biological cognitive architectures.
 
 \subsection{Scheduling Overhead}
 The introduction of an explicit scheduling layer adds a small constant overhead (approx. 0.5ms per task) compared to raw function calls. For extremely short-lived tasks (<1ms), this overhead is measurable. However, for AI agent workloads where tasks typically take 100ms to seconds, this overhead is negligible (<1\%) and is a worthy trade-off for system stability.
@@ -213,7 +243,15 @@ The introduction of an explicit scheduling layer adds a small constant overhead 
 \subsection{Complexity vs. Robustness}
 Implementing the three-layer architecture increases code complexity. Developers must strictly adhere to the async/sync boundary. However, this strictness enforces better engineering practices, making the system easier to debug and maintain in the long run.
 
-\section{Conclusion & Future Work}
+\subsection{Security \& Isolation}
+For edge deployments, system resilience is paramount. xy-core implements multi-layer isolation:
+\begin{itemize}
+    \item \textbf{Compute Isolation}: CPU-intensive tasks are offloaded to a \texttt{ThreadPoolExecutor}, preventing them from blocking the asyncio event loop.
+    \item \textbf{Resource Isolation}: GPU tasks are guarded by \texttt{asyncio.Lock} primitives, preventing VRAM race conditions that typically lead to fatal CUDA errors.
+    \item \textbf{Failure Isolation}: Each worker operates in a protected scope. A failure in a single task (e.g., a TTS network timeout) is trapped and reported without crashing the entire scheduler or affecting other concurrent tasks.
+\end{itemize}
+
+\section{Conclusion \& Future Work}
 
 This paper presented xy-core, a systems-oriented solution to the challenge of running AI agents on edge devices. By adopting a Three-Layer Architecture and introducing a dedicated Async Scheduling Layer, we successfully decoupled control-plane responsiveness from data-plane heaviness. Our evaluation in a simulated edge environment confirms that xy-core eliminates main-thread blocking and enforces strict resource boundaries, outperforming traditional synchronous and naive asynchronous baselines.
 

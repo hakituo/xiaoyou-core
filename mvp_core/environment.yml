@@ -1,0 +1,24 @@
+name: xiaoyou-mvp
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=12.1
+  - pip
+  - pip:
+    - aiohttp
+    - psutil
+    - diffusers
+    - transformers
+    - accelerate
+    - safetensors
+    - pillow
+    - matplotlib
+    - numpy
+    - llama-cpp-python

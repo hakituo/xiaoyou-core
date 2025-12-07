@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh">
+  <head>
+    <script>
+      if (window.parent !== window && !window.location.search.includes('be_nested=1')) {
+        window.stop();
+      }
+    </script>
+    <meta charset="UTF-8">
+    <link rel="icon" href="https://cdn-static.gitcode.com/static/images/logo-favicon.png">
+    <link rel="dns-prefetch" href="https://res.hc-cdn.com">
+    <link rel="dns-prefetch" href="https://assets-cli.s2.udesk.cn">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta content='pc,mobile' name='applicable-device'>
+    <meta property="og:image" content="https://cdn-static.gitcode.com/static/images/logo-favicon.png">
+    <meta property="og:image:secure_url" content="https://cdn-static.gitcode.com/static/images/logo-favicon.png">
+    <meta property="og:image:width" content="49">
+    <meta property="og:image:height" content="49">
+    <meta property="og:image:alt" content="favicon">
+    <meta property="og:image:type" content="image/png">
+    <meta name="baidu-site-verification" content="codeva-zQ72KLO8Ne" />
+    <title>GitCode - 全球开发者的开源社区,开源代码托管平台</title>
+    <meta name="description" content="GitCode是面向全球开发者的开源社区,包括原创博客,开源代码托管,代码协作,项目管理等。与开发者社区互动,提升您的研发效率和质量。"/>
+    <meta name="keywords" content="开源社区,开源代码,GitCode"/>
+    <style type="text/css">
+      .icon {
+         width: 1em; height: 1em;
+         vertical-align: -0.15em;
+         fill: currentColor;
+         overflow: hidden;
+      }
+    </style>
+    <script type="module" crossorigin src="https://cdn-static.gitcode.com/assets/index-c16218ff.js"></script>
+    <link rel="modulepreload" crossorigin href="https://cdn-static.gitcode.com/assets/@antv-74bee8cd.js">
+    <link rel="modulepreload" crossorigin href="https://cdn-static.gitcode.com/assets/@mermaid-js-c734818a.js">
+    <link rel="modulepreload" crossorigin href="https://cdn-static.gitcode.com/assets/mermaid-141e14b6.js">
+    <link rel="modulepreload" crossorigin href="https://cdn-static.gitcode.com/assets/@sentry-f0d9095b.js">
+    <link rel="stylesheet" href="https://cdn-static.gitcode.com/assets/index-12110ae2.css">
+  </head>
+  <body>
+    <img src="https://cdn-static.gitcode.com/static/images/logo-favicon.png" style="position:absolute;left:-1000px;top:-1000px" alt="favicon">
+    <div id="app"></div>
+    
+  </body>
+  <script type="text/javascript" src="https://cdn-static.gitcode.com/js/font_4205092_z6x7m8v7pag.js" defer></script>
+  <script type="text/javascript" src="https://cdn-static.gitcode.com/js/lottie.min.js" defer></script>
+  <script type="text/javascript" src="https://cdn-static.gitcode.com/js/tac/load.min.js" defer></script>
+  <script type="text/javascript" src="https://cdn-static.gitcode.com/js/yunpian/riddler-sdk-0.2.2.js" defer></script>
+  <script type="text/javascript" src="https://cdn-static.gitcode.com/js/furion.js" defer></script>
+  <!-- baidu统计X -->
+  <script>
+    var _hmt = _hmt || [];
+    _hmt.push(['_setAutoPageview', false]);
+    (function() {
+      var hm = document.createElement("script");
+      hm.src = "https://hm.baidu.com/hm.js?62047c952451105d57bab2c4af9ce85b";
+      var s = document.getElementsByTagName("script")[0];
+      s.parentNode.insertBefore(hm, s);
+    })();
+  </script>
+</html>

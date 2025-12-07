@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Dependencies
+.env
+*.egg-info/
+.eggs/
+
+# Logs
+logs/
+*.log
+app.log
+
+# Models
+models/
+
+# Data (exclude experiment results)
+*.db
+nvidia_smi_snapshot.txt
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+coverage/
+
+# Build
+build/
+dist/
+
+# Report
+System_Architecture_and_Performance_Report.*
+One_Page_Executive_Summary.*
+*.pdf
+*.aux
+*.log
+*.out
+
+# Allow experiment result plots (which are PDFs)
+!experiments/experiment_results/*.pdf

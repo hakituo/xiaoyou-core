@@ -1,0 +1,142 @@
+[build-system]
+requires = ["setuptools==68.2.2", "wheel==0.41.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xiaoyou-core"
+description = "小优AI助手核心模块"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+version = "0.1.0"
+
+authors = [
+  { name = "Xiaoyou Team", email = "team@xiaoyou.ai" }
+]
+
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.dependencies]
+# 核心依赖
+asyncio = "==3.4.3"
+websockets = "==10.4"
+aiohttp = "==3.9.1"
+httpx = "==0.25.2"
+python-dotenv = "==1.0.0"
+pydantic = "==2.5.2"
+pydantic-settings = "==2.1.0"
+PyYAML = "==6.0.1"
+requests = "==2.31.0"
+fastapi = "==0.104.1"
+uvicorn = "==0.24.0.post1"
+
+# 日志和监控
+psutil = "==5.9.7"
+colorama = "==0.4.6"
+structlog = "==23.2.0"
+
+# 机器学习框架
+torch = "==2.0.1"
+transformers = "==4.35.2"
+accelerate = "==0.25.0"
+bitsandbytes = "==0.41.3.post2"
+
+# 数据处理
+numpy = "==1.24.4"
+
+# 平台特定依赖
+pywin32 = { version = "==306", markers = "sys_platform == 'win32'" }
+
+# 可选依赖组
+[project.optional-dependencies]
+dev = [
+  "pytest==7.4.4",
+  "pytest-cov==4.1.0",
+  "black==23.12.1",
+  "flake8==6.1.0",
+  "mypy==1.8.0",
+  "pre-commit==3.6.0"
+]
+docs = [
+  "sphinx==7.2.6",
+  "sphinx-rtd-theme==2.0.0"
+]
+audio = [
+  "TTS==0.21.3",
+  "pyaudio==0.2.13",
+  "soundfile==0.12.1",
+  "pydub==0.25.1"
+]
+image = [
+  "pillow==9.5.0",
+  "numpy==1.24.4",
+  "opencv-python==4.8.1.78"
+]
+queue = [
+  "redis==4.6.0",
+  "rq==1.15.1"
+]
+
+# 命令行入口点
+[project.scripts]
+xiaoyou = "src.cli.main:main"
+xiaoyou-start = "app:main"
+xiaoyou-tts = "multimodal.tts_manager:main"
+
+# 工具配置
+[tool.black]
+line-length = 88
+target-version = ["py39", "py310", "py311"]
+include = "\\.pyi?$"
+# exclude = """
+# /(\.|_build|buck-out|build|dist|venv_|__pycache__|tests)/
+# """
+
+[tool.isort]
+profile = "black"
+line_length = 88
+src_paths = ["src"]
+skip_gitignore = true
+
+[tool.flake8]
+max-line-length = 88
+exclude = [
+    "venv_*",
+    "__pycache__",
+    "build",
+    "dist",
+    "tests"
+]
+ignore = [
+    "E203",  # whitespace before ':' (与 black 冲突)
+    "W503",  # line break before binary operator (与 black 冲突)
+]
+
+[tool.pytest]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
+ignore_missing_imports = true
+follow_imports = "skip"
+
+[tool.setuptools.packages.find]
+where = ["."]
+exclude = ["tests*", "examples*", "docs*", "paper*"]

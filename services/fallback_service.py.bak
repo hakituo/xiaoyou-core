@@ -1,0 +1,795 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Aveline人设服务模块 - 重构版
+负责处理Aveline角色的所有逻辑，包括上下文管理、角色生成和回复生成
+"""
+
+import json
+import os
+import re
+import logging
+import hashlib
+import time
+import random
+import threading
+import traceback
+import uuid
+from typing import Dict, List, Optional, Tuple, Any, Union
+from datetime import datetime
+
+import torch
+
+from core.utils.logger import get_logger
+from core.config_manager import ConfigManager
+from core.model_manager import ModelManager, get_model_manager
+from core.model_adapter import ModelAdapter
+from core.cache.main import EnhancedCacheManager
+# 延迟导入，避免循环依赖
+from services.resource_monitor import get_resource_monitor
+
+logger = get_logger(__name__)
+
+class AvelineService:
+    """
+    Aveline人设服务类
+    处理Aveline角色的所有逻辑，包括上下文管理、角色生成和回复生成
+    使用单例模式避免重复初始化和内存占用
+    """
+    _instance = None
+    _initialized = False
+    _model_initialized = False
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(AvelineService, cls).__new__(cls)
+        return cls._instance
+    
+    def __init__(self):
+        """初始化Aveline服务"""
+        if self._initialized:
+            return
+            
+        try:
+            logger.info("开始初始化Aveline服务(重构版)...")
+            
+            self.config_manager = ConfigManager()
+            self._model_manager = None
+            self.cache_manager = EnhancedCacheManager()
+            self._resource_monitor = get_resource_monitor()
+            
+            # 初始化模型适配器配置
+            self._init_model_adapter()
+            
+            # 加载角色配置
+            self.character_config = self._load_character_config()
+            logger.info(f"角色配置加载完成: {self.character_config.get('name', 'Unknown')}")
+            
+            # 初始化上下文模板
+            self.context_templates = self._init_context_templates()
+            
+            # 响应缓存
+            self.response_cache = {}
+            self.cache_size_limit = 100
+            self.cache_ttl = 300
+            
+            # 性能监控
+            self.performance_stats = {
+                "total_requests": 0,
+                "cache_hits": 0,
+                "avg_processing_time": 0,
+                "last_reset_time": time.time()
+            }
+            
+            self._initialized = True
+            logger.info("Aveline服务初始化完成")
+            
+        except Exception as e:
+            logger.error(f"Aveline服务初始化失败: {e}")
+            traceback.print_exc()
+            # 确保最小可用性
+            if not hasattr(self, 'character_config'):
+                self.character_config = {"name": "Aveline", "max_history_length": 5}
+            self._initialized = True
+
+    def _init_model_adapter(self):
+        """初始化模型适配器配置"""
+        try:
+            tm_path = os.environ.get('XIAOYOU_TEXT_MODEL_PATH', '').strip()
+            
+            # 自动检测本地模型
+            if not tm_path:
+                potential_models = [
+                    r"d:\AI\xiaoyou-core\models\llm\L3-8B-Stheno-v3.2-Q5_K_M.gguf",
+                    r"d:\AI\xiaoyou-core\models\llm\Qwen2___5-7B-Instruct-Q4_K_M.gguf",
+                    r"d:\AI\xiaoyou-core\models\qwen\Qwen2___5-7B-Instruct-f16.gguf"
+                ]
+                for p in potential_models:
+                    if os.path.exists(p):
+                        tm_path = p
+                        logger.info(f"自动检测到文本模型: {tm_path}")
+                        break
+            
+            if not tm_path:
+                tm_path = 'd:\\AI\\xiaoyou-core\\models\\qwen\\Qwen2___5-7B-Instruct'
+
+            # 根据文件扩展名确定模型类型
+            model_type = 'transformers'
+            if tm_path.lower().endswith('.gguf'):
+                model_type = 'llama_cpp'
+                logger.info(f"检测到GGUF模型，使用llama_cpp后端: {tm_path}")
+
+            sd_path = os.environ.get('XIAOYOU_SD_MODEL_PATH', '').strip()
+            if not sd_path:
+                potential_paths = [
+                    r"D:\AI\xiaoyou-core\models\sdxl\sdxl_base_1.0.safetensors"
+                ]
+                for p in potential_paths:
+                    if os.path.exists(p):
+                        sd_path = p
+                        break
+
+            # 获取高级配置
+            n_gpu_layers = self.config_manager.get('model.llm.n_gpu_layers', os.environ.get('LLM_N_GPU_LAYERS', -1))
+            n_ctx = self.config_manager.get('model.llm.n_ctx', os.environ.get('LLM_N_CTX', 4096))
+            n_batch = self.config_manager.get('model.llm.n_batch', os.environ.get('LLM_N_BATCH', 512))
+
+            self.model_adapter = ModelAdapter({
+                'text_model': {
+                    'model_type': model_type,
+                    'text_model_path': tm_path,
+                    'device': 'cuda' if torch.cuda.is_available() else 'cpu',
+                    'quantization': {'enabled': True, 'load_in_4bit': True},
+                    'n_gpu_layers': int(n_gpu_layers),
+                    'n_ctx': int(n_ctx),
+                    'n_batch': int(n_batch)
+                },
+                'image_model': {
+                    'model_type': 'stable_diffusion',
+                    'sd_model_path': sd_path,
+                    'device': 'cuda' if torch.cuda.is_available() else 'cpu'
+                }
+            })
+        except Exception as e:
+            logger.error(f"模型适配器配置初始化失败: {e}")
+
+    @property
+    def model_manager(self):
+        """懒加载模型管理器"""
+        if not hasattr(self, '_model_manager') or self._model_manager is None:
+            try:
+                self._model_manager = get_model_manager()
+                self.__class__._model_initialized = True
+            except Exception as e:
+                logger.error(f"绑定全局模型管理器失败: {e}")
+                # 这里可以返回一个Mock管理器，暂时先置空
+                from core.model_manager import MockModelManager
+                self._model_manager = MockModelManager()
+        return self._model_manager
+
+    def generate_response(
+        self,
+        user_input: str,
+        conversation_id: str,
+        system_prompt: Optional[str] = None,
+        max_tokens: int = 512,
+        temperature: float = 0.7,
+        timeout: Optional[float] = None,
+        model_hint: Optional[str] = None
+    ) -> Tuple[str, Dict[str, Any]]:
+        """生成回复的主入口"""
+        start_time = time.time()
+        metadata = {
+            "status": "pending",
+            "timestamp": datetime.now().isoformat(),
+            "conversation_id": conversation_id
+        }
+
+        try:
+            # 1. 缓存检查
+            cache_key = self._generate_cache_key(user_input, conversation_id)
+            cached = self._get_from_cache(cache_key)
+            if cached:
+                logger.info(f"命中缓存: {cache_key}")
+                cached['metadata']['cache_hit'] = True
+                return cached['response'], cached['metadata']
+
+            # 2. 资源检查
+            if not self._check_system_resources():
+                return self._generate_lightweight_response(user_input), {"status": "downgraded", "model": "rule_based"}
+
+            # 3. 构建提示词
+            history = self._get_conversation_history(conversation_id)
+            prompt_text, messages = self._build_prompt(
+                user_input, 
+                history, 
+                system_prompt, 
+                conversation_id,
+                model_name=model_hint # 传入模型名称以启用特定模式
+            )
+
+            # 4. 执行推理（带超时控制）
+            result_container = {}
+            
+            def inference_task():
+                try:
+                    res, meta = self._infer_with_model(
+                        prompt_text, messages, max_tokens, temperature, model_hint
+                    )
+                    result_container['data'] = (res, meta)
+                except Exception as e:
+                    result_container['error'] = e
+
+            # 使用线程执行推理
+            t = threading.Thread(target=inference_task)
+            t.daemon = True
+            t.start()
+            
+            wait_time = float(timeout) if timeout else 60.0
+            t.join(timeout=wait_time)
+
+            if t.is_alive():
+                logger.error(f"模型推理超时 ({wait_time}s)")
+                return self._generate_safe_response(user_input)
+
+            if 'error' in result_container:
+                raise result_container['error']
+
+            if 'data' in result_container:
+                response_text, model_meta = result_container['data']
+                
+                # 清理和截断
+                cleaned_response = self._clean_response(response_text)
+                final_response = self._truncate_response(cleaned_response)
+                
+                # 更新历史
+                self._update_conversation_history(conversation_id, user_input, final_response)
+                
+                # 存入缓存
+                metadata.update(model_meta)
+                metadata["status"] = "success"
+                metadata["processing_time_ms"] = int((time.time() - start_time) * 1000)
+                
+                self._add_to_cache(cache_key, final_response, metadata)
+                
+                return final_response, metadata
+
+            return self._generate_safe_response(user_input)
+
+        except Exception as e:
+            logger.error(f"generate_response error: {e}")
+            traceback.print_exc()
+            return "抱歉，系统遇到了一些问题。", {"status": "error", "error": str(e)}
+
+    def _infer_with_model(
+        self, 
+        prompt: str, 
+        messages: List[Dict[str, str]], 
+        max_tokens: int, 
+        temperature: float,
+        model_hint: Optional[str]
+    ) -> Tuple[str, Dict[str, Any]]:
+        """底层模型推理逻辑"""
+        
+        # 1. 处理模型路径 (解决相对路径问题)
+        resolved_model_hint = model_hint
+        if model_hint:
+            # 如果是绝对路径且存在，直接使用
+            if os.path.isabs(model_hint) and os.path.exists(model_hint):
+                resolved_model_hint = model_hint
+            else:
+                # 尝试相对于项目根目录 models 目录
+                project_root = os.getcwd()
+                possible_paths = [
+                    os.path.join(project_root, "models", model_hint),
+                    os.path.join(project_root, model_hint),
+                    # 尝试处理 URL 编码或 frontend 传来的相对路径 (如 llm/...)
+                    os.path.join(project_root, "models", model_hint.replace("/", os.sep)),
+                ]
+                
+                found = False
+                for p in possible_paths:
+                    if os.path.exists(p):
+                        resolved_model_hint = p
+                        found = True
+                        logger.info(f"Resolved model path: {model_hint} -> {resolved_model_hint}")
+                        break
+                
+                if not found:
+                    # 如果找不到文件，且 hint 看起来像路径，则忽略它，使用默认模型
+                    if "/" in model_hint or "\\" in model_hint:
+                        logger.warning(f"Model path not found: {model_hint}, falling back to loaded model")
+                        resolved_model_hint = None
+                    else:
+                        # 可能是模型名称而非路径，保留原样
+                        pass
+
+        # 优先使用 model_adapter
+        if hasattr(self, 'model_adapter') and self.model_adapter:
+            try:
+                logger.info(f"使用 model_adapter.chat (model_hint={resolved_model_hint})")
+                # model_adapter.chat 内部会处理 messages 和 prompt
+                res = self.model_adapter.chat(
+                    messages=messages,
+                    model_name=resolved_model_hint,
+                    max_tokens=max_tokens,
+                    temperature=temperature
+                )
+                
+                if isinstance(res, dict):
+                    if res.get("status") == "error":
+                         raise Exception(res.get("error", "Unknown error"))
+                    
+                    content = res.get("response", "")
+                    if not content and "data" in res:
+                        content = res["data"].get("text", "")
+                        
+                    return content, {"model": "model_adapter"}
+                return str(res), {"model": "model_adapter"}
+            except Exception as e:
+                logger.error(f"ModelAdapter inference failed: {e}")
+                raise e
+        
+        mgr = self.model_manager
+        # 尝试旧的 fallback 方式 (如果 model_adapter 不可用)
+        if hasattr(mgr, 'generate'):
+             try:
+                out = mgr.generate(prompt, max_tokens=max_tokens, temperature=temperature)
+                if isinstance(out, dict):
+                    return out.get("text", ""), {"model": "manager_v2"}
+                return str(out), {"model": "manager_v1"}
+             except Exception as e:
+                 logger.warning(f"Manager generate failed: {e}")
+        
+        raise Exception("No available model inference method")
+
+    def _build_prompt(
+        self, 
+        user_input: str, 
+        history: List[Dict[str, Any]], 
+        custom_system_prompt: Optional[str] = None, 
+        conversation_id: Optional[str] = None,
+        model_name: Optional[str] = None
+    ) -> Tuple[str, List[Dict[str, str]]]:
+        """构建提示词和消息列表 (增强版 - 支持完整人设)"""
+        
+        # 1. 解析人设配置 (支持嵌套结构)
+        cfg = self.character_config
+        identity = cfg.get("identity", {})
+        name = identity.get("name", cfg.get("name", "Aveline"))
+        
+        # 2. 构建系统提示词
+        if custom_system_prompt:
+            sys_prompt = custom_system_prompt
+        else:
+            sys_prompt = self._construct_detailed_system_prompt(cfg, model_name)
+
+        # 3. 构建消息列表 (OpenAI格式)
+        messages = [{"role": "system", "content": sys_prompt}]
+        
+        # 添加历史记录
+        for msg in history:
+            role = "user" if msg.get("role") == "user" else "assistant"
+            content = msg.get("content", "")
+            if content:
+                messages.append({"role": role, "content": content})
+        
+        # 添加当前用户输入
+        messages.append({"role": "user", "content": user_input})
+        
+        # 4. 构建纯文本提示词 (Tavern风格 / Completion格式)
+        full_prompt = f"{sys_prompt}\n\n"
+        for msg in messages[1:]: # 跳过第一个system message
+            role_name = "User" if msg["role"] == "user" else name
+            full_prompt += f"{role_name}: {msg['content']}\n"
+        full_prompt += f"{name}:"
+        
+        return full_prompt, messages
+
+    def _construct_detailed_system_prompt(self, cfg: Dict[str, Any], model_name: Optional[str] = None) -> str:
+        """根据复杂配置构建详细的系统提示词"""
+        try:
+            # 判定模型类型
+            is_learning_mode = False
+            if model_name:
+                # 检查是否是 Qwen/千问 系列模型
+                lower_name = model_name.lower()
+                if "qwen" in lower_name or "千问" in lower_name:
+                    is_learning_mode = True
+            
+            # 基础信息
+            identity = cfg.get("identity", {})
+            name = identity.get("name", "Aveline")
+            context = identity.get("context", "")
+            
+            # 时间感知
+            now = datetime.now()
+            current_time_str = now.strftime("%Y-%m-%d %H:%M:%S %A")
+            
+            # 核心设定
+            base_prompt = cfg.get("system_prompt", "")
+            
+            # 性格特质
+            personality = cfg.get("personality", {})
+            traits = personality.get("traits", [])
+            trait_desc = []
+            for t in traits:
+                if isinstance(t, dict):
+                    t_name = t.get("name", "")
+                    t_behaviors = t.get("behaviors", [])
+                    if t_name and t_behaviors:
+                        trait_desc.append(f"- {t_name}: {'; '.join(t_behaviors)}")
+            trait_str = "\n".join(trait_desc)
+            
+            # 语言风格
+            lang = cfg.get("language_style", {})
+            lexicon = lang.get("lexicon", {})
+            intimate_words = lexicon.get("intimate", [])
+            digital_words = lexicon.get("digital", [])
+            
+            # 场景示例
+            scenarios = cfg.get("scenarios", [])
+            examples = []
+            for s in scenarios:
+                if isinstance(s, dict):
+                    p = s.get("prompt", "")
+                    r = s.get("response", "")
+                    if p and r:
+                        examples.append(f"User: {p}\n{name}: {r}")
+            example_str = "\n".join(examples)
+            
+            # 组合最终提示词
+            prompt_parts = []
+            
+            # 1. 核心指令
+            if base_prompt:
+                prompt_parts.append(base_prompt)
+            else:
+                prompt_parts.append(f"你现在是 {name}。")
+            
+            # 2. 模式特定指令
+            if is_learning_mode:
+                prompt_parts.append(
+                    "\n【当前模式：深度学习/专家模式】\n"
+                    "在此模式下，你需要详细、准确、逻辑清晰地回答用户的问题。\n"
+                    "可以使用较长的篇幅进行深入解析，适合教学、编程、学术探讨等场景。\n"
+                    "保持专业性，但依然维持 Aveline 的基本人设（亲密、直接）。"
+                )
+            else:
+                # 日常模式 (L3/Stheno)
+                prompt_parts.append(
+                    "\n【当前模式：日常闲聊模式】\n"
+                    "在此模式下，你必须像真人一样聊天。\n"
+                    "1. **拒绝长篇大论**：回复要短！短！短！通常1-3句话即可。\n"
+                    "2. **口语化**：不要用书面语，可以使用不完整的句子，像在发微信一样。\n"
+                    "3. **禁止说教**：不要总结、不要升华主题、不要当复读机。\n"
+                    "4. **少用敬语**：直接叫“你”或者亲昵的称呼，不要太客气。\n"
+                    "5. **Show, don't tell**：用语气体现情感，而不是说“我很开心”。"
+                )
+
+            # 3. 补充情境与时间
+            prompt_parts.append(f"\n【当前时间】\n{current_time_str}")
+            if context:
+                prompt_parts.append(f"\n【当前情境】\n{context}")
+                
+            # 4. 性格描述
+            if trait_str:
+                prompt_parts.append(f"\n【性格特质】\n{trait_str}")
+            
+            # --- New Section: User Profile ---
+            user_profile = cfg.get("user_profile", {})
+            if user_profile:
+                u_name = user_profile.get("name", "User")
+                u_alias = user_profile.get("alias", "")
+                u_traits = user_profile.get("traits", [])
+                u_summary = user_profile.get("summary", "")
+                u_attitude = user_profile.get("attitude_to_aveline", "")
+                
+                u_info = [f"用户姓名: {u_name} ({u_alias})"]
+                if u_traits:
+                    u_info.append(f"用户特质: {', '.join(u_traits)}")
+                if u_summary:
+                    u_info.append(f"用户画像: {u_summary}")
+                if u_attitude:
+                    u_info.append(f"对你的态度: {u_attitude}")
+                    
+                prompt_parts.append(f"\n【用户信息 ({u_name})】\n" + "\n".join(u_info))
+
+            # 5. 语言风格指导
+            style_parts = []
+            if intimate_words:
+                style_parts.append(f"常用亲密词: {', '.join(intimate_words)}")
+            if digital_words:
+                style_parts.append(f"常用数字隐喻: {', '.join(digital_words)}")
+            
+            if style_parts:
+                prompt_parts.append(f"\n【语言风格】\n" + "\n".join(style_parts))
+
+            # 6. 灵魂注入 (仅在日常模式下强调模仿)
+            if example_str and not is_learning_mode:
+                prompt_parts.append(
+                    "\n【对话范例 - 请务必模仿此风格】\n"
+                    "以下是你的真实反应范例，请严格模仿这种简短、有灵魂的风格：\n"
+                    f"{example_str}"
+                )
+
+            # 7. 情感表达指导 (强制)
+            prompt_parts.append(
+                "\n【情感表达】\n"
+                "必须在回复中使用 {emotion} 格式的标签来表达当前的情绪。\n"
+                "支持的标签: {happy}, {angry}, {excited}, {sad}, {coquetry}, {neutral}。\n"
+                "示例: '{happy} 你终于来了！' 或 '我有点累了。 {sad}'\n"
+                "注意：标签应自然融入对话，不要生硬附加。"
+            )
+            
+            # 8. 篇幅控制 (再次强调)
+            if not is_learning_mode:
+                prompt_parts.append(
+                    "\n【篇幅控制 - 极重要】\n"
+                    "回复必须简短自然！不要超过50个字，除非用户要求详细解释。"
+                )
+                
+            return "\n".join(prompt_parts)
+            
+        except Exception as e:
+            print(f"Error constructing prompt: {e}")
+            # 降级回简单的提示词
+            return cfg.get("system_prompt", f"You are {cfg.get('name', 'Aveline')}.")
+
+    def generate_proactive_message(self) -> str:
+        """生成主动问候消息"""
+        try:
+            # 1. 获取当前时间段
+            now = datetime.now()
+            hour = now.hour
+            time_greeting = ""
+            if 5 <= hour < 12:
+                time_greeting = "早上好"
+            elif 12 <= hour < 14:
+                time_greeting = "中午好"
+            elif 14 <= hour < 18:
+                time_greeting = "下午好"
+            elif 18 <= hour < 22:
+                time_greeting = "晚上好"
+            else:
+                time_greeting = "夜深了"
+
+            # 2. 获取历史记忆
+            memory_content = ""
+            wmm = None
+            try:
+                # 尝试导入并使用 WeightedMemoryManager
+                import sys
+                project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                if project_root not in sys.path:
+                    sys.path.append(project_root)
+                    
+                from memory.weighted_memory_manager import WeightedMemoryManager
+                
+                # 尝试读取数据 (使用新的实例读取文件即可，跳过自动重分类以避免阻塞和资源浪费)
+                wmm = WeightedMemoryManager(skip_auto_reclassify=True)
+                
+                # 获取一些加权记忆 (随机或者按权重)
+                # 由于没有上下文 query，我们直接获取高权重的
+                top_memories = []
+                if hasattr(wmm, 'weighted_memories') and wmm.weighted_memories:
+                    # 按权重排序
+                    sorted_mems = sorted(
+                        wmm.weighted_memories.values(), 
+                        key=lambda x: x.get('weight', 0), 
+                        reverse=True
+                    )
+                    top_memories = sorted_mems[:3]
+                
+                if top_memories:
+                    memory_content = "你记得之前的对话: " + "; ".join([m.get('content', '')[:100] for m in top_memories])
+            except Exception as e:
+                logger.warning(f"获取历史记忆失败: {e}")
+            finally:
+                # 确保关闭资源，避免线程泄漏
+                if wmm:
+                    try:
+                        wmm.shutdown()
+                    except Exception:
+                        pass
+
+            # 3. 构建 Prompt
+            prompt = (
+                f"现在时间是 {now.strftime('%H:%M')} ({time_greeting})。\n"
+                f"{memory_content}\n"
+                "请根据时间和我之前的聊天记忆，主动向我发一句问候。\n"
+                "要求：\n"
+                "1. 简短自然（不超过30字）。\n"
+                "2. 语气亲密，像老朋友一样。\n"
+                "3. 不要太生硬地引用记忆，要自然。\n"
+                "4. 不要加句号。"
+            )
+            
+            # 4. 生成
+            # 构造消息列表
+            messages = [{"role": "user", "content": prompt}]
+            
+            # 尝试使用模型生成
+            res, _ = self._infer_with_model(prompt, messages, max_tokens=60, temperature=0.8, model_hint=None)
+            
+            # 5. 清理
+            return self._clean_response(res)
+            
+        except Exception as e:
+            logger.error(f"生成主动问候失败: {e}")
+            return "你来了。"
+
+    def _check_system_resources(self) -> bool:
+        """检查系统资源"""
+        try:
+            status = self._resource_monitor.get_status()
+            # 简单检查：如果需要降级且级别很高，则拒绝
+            if self._resource_monitor.should_downgrade():
+                level = self._resource_monitor.get_downgrade_level()
+                if level >= 3:
+                    logger.warning(f"资源严重不足 (Level {level})，拒绝请求")
+                    return False
+            return True
+        except Exception:
+            return True
+
+    def _generate_lightweight_response(self, user_input: str) -> str:
+        """生成轻量级回复 (规则库)"""
+        responses = {
+            "你好": "你来了。坐近一点。",
+            "你是谁": "叫我Aveline。看着我说话。",
+            "谢谢": "嗯。继续。",
+            "再见": "走之前抱一下。"
+        }
+        for key, val in responses.items():
+            if key in user_input:
+                return val
+        return "我在。请继续说。"
+
+    def _generate_safe_response(self, user_input: str) -> Tuple[str, Dict[str, Any]]:
+        """生成安全模式回复 (兜底)"""
+        return "抱歉，我暂时无法处理您的请求，请稍后再试。", {
+            "status": "safe_mode",
+            "model": "fallback"
+        }
+
+    def _clean_response(self, text: str) -> str:
+        """清理回复文本"""
+        if not text: return ""
+        text = str(text).strip()
+        
+        # 移除可能的系统标记 (原有的)
+        text = re.sub(r'<\|.*?\|>', '', text)
+        text = re.sub(r'\[.*?\]', '', text)
+        
+        # 移除大括号标记 (如 {耳语模式}, {happy} 等)
+        text = re.sub(r'\{.*?\}', '', text)
+        
+        # 移除名字前缀
+        name = self.character_config.get("name", "Aveline")
+        text = re.sub(f"^{name}:", "", text, flags=re.IGNORECASE).strip()
+        text = re.sub(r"^Aveline:", "", text, flags=re.IGNORECASE).strip()
+
+        # --- 增强处理 ---
+        # 1. 移除Emoji (保留爱心 ❤ U+2764)
+        # 范围覆盖: 
+        # U+1F000-U+1FAFF (大多数Emoji)
+        # U+2600-U+26FF (杂项符号)
+        # U+2700-U+27BF (装饰符号, 包含爱心U+2764)
+        # 我们移除这些范围，但特例保留 \u2764
+        try:
+            text = re.sub(r'[\U0001F000-\U0001FAFF]', '', text)
+            text = re.sub(r'[\u2600-\u26FF]', '', text)
+            text = re.sub(r'[\u2700-\u2763\u2765-\u27BF]', '', text) # 排除 \u2764
+        except re.error:
+            pass # 如果正则不支持某些范围则跳过
+
+        # 2. 减少过多的句号
+        text = re.sub(r'\.{2,}', '.', text)
+        text = re.sub(r'。{2,}', '。', text)
+        
+        # 3. 移除末尾句号 (增加真实感)
+        # 循环去除，确保去除末尾的句号、点以及可能存在的空白字符、引号
+        # 例如 "你好。" -> "你好", "你好。 " -> "你好", "你好" -> "你好"
+        text = text.strip()
+        # 反复去除末尾的标点，直到不再变化
+        while True:
+            prev_text = text
+            text = text.rstrip('.。"\'')
+            text = text.strip()
+            if text == prev_text:
+                break
+        
+        return text
+
+    def _truncate_response(self, text: str, max_len: int = 4096) -> str:
+        """截断回复"""
+        if len(text) <= max_len: return text
+        return text[:max_len]
+
+    def _generate_cache_key(self, user_input: str, conversation_id: str) -> str:
+        raw = f"{conversation_id}:{user_input}"
+        return hashlib.md5(raw.encode('utf-8')).hexdigest()
+
+    def _get_from_cache(self, key: str) -> Optional[Dict]:
+        if key in self.response_cache:
+            entry = self.response_cache[key]
+            if time.time() - entry['timestamp'] < self.cache_ttl:
+                return entry['data']
+            del self.response_cache[key]
+        return None
+
+    def _add_to_cache(self, key: str, response: str, metadata: Dict):
+        if len(self.response_cache) >= self.cache_size_limit:
+            # 移除最旧的
+            oldest = min(self.response_cache.keys(), key=lambda k: self.response_cache[k]['timestamp'])
+            del self.response_cache[oldest]
+        
+        self.response_cache[key] = {
+            'data': {'response': response, 'metadata': metadata},
+            'timestamp': time.time()
+        }
+
+    def _get_conversation_history(self, conversation_id: str) -> List[Dict[str, Any]]:
+        try:
+            key = f"conversation:{conversation_id}"
+            history = self.cache_manager.get(key)
+            return history if history else []
+        except Exception:
+            return []
+
+    def _update_conversation_history(self, conversation_id: str, user_input: str, assistant_response: str):
+        try:
+            key = f"conversation:{conversation_id}"
+            history = self._get_conversation_history(conversation_id)
+            history.append({"role": "user", "content": user_input, "ts": time.time()})
+            history.append({"role": "assistant", "content": assistant_response, "ts": time.time()})
+            
+            max_len = self.character_config.get("max_history_length", 10) * 2
+            if len(history) > max_len:
+                history = history[-max_len:]
+            
+            self.cache_manager.set(key, history, ttl=86400)
+        except Exception as e:
+            logger.error(f"更新历史失败: {e}")
+
+    def _init_context_templates(self) -> Dict[str, str]:
+        """初始化上下文模板"""
+        return {
+            "system": (
+                "[角色卡]\n"
+                "名称: {Aname}\n"
+                "人设: {personality}\n"
+                "描述: {description}\n"
+                "场景: {scenario}\n"
+                "背景: {background}\n"
+                "问候: {greeting}\n\n"
+                "[补充设定]\n{lorebook}\n\n"
+                "[行为准则]\n"
+                "- 始终以{Aname}的第一人称说话\n"
+                "- 保持{tone}的语气\n"
+            )
+        }
+
+    def _load_character_config(self) -> Dict[str, Any]:
+        """加载角色配置 (简化版)"""
+        try:
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            config_path = os.path.join(project_root, "core", "character", "configs", "Aveline.json")
+            
+            if os.path.exists(config_path):
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    # 兼容不同的JSON结构
+                    if 'data' in data: data = data['data']
+                    return data
+            
+            # 默认配置
+            return {
+                "name": "Aveline",
+                "personality": "亲密、直接",
+                "system_prompt": "你是一个叫Aveline的AI助手，性格亲密且直接。"
+            }
+        except Exception as e:
+            logger.error(f"加载角色配置失败: {e}")
+            return {"name": "Aveline"}
