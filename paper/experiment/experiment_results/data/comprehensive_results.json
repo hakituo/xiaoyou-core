@@ -1,0 +1,730 @@
+{
+  "timestamp": "2025-11-09 06:34:22",
+  "config": {
+    "repetitions": 5,
+    "working_directory": "D:\\AI\\xiaoyou-core\\paper\\experiment\\scripts"
+  },
+  "experiments": {
+    "experiment_isolation": {
+      "runs": [
+        {
+          "run_id": 1,
+          "timestamp": "2025-11-09T06:34:42",
+          "sync_test": {
+            "short_latency": 0.05209517478942871,
+            "total_time": 10.22980546951294
+          },
+          "async_test": {
+            "short_latency": 0.06020092964172363,
+            "total_time": 10.037075757980347
+          },
+          "analysis": "在同步模式下，短任务必须等待长任务完成后才能执行；在异步模式下，短任务可以在长任务执行期间立即响应"
+        }
+      ],
+      "summary": {
+        "sync_short_latency": 0.05209517478942871,
+        "async_short_latency": 0.06020092964172363,
+        "sync_total_time": 10.22980546951294,
+        "async_total_time": 10.037075757980347,
+        "key_observation": "异步模式成功实现了任务并行执行，系统能够在处理长任务的同时立即响应短任务请求",
+        "conclusion": "异步微服务架构成功实现了负载隔离，长任务不会阻塞短任务响应，保证了系统的实时交互性能"
+      }
+    },
+    "experiment_1": {
+      "small_10": {
+        "load_size": {
+          "name": "small",
+          "delay_ms": 100,
+          "data_size_kb": 100
+        },
+        "concurrency": 10,
+        "sync_results": [
+          {
+            "total_time": 1.0075337886810303,
+            "avg_latency": 0.10075337886810302,
+            "std_latency": 0.0002781928820030687
+          },
+          {
+            "total_time": 1.0055923461914062,
+            "avg_latency": 0.10055923461914062,
+            "std_latency": 0.00015652772373782333
+          },
+          {
+            "total_time": 1.0043330192565918,
+            "avg_latency": 0.10043330192565918,
+            "std_latency": 0.00032919544139560557
+          },
+          {
+            "total_time": 1.0081062316894531,
+            "avg_latency": 0.10081062316894532,
+            "std_latency": 0.0004259020354613666
+          },
+          {
+            "total_time": 1.006073236465454,
+            "avg_latency": 0.10060732364654541,
+            "std_latency": 0.00024997169605972525
+          }
+        ],
+        "async_results": [
+          {
+            "total_time": 0.10561990737915039,
+            "avg_latency": 0.10140185356140137,
+            "std_latency": 0.0004230441890029721
+          },
+          {
+            "total_time": 0.1026909351348877,
+            "avg_latency": 0.10179142951965332,
+            "std_latency": 0.0003160540569168531
+          },
+          {
+            "total_time": 0.10200810432434082,
+            "avg_latency": 0.10110709667205811,
+            "std_latency": 0.00031658181893937646
+          },
+          {
+            "total_time": 0.10199952125549316,
+            "avg_latency": 0.10120034217834473,
+            "std_latency": 0.00042120435702341425
+          },
+          {
+            "total_time": 0.10250139236450195,
+            "avg_latency": 0.10200178623199463,
+            "std_latency": 0.0005266311039036781
+          }
+        ],
+        "sync_memory_stats": {
+          "avg": 69.07955729166666,
+          "max": 69.45703125
+        },
+        "async_memory_stats": {
+          "avg": 69.08984375,
+          "max": 69.4609375
+        },
+        "aggregates": {
+          "avg_sync_time": 1.0063277244567872,
+          "std_sync_time": 0.0015167459457880617,
+          "avg_async_time": 0.10296397209167481,
+          "std_async_time": 0.0015154512561495026,
+          "improvement_pct": 89.76834587884831
+        }
+      },
+      "small_50": {
+        "load_size": {
+          "name": "small",
+          "delay_ms": 100,
+          "data_size_kb": 100
+        },
+        "concurrency": 50,
+        "sync_results": [
+          {
+            "total_time": 5.028971910476685,
+            "avg_latency": 0.10057943820953369,
+            "std_latency": 0.0003018088517314648
+          },
+          {
+            "total_time": 5.025890350341797,
+            "avg_latency": 0.10051780700683594,
+            "std_latency": 0.00028889751748213476
+          },
+          {
+            "total_time": 5.026416301727295,
+            "avg_latency": 0.1005283260345459,
+            "std_latency": 0.0002822677839232726
+          },
+          {
+            "total_time": 5.024861812591553,
+            "avg_latency": 0.10049723625183106,
+            "std_latency": 0.0003012303825818801
+          },
+          {
+            "total_time": 5.026805400848389,
+            "avg_latency": 0.10053610801696777,
+            "std_latency": 0.0003095763208142726
+          }
+        ],
+        "async_results": [
+          {
+            "total_time": 0.504918098449707,
+            "avg_latency": 0.2618060874938965,
+            "std_latency": 0.12138408479090075
+          },
+          {
+            "total_time": 0.5064873695373535,
+            "avg_latency": 0.2646803426742554,
+            "std_latency": 0.1215999480345218
+          },
+          {
+            "total_time": 0.5055961608886719,
+            "avg_latency": 0.2637713384628296,
+            "std_latency": 0.12159066795186285
+          },
+          {
+            "total_time": 0.5046052932739258,
+            "avg_latency": 0.2635409688949585,
+            "std_latency": 0.1216487193189337
+          },
+          {
+            "total_time": 0.5061547756195068,
+            "avg_latency": 0.26413520812988284,
+            "std_latency": 0.1214189314593473
+          }
+        ],
+        "sync_memory_stats": {
+          "avg": 69.89098557692307,
+          "max": 70.0234375
+        },
+        "async_memory_stats": {
+          "avg": 69.96276041666667,
+          "max": 70.0234375
+        },
+        "aggregates": {
+          "avg_sync_time": 5.0265891551971436,
+          "std_sync_time": 0.0015187333479619702,
+          "avg_async_time": 0.505552339553833,
+          "std_async_time": 0.0007966004373497163,
+          "improvement_pct": 89.94243762629523
+        }
+      },
+      "small_100": {
+        "load_size": {
+          "name": "small",
+          "delay_ms": 100,
+          "data_size_kb": 100
+        },
+        "concurrency": 100,
+        "sync_results": [
+          {
+            "total_time": 10.052911043167114,
+            "avg_latency": 0.10052911043167115,
+            "std_latency": 0.00028149423441565483
+          },
+          {
+            "total_time": 10.056966304779053,
+            "avg_latency": 0.10056966304779053,
+            "std_latency": 0.0003280872969502284
+          },
+          {
+            "total_time": 10.059176445007324,
+            "avg_latency": 0.10059176445007324,
+            "std_latency": 0.00034771365454765326
+          },
+          {
+            "total_time": 10.058131456375122,
+            "avg_latency": 0.10058131456375122,
+            "std_latency": 0.0003881787541494937
+          },
+          {
+            "total_time": 10.058911085128784,
+            "avg_latency": 0.10058911085128784,
+            "std_latency": 0.0003008591053134758
+          }
+        ],
+        "async_results": [
+          {
+            "total_time": 0.9156532287597656,
+            "avg_latency": 0.47613379478454587,
+            "std_latency": 0.24436912969530805
+          },
+          {
+            "total_time": 0.9120821952819824,
+            "avg_latency": 0.4739487648010254,
+            "std_latency": 0.24358882971057066
+          },
+          {
+            "total_time": 0.9131600856781006,
+            "avg_latency": 0.47536363363265993,
+            "std_latency": 0.24329731326625614
+          },
+          {
+            "total_time": 0.9119861125946045,
+            "avg_latency": 0.4745680069923401,
+            "std_latency": 0.24357832488423337
+          },
+          {
+            "total_time": 0.9128119945526123,
+            "avg_latency": 0.47522261142730715,
+            "std_latency": 0.2441542560301765
+          }
+        ],
+        "sync_memory_stats": {
+          "avg": 70.184375,
+          "max": 70.2578125
+        },
+        "async_memory_stats": {
+          "avg": 70.2403125,
+          "max": 70.3359375
+        },
+        "aggregates": {
+          "avg_sync_time": 10.05721926689148,
+          "std_sync_time": 0.0025568372195347725,
+          "avg_async_time": 0.9131387233734131,
+          "std_async_time": 0.0014895224590290035,
+          "improvement_pct": 90.92056462983282
+        }
+      },
+      "medium_10": {
+        "load_size": {
+          "name": "medium",
+          "delay_ms": 300,
+          "data_size_kb": 1000
+        },
+        "concurrency": 10,
+        "sync_results": [
+          {
+            "total_time": 3.024000644683838,
+            "avg_latency": 0.3024000644683838,
+            "std_latency": 0.005177913648422606
+          },
+          {
+            "total_time": 3.00592041015625,
+            "avg_latency": 0.300592041015625,
+            "std_latency": 0.00025443198983823146
+          },
+          {
+            "total_time": 3.0087389945983887,
+            "avg_latency": 0.3008738994598389,
+            "std_latency": 0.00037221604359913475
+          },
+          {
+            "total_time": 3.007622718811035,
+            "avg_latency": 0.3007622718811035,
+            "std_latency": 0.0005440307653799427
+          },
+          {
+            "total_time": 3.0070884227752686,
+            "avg_latency": 0.30070884227752687,
+            "std_latency": 0.0007705350779178971
+          }
+        ],
+        "async_results": [
+          {
+            "total_time": 0.30788183212280273,
+            "avg_latency": 0.3045151948928833,
+            "std_latency": 0.002083361131459322
+          },
+          {
+            "total_time": 0.3061482906341553,
+            "avg_latency": 0.30384838581085205,
+            "std_latency": 0.0017668545769267167
+          },
+          {
+            "total_time": 0.30585718154907227,
+            "avg_latency": 0.3037489652633667,
+            "std_latency": 0.001709444542543001
+          },
+          {
+            "total_time": 0.3071584701538086,
+            "avg_latency": 0.30404956340789796,
+            "std_latency": 0.0017758180146011083
+          },
+          {
+            "total_time": 0.3072807788848877,
+            "avg_latency": 0.3042395830154419,
+            "std_latency": 0.0018853501430121458
+          }
+        ],
+        "sync_memory_stats": {
+          "avg": 70.11067708333333,
+          "max": 71.31640625
+        },
+        "async_memory_stats": {
+          "avg": 74.5734375,
+          "max": 80.0859375
+        },
+        "aggregates": {
+          "avg_sync_time": 3.010674238204956,
+          "std_sync_time": 0.007518427386778907,
+          "avg_async_time": 0.3068653106689453,
+          "std_async_time": 0.0008399872381176947,
+          "improvement_pct": 89.80742231175742
+        }
+      },
+      "medium_50": {
+        "load_size": {
+          "name": "medium",
+          "delay_ms": 300,
+          "data_size_kb": 1000
+        },
+        "concurrency": 50,
+        "sync_results": [
+          {
+            "total_time": 15.032331705093384,
+            "avg_latency": 0.30064663410186765,
+            "std_latency": 0.00039337277265607943
+          },
+          {
+            "total_time": 15.043728828430176,
+            "avg_latency": 0.3008745765686035,
+            "std_latency": 0.0010255475513446502
+          },
+          {
+            "total_time": 15.076680421829224,
+            "avg_latency": 0.3015336084365845,
+            "std_latency": 0.005938657893675274
+          },
+          {
+            "total_time": 15.037105798721313,
+            "avg_latency": 0.3007421159744263,
+            "std_latency": 0.00034929553519225375
+          },
+          {
+            "total_time": 15.061210632324219,
+            "avg_latency": 0.30122421264648436,
+            "std_latency": 0.003993106205041648
+          }
+        ],
+        "async_results": [
+          {
+            "total_time": 1.5088725090026855,
+            "avg_latency": 0.7886089134216309,
+            "std_latency": 0.36439855746476735
+          },
+          {
+            "total_time": 1.506782054901123,
+            "avg_latency": 0.7875476598739624,
+            "std_latency": 0.363802441160626
+          },
+          {
+            "total_time": 1.5083529949188232,
+            "avg_latency": 0.7874760437011719,
+            "std_latency": 0.3647139438693295
+          },
+          {
+            "total_time": 1.5099709033966064,
+            "avg_latency": 0.789501314163208,
+            "std_latency": 0.3638971379784235
+          },
+          {
+            "total_time": 1.5094358921051025,
+            "avg_latency": 0.7880655765533447,
+            "std_latency": 0.3645922640115412
+          }
+        ],
+        "sync_memory_stats": {
+          "avg": 69.91521408991228,
+          "max": 69.953125
+        },
+        "async_memory_stats": {
+          "avg": 78.12314453125,
+          "max": 80.71484375
+        },
+        "aggregates": {
+          "avg_sync_time": 15.050211477279664,
+          "std_sync_time": 0.01840554425489556,
+          "avg_async_time": 1.508682870864868,
+          "std_async_time": 0.0012231057683395985,
+          "improvement_pct": 89.97566995558547
+        }
+      },
+      "medium_100": {
+        "load_size": {
+          "name": "medium",
+          "delay_ms": 300,
+          "data_size_kb": 1000
+        },
+        "concurrency": 100,
+        "sync_results": [
+          {
+            "total_time": 30.069766521453857,
+            "avg_latency": 0.30069766521453856,
+            "std_latency": 0.0003601298460404227
+          },
+          {
+            "total_time": 30.065654277801514,
+            "avg_latency": 0.3006565427780151,
+            "std_latency": 0.00029395706113867227
+          },
+          {
+            "total_time": 30.09691047668457,
+            "avg_latency": 0.3009691047668457,
+            "std_latency": 0.0016042672845706773
+          },
+          {
+            "total_time": 30.074326992034912,
+            "avg_latency": 0.3007432699203491,
+            "std_latency": 0.0003157811335190978
+          },
+          {
+            "total_time": 30.064990758895874,
+            "avg_latency": 0.30064990758895876,
+            "std_latency": 0.0002935239984484491
+          }
+        ],
+        "async_results": [
+          {
+            "total_time": 2.71836519241333,
+            "avg_latency": 1.416652431488037,
+            "std_latency": 0.7282285817752786
+          },
+          {
+            "total_time": 2.7158362865448,
+            "avg_latency": 1.4137512707710267,
+            "std_latency": 0.7282872671357895
+          },
+          {
+            "total_time": 2.718047857284546,
+            "avg_latency": 1.416067054271698,
+            "std_latency": 0.7299956908362611
+          },
+          {
+            "total_time": 2.7124626636505127,
+            "avg_latency": 1.4127397561073303,
+            "std_latency": 0.7287106372119397
+          },
+          {
+            "total_time": 2.7181811332702637,
+            "avg_latency": 1.4152766561508179,
+            "std_latency": 0.7281484438777251
+          }
+        ],
+        "sync_memory_stats": {
+          "avg": 70.49094791666667,
+          "max": 71.16015625
+        },
+        "async_memory_stats": {
+          "avg": 79.62589285714286,
+          "max": 81.00390625
+        },
+        "aggregates": {
+          "avg_sync_time": 30.074329805374145,
+          "std_sync_time": 0.013164277920458546,
+          "avg_async_time": 2.7165786266326903,
+          "std_async_time": 0.002520451526865642,
+          "improvement_pct": 90.96711832245968
+        }
+      },
+      "large_10": {
+        "load_size": {
+          "name": "large",
+          "delay_ms": 500,
+          "data_size_kb": 5000
+        },
+        "concurrency": 10,
+        "sync_results": [
+          {
+            "total_time": 5.043256521224976,
+            "avg_latency": 0.5043256521224976,
+            "std_latency": 0.005097615761449143
+          },
+          {
+            "total_time": 5.025264501571655,
+            "avg_latency": 0.5025264501571656,
+            "std_latency": 0.0006342687662639853
+          },
+          {
+            "total_time": 5.027174711227417,
+            "avg_latency": 0.5027174711227417,
+            "std_latency": 0.0008499614464558662
+          },
+          {
+            "total_time": 5.027419805526733,
+            "avg_latency": 0.5027419805526734,
+            "std_latency": 0.0006215491730468214
+          },
+          {
+            "total_time": 5.028275012969971,
+            "avg_latency": 0.502827501296997,
+            "std_latency": 0.0008733137796896504
+          }
+        ],
+        "async_results": [
+          {
+            "total_time": 0.5264344215393066,
+            "avg_latency": 0.5135661840438843,
+            "std_latency": 0.00773640590094978
+          },
+          {
+            "total_time": 0.5226502418518066,
+            "avg_latency": 0.5124366998672485,
+            "std_latency": 0.006371784507942324
+          },
+          {
+            "total_time": 0.519007682800293,
+            "avg_latency": 0.5106075525283813,
+            "std_latency": 0.005039119971047382
+          },
+          {
+            "total_time": 0.5175702571868896,
+            "avg_latency": 0.5109054803848266,
+            "std_latency": 0.004630250825711576
+          },
+          {
+            "total_time": 0.518120288848877,
+            "avg_latency": 0.511131477355957,
+            "std_latency": 0.005211116541819042
+          }
+        ],
+        "sync_memory_stats": {
+          "avg": 73.92773317307693,
+          "max": 74.1171875
+        },
+        "async_memory_stats": {
+          "avg": 101.80859375,
+          "max": 118.09765625
+        },
+        "aggregates": {
+          "avg_sync_time": 5.030278110504151,
+          "std_sync_time": 0.007338065370256285,
+          "avg_async_time": 0.5207565784454345,
+          "std_async_time": 0.0037411617604840314,
+          "improvement_pct": 89.6475589022007
+        }
+      },
+      "large_50": {
+        "load_size": {
+          "name": "large",
+          "delay_ms": 500,
+          "data_size_kb": 5000
+        },
+        "concurrency": 50,
+        "sync_results": [
+          {
+            "total_time": 25.145634174346924,
+            "avg_latency": 0.5029126834869385,
+            "std_latency": 0.0008600819130473505
+          },
+          {
+            "total_time": 25.13529086112976,
+            "avg_latency": 0.5027058172225952,
+            "std_latency": 0.0007302216554990129
+          },
+          {
+            "total_time": 25.142731189727783,
+            "avg_latency": 0.5028546237945557,
+            "std_latency": 0.0008923389334820832
+          },
+          {
+            "total_time": 25.169317483901978,
+            "avg_latency": 0.5033863496780395,
+            "std_latency": 0.0031543050197712615
+          },
+          {
+            "total_time": 25.14785122871399,
+            "avg_latency": 0.5029570245742798,
+            "std_latency": 0.0010270421300530787
+          }
+        ],
+        "async_results": [
+          {
+            "total_time": 2.522542715072632,
+            "avg_latency": 1.3240372514724732,
+            "std_latency": 0.6081779193888661
+          },
+          {
+            "total_time": 2.522441864013672,
+            "avg_latency": 1.3272274494171143,
+            "std_latency": 0.6088965425785497
+          },
+          {
+            "total_time": 2.5212552547454834,
+            "avg_latency": 1.3285476064682007,
+            "std_latency": 0.608854902673545
+          },
+          {
+            "total_time": 2.529127836227417,
+            "avg_latency": 1.3300967454910277,
+            "std_latency": 0.6097145962135304
+          },
+          {
+            "total_time": 2.52386736869812,
+            "avg_latency": 1.3315888118743897,
+            "std_latency": 0.6085801147028025
+          }
+        ],
+        "sync_memory_stats": {
+          "avg": 74.1046875,
+          "max": 74.18359375
+        },
+        "async_memory_stats": {
+          "avg": 115.80408653846153,
+          "max": 127.94921875
+        },
+        "aggregates": {
+          "avg_sync_time": 25.148164987564087,
+          "std_sync_time": 0.012739710081605989,
+          "avg_async_time": 2.5238470077514648,
+          "std_async_time": 0.003093556041213163,
+          "improvement_pct": 89.96409078356405
+        }
+      },
+      "large_100": {
+        "load_size": {
+          "name": "large",
+          "delay_ms": 500,
+          "data_size_kb": 5000
+        },
+        "concurrency": 100,
+        "sync_results": [
+          {
+            "total_time": 50.38032150268555,
+            "avg_latency": 0.5037929916381836,
+            "std_latency": 0.007470965099196558
+          },
+          {
+            "total_time": 50.27762317657471,
+            "avg_latency": 0.502776231765747,
+            "std_latency": 0.000697565222237123
+          },
+          {
+            "total_time": 50.265453815460205,
+            "avg_latency": 0.502654538154602,
+            "std_latency": 0.0006980695804425752
+          },
+          {
+            "total_time": 50.29156160354614,
+            "avg_latency": 0.5029156160354614,
+            "std_latency": 0.0017809581707804072
+          },
+          {
+            "total_time": 50.3014497756958,
+            "avg_latency": 0.5030144977569581,
+            "std_latency": 0.0015511966752656786
+          }
+        ],
+        "async_results": [
+          {
+            "total_time": 4.545162677764893,
+            "avg_latency": 2.376139376163483,
+            "std_latency": 1.2181438706372512
+          },
+          {
+            "total_time": 4.551381587982178,
+            "avg_latency": 2.382771162986755,
+            "std_latency": 1.2201118703286542
+          },
+          {
+            "total_time": 4.550854921340942,
+            "avg_latency": 2.3783760714530944,
+            "std_latency": 1.219913071243748
+          },
+          {
+            "total_time": 4.552641868591309,
+            "avg_latency": 2.3812863492965697,
+            "std_latency": 1.2196965260382187
+          },
+          {
+            "total_time": 4.547067403793335,
+            "avg_latency": 2.380714337825775,
+            "std_latency": 1.2173471935892335
+          }
+        ],
+        "sync_memory_stats": {
+          "avg": 74.5269818666801,
+          "max": 74.73828125
+        },
+        "async_memory_stats": {
+          "avg": 122.45091711956522,
+          "max": 128.546875
+        },
+        "aggregates": {
+          "avg_sync_time": 50.30328197479248,
+          "std_sync_time": 0.04518062770180612,
+          "avg_async_time": 4.549421691894532,
+          "std_async_time": 0.0031601721115627583,
+          "improvement_pct": 90.95601417383801
+        }
+      }
+    }
+  },
+  "global_memory_stats": {}
+}

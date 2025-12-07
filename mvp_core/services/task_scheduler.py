@@ -8,16 +8,14 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import concurrent.futures
 import contextvars
+from mvp_core.utils.trace_context import TraceContext
+from mvp_core.utils.logger import logger
 
 # Try to import torch, but don't fail if missing (unless used)
 try:
     import torch
 except ImportError:
     torch = None
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # Task context
 _current_task_id_ctx = contextvars.ContextVar("current_task_id", default=None)
@@ -61,6 +59,7 @@ class TaskInfo:
     start_time: Optional[float] = field(default=None, compare=False)
     end_time: Optional[float] = field(default=None, compare=False)
     cancel_requested: bool = field(default=False, compare=False)
+    trace_id: str = field(default="system", compare=False)
 
 class GlobalTaskScheduler:
     """
@@ -162,73 +161,78 @@ class GlobalTaskScheduler:
                     continue
 
                 try:
-                    if task_info.cancel_requested:
-                        logger.debug(f"Task {task_info.task_id} cancelled, skipping")
-                        async with self._lock:
-                            task_info.status = TaskStatus.CANCELLED
-                            fut = self._task_futures.get(task_info.task_id)
-                            if fut and not fut.done():
-                                fut.set_exception(asyncio.CancelledError())
-                        continue
-                        
-                    logger.debug(f"Worker {worker_name} executing task {task_info.task_id}")
-                    
-                    task_func = None
-                    task_args = ()
-                    task_kwargs = {}
-                    
-                    async with self._lock:
-                        if task_info.task_id in self._tasks:
-                            task_info.status = TaskStatus.RUNNING
-                            task_info.start_time = time.time()
-                            task_data = self._tasks[task_info.task_id]
-                            task_func = task_data.get('func')
-                            task_args = task_data.get('args', ())
-                            task_kwargs = task_data.get('kwargs', {})
-                        else:
-                            logger.warning(f"Task {task_info.task_id} data missing")
-                            continue
-
-                    if task_func is None:
-                        logger.error(f"Task {task_info.task_id} function is None")
-                        continue
+                    # Set execution context early for logging
+                    token = _current_task_id_ctx.set(task_info.task_id)
+                    trace_token = TraceContext.set_trace_id(task_info.trace_id)
                     
                     try:
-                        token = _current_task_id_ctx.set(task_info.task_id)
+                        if task_info.cancel_requested:
+                            logger.debug(f"Task {task_info.task_id} cancelled, skipping")
+                            async with self._lock:
+                                task_info.status = TaskStatus.CANCELLED
+                                fut = self._task_futures.get(task_info.task_id)
+                                if fut and not fut.done():
+                                    fut.set_exception(asyncio.CancelledError())
+                            continue
+                            
+                        logger.debug(f"Worker {worker_name} executing task {task_info.task_id}")
+                        
+                        task_func = None
+                        task_args = ()
+                        task_kwargs = {}
+                        
+                        async with self._lock:
+                            if task_info.task_id in self._tasks:
+                                task_info.status = TaskStatus.RUNNING
+                                task_info.start_time = time.time()
+                                task_data = self._tasks[task_info.task_id]
+                                task_func = task_data.get('func')
+                                task_args = task_data.get('args', ())
+                                task_kwargs = task_data.get('kwargs', {})
+                            else:
+                                logger.warning(f"Task {task_info.task_id} data missing")
+                                continue
+
+                        if task_func is None:
+                            logger.error(f"Task {task_info.task_id} function is None")
+                            continue
+                        
                         try:
                             result = await self._execute_task(
                                 task_func, task_info.task_type, *task_args, **task_kwargs
                             )
-                        finally:
-                            _current_task_id_ctx.reset(token)
-                        
-                        async with self._lock:
-                            task_info.status = TaskStatus.COMPLETED
-                            task_info.result = result
-                            task_info.end_time = time.time()
                             
-                            fut = self._task_futures.get(task_info.task_id)
-                            if fut and not fut.done():
-                                fut.set_result(result)
-                            
-                            if task_info.task_id in self._tasks:
-                                self._tasks[task_info.task_id]['func'] = None
-                                self._tasks[task_info.task_id]['args'] = None
-                                self._tasks[task_info.task_id]['kwargs'] = None
+                            async with self._lock:
+                                task_info.status = TaskStatus.COMPLETED
+                                task_info.result = result
+                                task_info.end_time = time.time()
                                 
-                        logger.debug(f"Task {task_info.task_id} completed")
-                        
-                    except Exception as e:
-                        async with self._lock:
-                            task_info.status = TaskStatus.FAILED
-                            task_info.error = str(e)
-                            task_info.end_time = time.time()
-                            
-                            fut = self._task_futures.get(task_info.task_id)
-                            if fut and not fut.done():
-                                fut.set_exception(e)
+                                fut = self._task_futures.get(task_info.task_id)
+                                if fut and not fut.done():
+                                    fut.set_result(result)
                                 
-                        logger.error(f"Task {task_info.task_id} failed: {str(e)}", exc_info=True)
+                                if task_info.task_id in self._tasks:
+                                    self._tasks[task_info.task_id]['func'] = None
+                                    self._tasks[task_info.task_id]['args'] = None
+                                    self._tasks[task_info.task_id]['kwargs'] = None
+                                    
+                            logger.debug(f"Task {task_info.task_id} completed")
+                            
+                        except Exception as e:
+                            async with self._lock:
+                                task_info.status = TaskStatus.FAILED
+                                task_info.error = str(e)
+                                task_info.end_time = time.time()
+                                
+                                fut = self._task_futures.get(task_info.task_id)
+                                if fut and not fut.done():
+                                    fut.set_exception(e)
+                                    
+                            logger.error(f"Task {task_info.task_id} failed: {str(e)}", exc_info=True)
+                            
+                    finally:
+                        _current_task_id_ctx.reset(token)
+                        TraceContext.reset_trace_id(trace_token)
                     
                 except Exception as e:
                     logger.error(f"Worker {worker_name} uncaught exception: {str(e)}", exc_info=True)
@@ -250,7 +254,8 @@ class GlobalTaskScheduler:
         priority: Union[TaskPriority, int] = TaskPriority.MEDIUM,
         task_type: TaskType = TaskType.DEFAULT,
         args: tuple = (),
-        kwargs: dict = None
+        kwargs: dict = None,
+        trace_id: Optional[str] = None
     ) -> str:
         if not self._running:
             raise RuntimeError("Scheduler not started")
@@ -264,13 +269,31 @@ class GlobalTaskScheduler:
         task_id = f"task_{uuid.uuid4().hex[:8]}_{self._next_task_id}"
         self._next_task_id += 1
         
+        # Capture current trace_id or generate a new one if this is a root task
+        if trace_id:
+            # Explicitly provided trace_id
+            current_trace = trace_id
+            # Ensure context is set for this scope (though it might not propagate back up)
+            # TraceContext.set_trace_id(trace_id) 
+        else:
+            current_trace = TraceContext.get_trace_id()
+        
+        if current_trace == "system":
+             # If we are in 'system' context, we might want to start a new trace for this task
+             # But for now, let's respect the caller's context. 
+             # If the caller didn't set a context, we generate one if it's an external request, 
+             # but here we just use what we have.
+             # Ideally, entry points (API handlers) should set the trace_id.
+             pass
+
         task_info = TaskInfo(
             task_id=task_id,
             name=name,
             priority=priority,
             task_type=task_type,
             created_at=time.time(),
-            status=TaskStatus.PENDING
+            status=TaskStatus.PENDING,
+            trace_id=current_trace
         )
         
         async with self._lock:

@@ -18,18 +18,50 @@ project_root = os.path.dirname(os.path.dirname(current_dir))
 sys.path.append(project_root)
 
 # Configure Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger("ComprehensiveBenchmark")
+from mvp_core.utils.logger import setup_logger, TraceFormatter
+from mvp_core.utils.trace_context import TraceContext
 
-from config import get_settings
+# Ensure logs directory exists
+log_dir = os.path.join(project_root, "logs")
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir)
+log_file = os.path.join(log_dir, f"benchmark_trace_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+
+# Setup File Logging for mvp_core and Benchmark
+def add_file_handler(logger_name, file_path):
+    l = logging.getLogger(logger_name)
+    l.setLevel(logging.DEBUG) # Ensure logger captures DEBUG
+    
+    # Check if file handler already exists to avoid duplicates
+    for h in l.handlers:
+        if isinstance(h, logging.FileHandler):
+            return
+
+    file_handler = logging.FileHandler(file_path, encoding='utf-8')
+    file_handler.setLevel(logging.DEBUG) # File gets detailed traces
+    
+    # Use TraceFormatter
+    fmt_str = '[%(asctime)s] [%(levelname)s] [TraceID:%(trace_id)s] [%(name)s] %(message)s'
+    formatter = TraceFormatter(fmt_str, datefmt='%Y-%m-%d %H:%M:%S')
+    file_handler.setFormatter(formatter)
+    
+    l.addHandler(file_handler)
+
+# Configure loggers
+logger = setup_logger("ComprehensiveBenchmark", level=logging.INFO) # Console stays INFO
+add_file_handler("ComprehensiveBenchmark", log_file)
+add_file_handler("mvp_core", log_file)
+
+print(f"Logging traces to: {log_file}")
+
+from mvp_core.config import get_settings
 
 # ================= 1. 配置区 (Config) =================
 settings = get_settings()
 
-def get_abs_path(path: str) -> str:
+def get_abs_path(path: Optional[str]) -> str:
+    if not path:
+        return "dummy_path"
     if os.path.isabs(path):
         return path
     return os.path.join(project_root, path)
@@ -199,7 +231,7 @@ class ExperimentContext:
         # 2. Initialize Scheduler (if needed)
         if self.mode == 'xy_core':
             try:
-                from services.task_scheduler import GlobalTaskScheduler, TaskPriority, TaskType
+                from mvp_core.services.task_scheduler import GlobalTaskScheduler, TaskPriority, TaskType
                 self.scheduler = GlobalTaskScheduler()
                 self.TaskType = TaskType
                 self.TaskPriority = TaskPriority
@@ -245,7 +277,7 @@ class ExperimentRunner:
         cpu_bound_task_blocking(0.3) # SD
         return time.time() - start
 
-    async def _run_mixed_task_xycore(self, task_id: int) -> float:
+    async def _run_mixed_task_xycore(self, task_id: int, trace_id: Optional[str] = None) -> float:
         """xy-core: Offloaded to Scheduler. Returns duration in seconds."""
         start = time.time()
         # 1. LLM (CPU_BOUND)
@@ -257,7 +289,8 @@ class ExperimentRunner:
             args=() if self.ctx.workload == 'real' else (0.1,),
             name=f"llm_{task_id}",
             priority=self.ctx.TaskPriority.HIGH,
-            task_type=self.ctx.TaskType.CPU_BOUND
+            task_type=self.ctx.TaskType.CPU_BOUND,
+            trace_id=trace_id
         )
         await (await self.ctx.scheduler.get_task_future(t1))
 
@@ -273,7 +306,8 @@ class ExperimentRunner:
             args=() if self.ctx.workload == 'real' else (0.05,),
             name=f"vl_{task_id}",
             priority=self.ctx.TaskPriority.MEDIUM,
-            task_type=self.ctx.TaskType.GPU_BOUND
+            task_type=self.ctx.TaskType.GPU_BOUND,
+            trace_id=trace_id
         )
         await (await self.ctx.scheduler.get_task_future(t3))
 
@@ -299,7 +333,8 @@ class ExperimentRunner:
             args=() if self.ctx.workload == 'real' else (0.3,),
             name=f"sd_{task_id}",
             priority=self.ctx.TaskPriority.LOW, 
-            task_type=self.ctx.TaskType.GPU_BOUND
+            task_type=self.ctx.TaskType.GPU_BOUND,
+            trace_id=trace_id
         )
         await (await self.ctx.scheduler.get_task_future(t4))
         
@@ -307,13 +342,20 @@ class ExperimentRunner:
 
     async def _run_mixed_task(self, task_id: int) -> float:
         """Unified Task Runner. Returns duration."""
-        if self.ctx.mode == 'single_thread':
-            return self._run_mixed_task_serial(task_id)
-        elif self.ctx.mode == 'naive_async':
-            return await self._run_mixed_task_naive(task_id)
-        elif self.ctx.mode == 'xy_core':
-            return await self._run_mixed_task_xycore(task_id)
-        return 0.0
+        # Start a new trace for this request
+        new_id = TraceContext.generate_trace_id()
+        trace_token = TraceContext.set_trace_id(new_id)
+        try:
+            # logger.info(f"Starting request {task_id}")
+            if self.ctx.mode == 'single_thread':
+                return self._run_mixed_task_serial(task_id)
+            elif self.ctx.mode == 'naive_async':
+                return await self._run_mixed_task_naive(task_id)
+            elif self.ctx.mode == 'xy_core':
+                return await self._run_mixed_task_xycore(task_id, trace_id=new_id)
+            return 0.0
+        finally:
+            TraceContext.reset_trace_id(trace_token)
 
     # --- Experiments ---
 
