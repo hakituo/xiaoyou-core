@@ -478,6 +478,9 @@ class WeightedMemoryManager:
             self._update_topic_index()
             self.last_modified_time = time.time()
             
+            # 立即保存以防止重启丢失
+            self.save_memory()
+            
             logger.info(f"已添加权重记忆，ID: {memory_id}, 权重: {weight}, 话题: {topics}")
             return memory_id
     
@@ -628,18 +631,39 @@ class WeightedMemoryManager:
         except Exception as e:
             logger.error(f"加载权重数据时出错: {e}")
     
-    def _save_weighted_data(self):
-        """保存权重相关数据"""
+    def save_memory(self):
+        """保存记忆数据（包括权重数据）"""
+        # 保存基础数据 (逻辑来自原 EnhancedMemoryManager.save_memory)
+        try:
+            with self.lock:
+                short_copy = list(self.short_term_memory)
+                long_copy = list(self.long_term_memory)
+                self.last_save_time = time.time()
+            
+                # IO操作放入锁内以避免竞争条件 (Critical Fix for race condition)
+                short_file = str(self.memory_dir / f"{self.user_id}_short.json")
+                long_file = str(self.long_term_dir / f"{self.user_id}_long.json")
+                self._safe_json_dump(short_copy, short_file)
+                self._safe_json_dump(long_copy, long_file)
+                
+                # 保存权重数据 (也在锁内)
+                self._save_weighted_data_locked()
+                self.last_save_time = time.time()
+                
+        except Exception as e:
+            logger.error(f"保存记忆失败: {e}")
+        
+    def _save_weighted_data_locked(self):
+        """保存权重相关数据 (假设已持有锁)"""
         try:
             weighted_file = WEIGHTED_MEMORY_DIR / f"{self.user_id}_weighted.json"
-            with self.lock:
-                data = {
-                    "weighted_memories": list(self.weighted_memories.values()),
-                    "topic_weights": dict(self.topic_weights),
-                    "emotion_memory_map": dict(self.emotion_memory_map),
-                    "last_updated": time.time()
-                }
-            
+            data = {
+                "weighted_memories": list(self.weighted_memories.values()),
+                "topic_weights": dict(self.topic_weights),
+                "emotion_memory_map": dict(self.emotion_memory_map),
+                "last_updated": time.time()
+            }
+        
             temp_file_path = str(weighted_file) + '.tmp'
             with open(temp_file_path, 'w', encoding=DEFAULT_ENCODING) as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
@@ -651,26 +675,11 @@ class WeightedMemoryManager:
             logger.debug(f"已保存用户 {self.user_id} 的权重数据")
         except Exception as e:
             logger.error(f"保存权重数据时出错: {e}")
-    
-    def save_memory(self):
-        """保存记忆数据（包括权重数据）"""
-        # 保存基础数据 (逻辑来自原 EnhancedMemoryManager.save_memory)
-        try:
-            with self.lock:
-                short_copy = list(self.short_term_memory)
-                long_copy = list(self.long_term_memory)
-                self.last_save_time = time.time()
-            
-            short_file = str(self.memory_dir / f"{self.user_id}_short.json")
-            long_file = str(self.long_term_dir / f"{self.user_id}_long.json")
-            self._safe_json_dump(short_copy, short_file)
-            self._safe_json_dump(long_copy, long_file)
-        except Exception as e:
-            logger.error(f"保存记忆失败: {e}")
-        
-        # 保存权重数据
-        self._save_weighted_data()
-        self.last_save_time = time.time()
+
+    def _save_weighted_data(self):
+        """保存权重相关数据 (对外接口，获取锁)"""
+        with self.lock:
+            self._save_weighted_data_locked()
         
     def clear_weighted_memories(self) -> int:
         """清除所有加权记忆"""
@@ -812,6 +821,47 @@ class WeightedMemoryManager:
         
         results.sort(key=lambda x: x.get("weighted_score", 0), reverse=True)
         return results[:limit]
+
+    async def get_recent_history(self, session_id: str = None, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        获取最近的历史记录 (适配 SessionRouter)
+        Args:
+            session_id: 会话ID (在当前架构中通常等于 user_id)
+            limit: 获取的消息数量限制
+        Returns:
+            历史消息列表
+        """
+        with self.lock:
+            # 合并短期和长期记忆，确保完整历史
+            all_memory = self.short_term_memory + self.long_term_memory
+            # 去重 (按ID)
+            unique_memory = {m['id']: m for m in all_memory}
+            
+            # 确保按时间戳排序
+            sorted_memory = sorted(unique_memory.values(), key=lambda x: x.get("timestamp", 0))
+            
+            # 提取需要的字段
+            result = []
+            for msg in sorted_memory:
+                if not msg.get("content"):
+                    continue
+                    
+                result.append({
+                    "role": msg.get("role", "assistant"), # 默认为 assistant 如果缺失
+                    "content": msg.get("content", ""),
+                    "timestamp": msg.get("timestamp", 0),
+                    "id": msg.get("id", ""),
+                    "is_important": msg.get("is_important", False)
+                })
+            
+            if len(result) > limit:
+                return result[-limit:]
+            return result
+
+    def get_history(self) -> List[Dict[str, Any]]:
+        """获取所有历史记录 (同步版本)"""
+        with self.lock:
+            return list(self.short_term_memory)
     
     def hybrid_search(self, query: str, limit: int = 10, min_similarity: float = 0.5, 
                      min_weight: float = None, keyword_weight: float = 0.3) -> List[Dict[str, Any]]:

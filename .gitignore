@@ -94,3 +94,31 @@ demo_multimodal.py
 demo_new_models.py
 desktop_pet.py
 md_to_format.py
+
+# IDE Config
+.trae/
+
+# User Data & Chat Records
+clients/bots/bots/
+clients/bots/data/
+clients/bots/config/Console/
+clients/bots/config.json
+clients/bots/config.yml
+clients/bots/qq_bot_config.json
+clients/bots/qq_bot.log
+clients/bots/mirai.log
+clients/bots/logs/
+
+# Binaries & Large Files
+clients/bots/mcl*
+clients/bots/plugins/*.jar
+clients/bots/libs/*.jar
+captured_trace.json
+external/llama.cpp-master/
+external/gradle-9.2.1/
+
+# Android
+clients/android/app/build/
+clients/android/.gradle/
+clients/android/local.properties
+

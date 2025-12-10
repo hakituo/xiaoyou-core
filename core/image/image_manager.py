@@ -29,8 +29,8 @@ SD15_CHECKPOINT_DIR = os.path.join(SD15_BASE_DIR, "check_point")
 SD15_LORA_DIR = os.path.join(SD15_BASE_DIR, "lora")
 
 SDXL_BASE_DIR = "d:\\AI\\xiaoyou-core\\models\\img\\sdxl"
-SDXL_CHECKPOINT_DIR = os.path.join(SDXL_BASE_DIR, "checkpoints")
-SDXL_LORA_DIR = os.path.join(SDXL_BASE_DIR, "lora")
+SDXL_CHECKPOINT_DIR = os.path.join(SDXL_BASE_DIR, "stable-diffusion-webui-forge-main", "models", "Stable-diffusion")
+SDXL_LORA_DIR = os.path.join(SDXL_BASE_DIR, "stable-diffusion-webui-forge-main", "models", "Lora")
 
 # 导入项目模块
 # 注意：确保这些模块的路径在 sys.path 中

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="background">#05060a</color>
+    <color name="surface">#111111</color>
+    <color name="primary">#6B7280</color>
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#A0A0A0</color>
+    <color name="bubble_user">#2563EB</color>
+    <color name="bubble_bot">#1F2937</color>
+    <color name="input_bg">#1F2937</color>
+</resources>

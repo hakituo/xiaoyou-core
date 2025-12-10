@@ -1,0 +1,25 @@
+Wed Dec 10 10:38:42 2025       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 581.57                 Driver Version: 581.57         CUDA Version: 13.0     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                  Driver-Model | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA GeForce RTX 5070 ...  WDDM  |   00000000:01:00.0 Off |                  N/A |
+| N/A   42C    P8              6W /   60W |    2782MiB /   8151MiB |     18%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A            3240    C+G   ...\Local\Programs\Trae\Trae.exe      N/A      |
+|    0   N/A  N/A            3528      C   ...s\Python\Python312\python.exe      N/A      |
+|    0   N/A  N/A           11224    C+G   ...ram Files\Tencent\QQNT\QQ.exe      N/A      |
+|    0   N/A  N/A           20320    C+G   ...ram Files\Tencent\QQNT\QQ.exe      N/A      |
+|    0   N/A  N/A           31660    C+G   ...\Local\Programs\Trae\Trae.exe      N/A      |
+|    0   N/A  N/A           43292      C   ...s\Python\Python312\python.exe      N/A      |
++-----------------------------------------------------------------------------------------+

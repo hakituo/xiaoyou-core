@@ -1,0 +1,2199 @@
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  Mic, Send, Settings, Activity, Terminal, 
+  Command, MessageSquare, LayoutGrid, Cpu, Zap,
+  Paperclip, Play, Square, Loader2, Bell
+} from 'lucide-react';
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+import { api } from './api/apiService';
+import logger, { logComponentError, measurePerformance } from './utils/logger';
+import config from './api/config';
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }>{
+  constructor(props: { children: React.ReactNode }){
+    super(props);
+    this.state = { hasError: false };
+  }
+  componentDidCatch(error: any, errorInfo: any){
+    logComponentError('Plugins', error, errorInfo);
+    this.setState({ hasError: true });
+  }
+  render(){
+    if (this.state.hasError){
+      return <div className="p-8 text-red-400 text-sm">插件面板发生错误</div>;
+    }
+    return this.props.children as any;
+  }
+}
+
+// 性能和内存优化配置
+const MAX_MESSAGES = 50; // 消息上限，防止内存占用过高
+const MESSAGE_BATCH_SIZE = 20; // 消息批处理大小，用于虚拟滚动
+
+// --- 工具函数 --- 
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+// --- 类型定义 --- 
+export type EmotionType = 'neutral' | 'happy' | 'shy' | 'angry' | 'jealous' | 'wronged' | 'coquetry' | 'lost' | 'excited';
+function normalizeEmotion(e: string): EmotionType {
+  const map: Record<string, EmotionType> = {
+    neutral: 'neutral',
+    happy: 'happy',
+    angry: 'angry',
+    excited: 'excited',
+    sad: 'lost',
+    upset: 'wronged',
+    wronged: 'wronged',
+    lost: 'lost',
+    shy: 'shy',
+    jealous: 'jealous',
+    coquetry: 'coquetry',
+    tsundere: 'coquetry',
+    coquette: 'coquetry'
+  };
+  const k = String(e || '').toLowerCase();
+  if (map[k]) return map[k];
+  return (EMOTIONS[k as EmotionType] ? (k as EmotionType) : 'neutral');
+}
+function inferEmotionFromText(t: string): EmotionType {
+  const s = String(t || '').toLowerCase();
+  if (/开心|喜欢|愉快|高兴|满足|喜悦/.test(s)) return 'happy';
+  if (/生气|愤怒|火大|糟糕|讨厌|不爽|暴躁/.test(s)) return 'angry';
+  if (/兴奋|激动|期待|迫不及待|心跳|颤|热|发热|酥/.test(s)) return 'excited';
+  if (/委屈|难过|伤心|失落|难受|低落|沮丧/.test(s)) return 'lost';
+  if (/害羞|脸红|不好意思|羞涩/.test(s)) return 'shy';
+  if (/吃醋|嫉妒/.test(s)) return 'jealous';
+  if (/撒娇|粘人|傲娇|靠近|贴着|拥抱|亲吻|吻|抚|摸|触|靠过来|看着我|靠在|抱紧/.test(s)) return 'coquetry';
+  return 'neutral';
+}
+
+function resolveEmotionFromLabel(s: string): EmotionType {
+  const t = String(s || '').toLowerCase();
+  if (/傲娇|撒娇|轻微傲娇|轻微撒娇|娇|粘人/.test(t)) return 'coquetry';
+  if (/害羞|羞涩|脸红|不好意思/.test(t)) return 'shy';
+  if (/开心|愉快|高兴|满足|喜悦/.test(t)) return 'happy';
+  if (/生气|愤怒|火大|暴躁|烦|不爽/.test(t)) return 'angry';
+  if (/兴奋|激动|期待|热情|亢奋/.test(t)) return 'excited';
+  if (/委屈/.test(t)) return 'wronged';
+  if (/难过|伤心|失落|沮丧|低落/.test(t)) return 'lost';
+  if (/嫉妒|吃醋/.test(t)) return 'jealous';
+  if (/平静|中性|冷淡|冷静/.test(t)) return 'neutral';
+  return normalizeEmotion(t);
+}
+
+function stripEmotionMarkers(text: string): string {
+  let s = String(text || '');
+  s = s.replace(/^\[EMO:\s*\{.*?\}\]\s*/, '');
+  const en = /(neutral|happy|angry|excited|lost|wronged|jealous|coquetry|shy)/i;
+  const cn = /(中性|开心|愤怒|兴奋|失落|委屈|吃醋|撒娇|害羞|轻微傲娇|轻微撒娇)/;
+  s = s.replace(/\s*\{([^}]*)\}\s*/g, (m: string, g1: string) => (en.test(g1) || cn.test(g1)) ? ' ' : m);
+  s = s.replace(/\s*[（(]([^）)]+)[）)]\s*/g, (m: string, g1: string) => (en.test(g1) || cn.test(g1)) ? ' ' : m);
+  s = s.replace(/\s*\[[a-zA-Z_]+\s*=\s*[^\]]+\]\s*/g, ' ');
+  s = s.trim().replace(/\s{2,}/g, ' ');
+  return s;
+}
+
+export interface Message {
+  id: number;
+  isUser: boolean;
+  text: string;
+  file?: File;
+  fileName?: string;
+  fileType?: string;
+  fileSize?: number;
+  imageBase64?: string;
+}
+
+// --- 常量配置 --- 
+export const EMOTIONS: Record<EmotionType, { 
+  label: string; 
+  colors: [string, string, string, string]; // [主色, 辉光色, 背景氛围色, 底光色]
+  speed: number 
+}> = {
+  neutral: {
+    label: "平静",
+    colors: ["#6B7280", "#A5ADC1", "#1C1F24", "#4B5563"],
+    speed: 3
+  },
+  happy: {
+    label: "开心",
+    colors: ["#F2CE77", "#FFE8B2", "#3A2E13", "#D3A74F"],
+    speed: 2
+  },
+  shy: {
+    label: "害羞",
+    colors: ["#F3B8C8", "#FFD8E3", "#3F1B29", "#E58AA7"],
+    speed: 2.5
+  },
+  angry: {
+    label: "生气",
+    colors: ["#E86A73", "#FFC1C4", "#3D0E14", "#C1444E"],
+    speed: 1.5
+  },
+  jealous: {
+    label: "吃醋",
+    colors: ["#A58AF8", "#D3C6FF", "#2C2453", "#7E6AD9"],
+    speed: 1.8
+  },
+  wronged: {
+    label: "委屈",
+    colors: ["#8CB2FF", "#CDE0FF", "#1B2A4C", "#5B8AE0"],
+    speed: 3.5
+  },
+  coquetry: {
+    label: "撒娇",
+    colors: ["#F6A4C6", "#FFD6EC", "#381C2C", "#CF6D9A"],
+    speed: 2
+  },
+  lost: {
+    label: "失落",
+    colors: ["#A3A3AD", "#D8D8E2", "#18181B", "#6E6E78"],
+    speed: 4
+  },
+  excited: {
+    label: "兴奋",
+    colors: ["#5EE3C0", "#C6FFF0", "#0D2E25", "#2FB395"],
+    speed: 1
+  }
+};
+
+const PluginsPanel = React.memo(function PluginsPanel({ models, selectedModel, setSelectedModel }: { models: Array<{ id: string; name: string; type: string; path: string }>; selectedModel: { id: string; name: string; type: string; path: string } | null; setSelectedModel: (m: { id: string; name: string; type: string; path: string } | null) => void; }) {
+  const llmModels = useMemo(() => models.filter(m => m.type === 'llm'), [models]);
+  const imageModels = useMemo(() => models.filter(m => m.type === 'image'), [models]);
+  const loraModels = useMemo(() => models.filter(m => m.type === 'lora'), [models]);
+  const [selectedImageModel, setSelectedImageModel] = useState<{ id: string; name: string; type: string; path: string } | null>(null);
+  const [selectedLora, setSelectedLora] = useState<string>("");
+  const [loraWeight, setLoraWeight] = useState<number>(0.7);
+  const [prompt, setPrompt] = useState<string>("");
+  const [isGeneratingImage, setIsGeneratingImage] = useState<boolean>(false);
+  const [imageBase64, setImageBase64] = useState<string>("");
+  const [ttsTextLanguage, setTtsTextLanguage] = useState<string>("中英混合");
+  const [ttsPromptLanguage, setTtsPromptLanguage] = useState<string>("中英混合");
+  const [ttsSpeed, setTtsSpeed] = useState<number>(1.0);
+  const [ttsPitch, setTtsPitch] = useState<number>(1.0);
+  const [referenceAudio, setReferenceAudio] = useState<string | null>(null);
+  const [uploading, setUploading] = useState<boolean>(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!selectedImageModel && imageModels.length > 0) {
+      setSelectedImageModel(imageModels[0]);
+    }
+  }, [imageModels.map(m => m.id).join(','), selectedImageModel?.id]);
+  const onUpload = async (file: File) => {
+    setUploading(true);
+    try {
+      const res = await api.uploadFile('/api/v1/upload', file);
+      const p = res?.data?.file_path || '';
+      setReferenceAudio(p || null);
+    } catch {
+    } finally {
+      setUploading(false);
+    }
+  };
+  const onGenerate = async () => {
+    const trimmed = prompt.trim();
+    if (!trimmed) return;
+    setIsGeneratingImage(true);
+    try {
+      const res = await api.generateImage(trimmed, selectedImageModel?.path || undefined, selectedLora || undefined, loraWeight);
+      const b64 = res?.data?.image_base64 || '';
+      setImageBase64(b64);
+    } catch {
+      setImageBase64('');
+    } finally {
+      setIsGeneratingImage(false);
+    }
+  };
+  const onPlayTTS = async () => {
+    const t = prompt.trim();
+    if (!t) return;
+    try {
+      const body: any = { text: t, text_language: ttsTextLanguage, prompt_language: ttsPromptLanguage, speed: ttsSpeed, pitch: ttsPitch };
+      if (referenceAudio) body.reference_audio = referenceAudio;
+      const res = await api.tts(body);
+      const audio = res?.data?.audio_base64 || '';
+      if (!audio) return;
+      const el = new Audio(audio);
+      el.loop = false;
+      el.play().catch(() => {});
+    } catch {}
+  };
+  return (
+    <div className="flex-1 p-8">
+      <div className="max-w-4xl mx-auto space-y-4">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-white/60">LLM</span>
+          <select
+            value={selectedModel?.id || ''}
+            onChange={e => {
+              const id = e.target.value;
+              const found = llmModels.find(m => m.id === id) || null;
+              setSelectedModel(found);
+            }}
+            className="bg-black/30 text-white/80 text-xs px-2 py-1 rounded-md border border-white/10"
+          >
+            <option value="">选择LLM模型</option>
+            {llmModels.map(m => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+          </select>
+          <span className="text-[10px] text-white/60">当前: {selectedModel?.name || '未选择'}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-white/60">图片模型</span>
+          <select
+            value={selectedImageModel?.id || ''}
+            onChange={e => {
+              const id = e.target.value;
+              const found = imageModels.find(m => m.id === id) || null;
+              setSelectedImageModel(found);
+            }}
+            className="bg-black/30 text-white/80 text-xs px-2 py-1 rounded-md border border-white/10"
+          >
+            <option value="">选择图片生成模型</option>
+            {imageModels.map(m => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+          </select>
+          <span className="text-[10px] text-white/60">当前: {selectedImageModel?.name || '未选择'}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={selectedLora}
+            onChange={e => setSelectedLora(e.target.value)}
+            className="bg-black/30 text-white/80 text-xs px-2 py-1 rounded-md border border-white/10"
+          >
+            <option value="">选择LoRA</option>
+            {loraModels.map(m => (
+              <option key={m.id} value={m.path}>{m.name}</option>
+            ))}
+          </select>
+          <div className="flex items-center gap-1">
+            <input type="range" min={0} max={1} step={0.05} value={loraWeight} onChange={e => setLoraWeight(parseFloat(e.target.value))} />
+            <span className="text-[10px] text-white/60">{loraWeight.toFixed(2)}</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            value={prompt}
+            onChange={e => setPrompt(e.target.value)}
+            placeholder="输入提示词生成图像或TTS"
+            className="flex-1 bg-[#18181b] border border-white/10 rounded-md px-3 py-2 text-white"
+          />
+          <button onClick={onGenerate} className="px-4 py-2 rounded-md bg-white text-black text-sm hover:bg-gray-200">{isGeneratingImage ? '生成中...' : '生成图像'}</button>
+          <button onClick={onPlayTTS} className="px-4 py-2 rounded-md bg-white/10 text-white text-sm hover:bg-white/20">播放TTS</button>
+        </div>
+        {imageBase64 && (
+          <div className="mt-2"><img src={imageBase64} alt="generated" className="rounded-lg max-w-full" /></div>
+        )}
+        <div className="mt-4 p-3 bg-[#18181b] border border-white/10 rounded-md space-y-2">
+          <div className="text-white/70 text-xs">TTS 配置</div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-white/60">文本语言</span>
+              <select className="bg-black/30 text-white/80 text-xs px-2 py-1 rounded-md border border-white/10" value={ttsTextLanguage} onChange={e => setTtsTextLanguage(e.target.value)}>
+                <option value="中英混合">中英混合</option>
+                <option value="中文">中文</option>
+                <option value="英文">英文</option>
+                <option value="日文">日文</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-white/60">提示语言</span>
+              <select className="bg-black/30 text-white/80 text-xs px-2 py-1 rounded-md border border-white/10" value={ttsPromptLanguage} onChange={e => setTtsPromptLanguage(e.target.value)}>
+                <option value="中英混合">中英混合</option>
+                <option value="中文">中文</option>
+                <option value="英文">英文</option>
+                <option value="日文">日文</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-white/60">参考音频</span>
+              <span className="text-[10px] text-white/40">{referenceAudio ? '已选择' : '未选择'}</span>
+              <button onClick={() => fileRef.current?.click()} className="px-2 py-1 rounded-md bg-white text-black text-[10px] hover:bg-gray-200">{uploading ? '上传中...' : '选择文件'}</button>
+              <input ref={fileRef} type="file" accept="audio/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) onUpload(f); }} />
+            </div>
+            <div className="flex items-center gap-2 col-span-3">
+              <span className="text-[10px] text-white/60">速度</span>
+              <input type="range" min={0.6} max={1.4} step={0.02} value={ttsSpeed} onChange={e => setTtsSpeed(parseFloat(e.target.value))} />
+              <span className="text-[10px] text-white/60">{ttsSpeed.toFixed(2)}</span>
+              <span className="text-[10px] text-white/60 ml-3">音高</span>
+              <input type="range" min={0.8} max={1.2} step={0.02} value={ttsPitch} onChange={e => setTtsPitch(parseFloat(e.target.value))} />
+              <span className="text-[10px] text-white/60">{ttsPitch.toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+const ttsParamsForEmotion = (e: EmotionType) => {
+  const tone = (e === 'shy' || e === 'coquetry') ? 'shy' : ((e === 'neutral' || e === 'happy' || e === 'wronged') ? 'calm' : 'dark');
+  if (tone === 'dark') return { style: 3, speed: 1.02, pitch: 1.0, emotion: 0.6 };
+  if (tone === 'shy') return { style: 3, speed: 0.98, pitch: 1.02, emotion: 0.65 };
+  return { style: 3, speed: 1.0, pitch: 1.0, emotion: 0.5 };
+};
+
+// --- 新增：颜色处理工具函数 ---
+
+// 1. Hex 转 RGB
+const hexToRgb = (hex: string) => {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? {
+    r: parseInt(result[1], 16),
+    g: parseInt(result[2], 16),
+    b: parseInt(result[3], 16)
+  } : { r: 0, g: 0, b: 0 };
+};
+
+// 2. RGB 转 Hex
+const rgbToHex = (r: number, g: number, b: number) => {
+  return "#" + ((1 << 24) + (Math.round(r) << 16) + (Math.round(g) << 8) + Math.round(b)).toString(16).slice(1).toUpperCase();
+};
+
+// 3. 核心：混合颜色算法
+const calculateMixedColors = (weights: Record<string, number>): [string, string, string, string] => {
+  // 初始化4层颜色的累加器 [r, g, b]
+  let mixed = Array(4).fill(null).map(() => ({ r: 0, g: 0, b: 0 }));
+  let totalWeight = 0;
+
+  Object.entries(weights).forEach(([key, weight]) => {
+    const emoKey = key as EmotionType;
+    if (EMOTIONS[emoKey] && weight > 0) {
+      EMOTIONS[emoKey].colors.forEach((hex, index) => {
+        const rgb = hexToRgb(hex);
+        mixed[index].r += rgb.r * weight;
+        mixed[index].g += rgb.g * weight;
+        mixed[index].b += rgb.b * weight;
+      });
+      totalWeight += weight;
+    }
+  });
+
+  // 防呆：如果没有权重，返回默认 Neutral
+  if (totalWeight === 0) return EMOTIONS.neutral.colors;
+
+  // 计算平均值并转回 Hex
+  return mixed.map(rgb => rgbToHex(
+    rgb.r / totalWeight,
+    rgb.g / totalWeight,
+    rgb.b / totalWeight
+  )) as [string, string, string, string];
+};
+
+// 4. 获取主导情绪（用于 TTS 和 动画速度）
+const getDominantEmotion = (weights: Record<string, number>): EmotionType => {
+  let max = 0;
+  let dom: EmotionType = 'neutral';
+  Object.entries(weights).forEach(([key, w]) => {
+    if (w > max) { max = w; dom = key as EmotionType; }
+  });
+  return dom;
+};
+
+// --- 侧边栏配置 --- 
+const SIDEBAR_ITEMS = [
+  { id: 'Chat', icon: <MessageSquare size={20}/>, label: 'Chat', title: '聊天 (Chat)' },
+  { id: 'Plugins', icon: <LayoutGrid size={20}/>, label: 'Plugins', title: '插件管理 (Plugins)' },
+  { id: 'Memory', icon: <Activity size={20}/>, label: 'Memory', title: '记忆管理 (Memory)' },
+  { id: 'Console', icon: <Terminal size={20}/>, label: 'Console', title: '控制管理 (Console)' },
+];
+
+// --- 组件：硬件监控面板 --- 
+export const DeviceWidget = React.memo(({ 
+  cpu, 
+  gpu, 
+  memory,
+  colors,
+  emotion 
+}: { 
+  cpu: number; 
+  gpu: number; 
+  memory: number;
+  colors: [string, string, string, string];
+  emotion: EmotionType 
+}) => {
+  return (
+    <div className="flex items-center gap-3 bg-[#1a1a1a] border border-white/10 rounded-full py-1.5 px-4 shadow-[0_4px_10px_rgba(0,0,0,0.3)]">
+      <div className="relative w-8 h-8 flex items-center justify-center">
+        <div 
+          className="absolute inset-0 rounded-full p-[2px]"
+          style={{ 
+            background: `linear-gradient(135deg, #d4d4d8, ${colors[0]})`
+          }}
+        >
+          <div className="w-full h-full rounded-full bg-[#0a0a0a]" />
+        </div>
+        <div 
+          className="absolute w-4 h-4 rounded-full animate-pulse z-10"
+          style={{ 
+            background: colors[1],
+            boxShadow: `0 0 15px ${colors[1]}`
+          }} 
+        />
+        <div className="absolute w-4 h-4 rounded-full z-20 opacity-30 bg-[url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAIklEQVQIW2NkQAKrVq36zwjjgzhhYWGMYAEYB8RmROaABADeOQ8CXl/xfgAAAABJRU5ErkJggg==')]"></div>
+      </div>
+
+      <div className="flex flex-col text-[10px] font-mono leading-tight text-white/60">
+        <div className="flex items-center gap-2">
+          <Cpu size={10} /> <span>CPU {cpu}%</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Zap size={10} /> <span>GPU {gpu}%</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Activity size={10} /> <span>MEM {memory}%</span>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+DeviceWidget.displayName = 'DeviceWidget';
+
+// --- 组件：消息气泡 --- 
+export const MessageBubble = React.memo(({ 
+  message, 
+  playingMsgId, 
+  onToggleTTS,
+  colors,
+  loadingAudio
+}: {
+  message: Message;
+  playingMsgId: number | null;
+  onToggleTTS: (id: number) => void;
+  colors?: [string, string, string, string];
+  loadingAudio?: boolean;
+}) => {
+  return (
+    <div 
+      className={cn(
+        "max-w-[75%] shadow-lg border backdrop-blur-xl flex flex-col overflow-hidden transition-all",
+        message.isUser
+          ? "bg-white/10 border-white/10 text-white rounded-[24px] rounded-br-sm"
+          : "bg-[#18181b]/80 border-white/5 text-gray-200 rounded-[24px] rounded-bl-sm"
+      )}
+    >
+      <div className="p-5 text-[15px] leading-relaxed">
+        {message.text}
+        {message.imageBase64 && (<img src={message.imageBase64} alt="generated" className="mt-3 rounded-lg max-w-full" />)}
+      </div>
+
+      {!message.isUser && (
+        <div 
+          className="px-5 py-3 bg-black/20 border-t border-white/5 flex items-center gap-3"
+          style={{ borderLeft: `2px solid ${colors ? colors[0] : 'transparent'}` }}
+        >
+          <button 
+            onClick={() => onToggleTTS(message.id)}
+            className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-all flex-shrink-0"
+            aria-label={playingMsgId === message.id ? "停止播放" : "播放语音"}
+          >
+            {loadingAudio ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : playingMsgId === message.id ? (
+              <Square size={12} fill="currentColor" />
+            ) : (
+              <Play size={12} fill="currentColor" />
+            )}
+          </button>
+
+          <div className="flex-1 h-4 flex items-center gap-[2px] opacity-50">
+            {loadingAudio ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : playingMsgId === message.id ? (
+              // 播放时的动态声音波
+              Array.from({ length: 12 }).map((_, i) => (
+                <motion.div
+                  key={i}
+                  className="w-[2px] bg-current rounded-full"
+                  animate={{ height: [4, 12, 4] }}
+                  transition={{
+                      duration: 0.5,
+                      repeat: Infinity,
+                      delay: i * 0.1,
+                      ease: "easeInOut"
+                  }}
+                />
+              ))
+            ) : (
+              // 静止时的优雅直线
+              Array.from({ length: 12 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="w-[2px] h-[2px] bg-current rounded-full"
+                />
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
+
+MessageBubble.displayName = 'MessageBubble';
+
+// --- 组件：正在输入指示器 --- 
+export const TypingIndicator = () => {
+  return (
+    <div className="flex justify-start">
+      <div className="max-w-[25%] p-4 bg-[#18181b]/80 border border-white/5 rounded-[24px] rounded-bl-sm flex items-center justify-center gap-1">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <motion.div
+            key={i}
+            className="w-2 h-2 rounded-full bg-white/60"
+            animate={{ opacity: [0.5, 1, 0.5], scale: [1, 1.1, 1] }}
+            transition={{
+                duration: 1.4,
+                repeat: Infinity,
+                delay: i * 0.3,
+                ease: "easeInOut"
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// --- 组件：侧边栏按钮 --- 
+export const SidebarButton = ({ 
+  item, 
+  isActive, 
+  isExpanded, 
+  onClick 
+}: {
+  item: typeof SIDEBAR_ITEMS[0];
+  isActive: boolean;
+  isExpanded: boolean;
+  onClick: () => void;
+}) => {
+  return (
+    <button 
+      onClick={onClick}
+      title={isExpanded ? undefined : item.title}
+      className={cn(
+        "w-full flex items-center gap-4 p-3 rounded-xl transition-all duration-200 group relative",
+        isActive
+          ? "bg-white/10 text-white shadow-sm"
+          : "text-white/40 hover:text-white hover:bg-white/5"
+      )}
+    >
+      <span className={cn(
+         "transition-transform duration-200",
+         isActive ? "scale-100" : "group-hover:scale-110"
+      )}>
+         {item.icon}
+      </span>
+
+      <AnimatePresence>
+        {isExpanded && (
+           <motion.span 
+             initial={{ opacity: 0, x: -10 }}
+             animate={{ opacity: 1, x: 0 }}
+             exit={{ opacity: 0, x: -10 }}
+             transition={{ duration: 0.2 }}
+             className="text-sm font-medium whitespace-nowrap"
+           >
+             {item.label}
+           </motion.span>
+        )}
+      </AnimatePresence>
+      
+      {isActive && (
+         <motion.div 
+           layoutId="active-pill"
+           className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full"
+         />
+      )}
+    </button>
+  );
+};
+
+// --- 主组件 --- 
+export default function Aveline() {
+  // 状态管理
+  const [input, setInput] = useState('');
+  const [emotion, setEmotion] = useState<EmotionType>('neutral');
+  const [currentColors, setCurrentColors] = useState<[string, string, string, string]>(EMOTIONS.neutral.colors);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [activeTab, setActiveTab] = useState('Chat');
+  const [messages, setMessages] = useState<Message[]>([
+    { id: 1, isUser: false, text: "系统就绪。Aveline 核心已加载。" }
+  ]);
+  const STORAGE_KEY = 'aveline_messages';
+  const [stats, setStats] = useState({ cpu: 12, gpu: 4, memory: 20 });
+  const [playingMsgId, setPlayingMsgId] = useState<number | null>(null);
+  const [isTyping, setIsTyping] = useState(false);
+  const [isWsConnected, setIsWsConnected] = useState(false);
+  const [isMounted, setIsMounted] = useState(true); // 组件挂载状态，用于防止内存泄漏
+  const [referenceAudio, setReferenceAudio] = useState<string | null>(null);
+  const [voices, setVoices] = useState<Array<{id:string,name:string,audio_path?:string}>>([]);
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string>('');
+  const [models, setModels] = useState<Array<{ id: string; name: string; type: string; path: string }>>([]);
+  const [selectedModel, setSelectedModel] = useState<{ id: string; name: string; type: string; path: string } | null>(null);
+  const [modelLoading, setModelLoading] = useState(false);
+  const [modelLoaded, setModelLoaded] = useState(false);
+  const [loraWeight, setLoraWeight] = useState(0.7);
+  const [selectedLora, setSelectedLora] = useState<string>('');
+  const [pluginPrompt, setPluginPrompt] = useState('');
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [audioLoadingMsgId, setAudioLoadingMsgId] = useState<number | null>(null);
+  const [clock, setClock] = useState<string>('');
+  const [emotionLockUntil, setEmotionLockUntil] = useState<number>(0);
+  const [lastActivityAt, setLastActivityAt] = useState<number>(Date.now());
+  const [isNudging, setIsNudging] = useState<boolean>(false);
+  const [nudgeStage, setNudgeStage] = useState<number>(0);
+  const [lastNudgeAt, setLastNudgeAt] = useState<number>(0);
+  const [scheduledNudges, setScheduledNudges] = useState<Record<string, number>>({});
+  const [ttsTextLanguage, setTtsTextLanguage] = useState<string>('中英混合');
+  const [ttsPromptLanguage, setTtsPromptLanguage] = useState<string>('中英混合');
+  const [ttsSpeed, setTtsSpeed] = useState<number>(1.0);
+  const [ttsPitch, setTtsPitch] = useState<number>(1.0);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const data = JSON.parse(raw);
+        if (Array.isArray(data?.messages)) {
+          setMessages(data.messages as Message[]);
+        }
+        if (typeof data?.emotion === 'string') {
+          const emo = normalizeEmotion(String(data.emotion));
+          setEmotion(emo);
+          setCurrentColors(EMOTIONS[emo].colors);
+        } else if (Array.isArray(data?.currentColors) && data.currentColors.length === 4) {
+          setCurrentColors(data.currentColors as [string, string, string, string]);
+        }
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      const payload = { messages, emotion, currentColors };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    } catch {}
+  }, [messages, emotion, currentColors]);
+
+  useEffect(() => {
+    let timer: any = null;
+    timer = setInterval(async () => {
+      try {
+        const res = await api.getHealthMetrics();
+        const cpu = Math.round((res?.metrics?.cpu_percent ?? 0) as number);
+        const mem = Math.round((res?.metrics?.memory?.percent ?? 0) as number);
+        let gpu = 0;
+        try {
+          const gpuStats = res?.metrics?.gpu;
+          if (gpuStats && typeof gpuStats.percent === 'number') gpu = Math.round(gpuStats.percent);
+          else if (typeof res?.metrics?.gpu_percent === 'number') gpu = Math.round(res.metrics.gpu_percent);
+        } catch {}
+        setStats({ cpu: cpu, gpu: gpu, memory: mem });
+      } catch {}
+    }, 1500);
+    return () => { if (timer) clearInterval(timer); };
+  }, []);
+
+  useEffect(() => {
+    let t: any = null;
+    t = setInterval(() => {
+      const d = new Date();
+      const pad = (n: number) => (n < 10 ? '0' + n : '' + n);
+      const s = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+      setClock(s);
+    }, 1000);
+    return () => { if (t) clearInterval(t); };
+  }, []);
+
+  useEffect(() => {
+    if (Date.now() < emotionLockUntil) return;
+    const c = Math.max(0, Math.min(100, stats.cpu));
+    const g = Math.max(0, Math.min(100, stats.gpu));
+    const m = Math.max(0, Math.min(100, stats.memory));
+    const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+    const w_excited = clamp01((g - 50) / 50) * 0.6 + clamp01((c - 60) / 40) * 0.4;
+    const w_angry = clamp01((m - 70) / 30) * 0.7 + clamp01((c - 80) / 20) * 0.3;
+    const w_lost = clamp01((m - 85) / 15) * 0.8;
+    const mid = (c + g) / 2;
+    const w_happy = clamp01((50 - Math.abs(mid - 50)) / 50) * 0.5;
+    const base = 0.3;
+    const weights: Record<string, number> = {
+      neutral: base,
+      excited: w_excited,
+      angry: w_angry,
+      lost: w_lost,
+      happy: w_happy,
+      shy: 0,
+      jealous: 0,
+      wronged: 0,
+      coquetry: 0
+    };
+    const newColors = calculateMixedColors(weights);
+    const newEmotion = getDominantEmotion(weights);
+    setEmotion(newEmotion);
+    setCurrentColors(newColors);
+  }, [stats.cpu, stats.gpu, stats.memory, emotionLockUntil]);
+
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+    if (last && last.isUser) setLastActivityAt(Date.now());
+  }, [messages.length]);
+
+  useEffect(() => {
+    const t = setInterval(async () => {
+      if (!isMounted) return;
+      if (isTyping || isNudging) return;
+      const idleMs = Date.now() - lastActivityAt;
+      if (idleMs >= 1800000) {
+        const now = Date.now();
+        if (now - lastNudgeAt < 1800000) return;
+        setIsNudging(true);
+        try {
+          const d = new Date();
+          const h = d.getHours();
+          const slot = h >= 6 && h < 11 ? '早上' : h >= 11 && h < 14 ? '中午' : '晚上';
+          const instruction = `${slot}关怀：根据历史生成一句自然关心消息。真诚、不打扰、有存在感；口语化；不超过80字；避免模板；不提具体时间；不要问责；以第一人称开头。`;
+          const response = await api.sendMessage(instruction, { modelName: selectedModel?.id });
+          if (!isMounted) return;
+          let rawText = (response && (response.reply || response.response)) ? (response.reply || response.response) : '收到消息';
+          let newEmotion: EmotionType = 'neutral';
+          let newColors = EMOTIONS.neutral.colors;
+          const emoRegex = /^\[EMO:\s*(\{.*?\})\]/;
+          const match = typeof rawText === 'string' ? rawText.match(emoRegex) : null;
+          if (match) {
+            try {
+              const weightObj = JSON.parse(match[1]);
+              newColors = calculateMixedColors(weightObj);
+              newEmotion = getDominantEmotion(weightObj);
+              rawText = (rawText as string).replace(emoRegex, '').trim();
+            } catch {}
+          } else if (response?.emotion) {
+            const emo = normalizeEmotion(String(response.emotion));
+            newEmotion = emo;
+            newColors = EMOTIONS[emo].colors;
+            if (emo === 'neutral' && typeof rawText === 'string') {
+              const curlyRegex2 = /\s*\{([^}]*)\}\s*$/;
+              const m2b = rawText.match(curlyRegex2);
+              if (m2b) {
+                const e2 = normalizeEmotion(m2b[1]);
+                if (e2 !== 'neutral') {
+                  newEmotion = e2;
+                  newColors = EMOTIONS[e2].colors;
+                }
+                rawText = rawText.replace(curlyRegex2, '').trim();
+              } else {
+                const parenRegex2 = /\s*\((neutral|happy|angry|excited|lost|wronged|jealous|coquetry|shy)\)\s*$/i;
+                const m3b = rawText.match(parenRegex2);
+                if (m3b) {
+                  const e3 = normalizeEmotion(m3b[1]);
+                  if (e3 !== 'neutral') {
+                    newEmotion = e3;
+                    newColors = EMOTIONS[e3].colors;
+                  }
+                  rawText = rawText.replace(parenRegex2, '').trim();
+                }
+              }
+            }
+          } else {
+            const curlyRegex = /\s*\{([^}]*)\}\s*$/;
+            const m2 = typeof rawText === 'string' ? rawText.match(curlyRegex) : null;
+            if (m2) {
+              const emo = normalizeEmotion(m2[1]);
+              newEmotion = emo;
+              newColors = EMOTIONS[emo].colors;
+              rawText = (rawText as string).replace(curlyRegex, '').trim();
+            } else {
+              const parenRegex = /\s*[（(]([^）)]+)[）)]\s*$/i;
+              const m3 = typeof rawText === 'string' ? rawText.match(parenRegex) : null;
+              if (m3) {
+                const emo = resolveEmotionFromLabel(m3[1]);
+                newEmotion = emo;
+                newColors = EMOTIONS[emo].colors;
+                rawText = (rawText as string).replace(parenRegex, '').trim();
+              }
+            }
+            if (newEmotion === 'neutral') {
+              const fallback = inferEmotionFromText(String(rawText || ''));
+              newEmotion = fallback;
+              newColors = EMOTIONS[fallback].colors;
+            }
+          }
+          try {
+            if (typeof rawText === 'string') {
+              rawText = stripEmotionMarkers(rawText);
+            }
+          } catch {}
+          setEmotion(newEmotion);
+          setCurrentColors(newColors);
+          setEmotionLockUntil(Date.now() + 15000);
+          const aiMessage = { id: Date.now() + 1, isUser: false, text: rawText, requestId: response?.request_id };
+          setMessages(prev => {
+            const newMessages = [...prev, aiMessage];
+            return newMessages.length > MAX_MESSAGES ? newMessages.slice(-MAX_MESSAGES) : newMessages;
+          });
+          setLastNudgeAt(now);
+          setNudgeStage(0);
+        } catch {}
+        setIsNudging(false);
+      }
+    }, 60000);
+    return () => clearInterval(t);
+  }, [lastActivityAt, isTyping, isNudging, isMounted, selectedModel, nudgeStage, lastNudgeAt]);
+
+  useEffect(() => {
+    let timer: any = null;
+    const fetchModels = async () => {
+      try {
+        const res = await api.listModels();
+        const list = Array.isArray(res?.data?.models) ? res.data.models : (Array.isArray(res?.models) ? res.models : []);
+        let items = list.map((x: any) => ({ id: x.id, name: x.name, type: x.type, path: x.path }));
+        // Deduplicate items by id
+        items = Array.from(new Map(items.map((item: any) => [item.id, item])).values());
+        
+        // Only update if there are actual changes in content
+        setModels(prev => {
+            if (prev.length !== items.length) return items;
+            const isSame = prev.every((p, i) => 
+              p.id === items[i].id && 
+              p.name === items[i].name && 
+              p.type === items[i].type && 
+              p.path === items[i].path
+            );
+            return isSame ? prev : items;
+        });
+        
+        // Handle default selection separately to avoid dependency loops
+        if (items.length > 0 && !selectedModel) {
+            const preferL3 = items.find((x: any) => x.type === 'llm' && /l3/i.test(String(x.id) + String(x.name))) || null;
+            const def = preferL3 || items.find((x: any) => x.type === 'llm') || items[0];
+            if (def) setSelectedModel(def);
+        }
+      } catch {}
+    };
+    
+    fetchModels();
+    timer = setInterval(fetchModels, 10000); // Increased interval to 10 seconds
+    return () => { if (timer) clearInterval(timer); };
+  }, []); // Removed selectedModel from dependency array to prevent loops
+
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+    if (last && last.isUser) {
+      setNudgeStage(0);
+      setLastNudgeAt(0);
+    }
+  }, [messages.length]);
+
+  useEffect(() => {
+    const t = setInterval(async () => {
+      if (!isMounted) return;
+      if (isTyping || isNudging) return;
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = d.getMonth() + 1;
+      const day = d.getDate();
+      const h = d.getHours();
+      const min = d.getMinutes();
+      let bucket: 'morning' | 'noon' | 'evening' | null = null;
+      if (h === 8 && min < 6) bucket = 'morning';
+      else if (h === 12 && min < 6) bucket = 'noon';
+      else if (h === 21 && min < 6) bucket = 'evening';
+      if (!bucket) return;
+      const key = `${bucket}-${y}-${m}-${day}`;
+      if (scheduledNudges[key]) return;
+      try {
+        const label = bucket === 'morning' ? '早上' : bucket === 'noon' ? '中午' : '晚上';
+        const instruction = `${label}关怀：根据历史生成一句自然关心消息。真诚、不打扰、有存在感；口语化；不超过80字；避免模板；不提具体时间；不要问责；以第一人称开头。`;
+        const response = await api.sendMessage(instruction, { modelName: selectedModel?.id });
+        if (!isMounted) return;
+        let rawText = (response && (response.reply || response.response)) ? (response.reply || response.response) : '收到消息';
+        let newEmotion: EmotionType = 'neutral';
+        let newColors = EMOTIONS.neutral.colors;
+        const emoRegex = /^\[EMO:\s*(\{.*?\})\]/;
+        const match = typeof rawText === 'string' ? rawText.match(emoRegex) : null;
+        if (match) {
+          try {
+            const weightObj = JSON.parse(match[1]);
+            newColors = calculateMixedColors(weightObj);
+            newEmotion = getDominantEmotion(weightObj);
+            rawText = (rawText as string).replace(emoRegex, '').trim();
+          } catch {}
+        } else if (response?.emotion) {
+          const emo = normalizeEmotion(String(response.emotion));
+          newEmotion = emo;
+          newColors = EMOTIONS[emo].colors;
+          if (emo === 'neutral' && typeof rawText === 'string') {
+            const curlyRegex2 = /\s*\{([^}]*)\}\s*$/;
+            const m2b = rawText.match(curlyRegex2);
+            if (m2b) {
+              const e2 = normalizeEmotion(m2b[1]);
+              if (e2 !== 'neutral') {
+                newEmotion = e2;
+                newColors = EMOTIONS[e2].colors;
+              }
+              rawText = rawText.replace(curlyRegex2, '').trim();
+            } else {
+              const parenRegex2 = /\s*\((neutral|happy|angry|excited|lost|wronged|jealous|coquetry|shy)\)\s*$/i;
+              const m3b = rawText.match(parenRegex2);
+              if (m3b) {
+                const e3 = normalizeEmotion(m3b[1]);
+                if (e3 !== 'neutral') {
+                  newEmotion = e3;
+                  newColors = EMOTIONS[e3].colors;
+                }
+                rawText = rawText.replace(parenRegex2, '').trim();
+              }
+            }
+          }
+        } else {
+          const curlyRegex = /\s*\{([^}]*)\}\s*$/;
+          const m2 = typeof rawText === 'string' ? rawText.match(curlyRegex) : null;
+          if (m2) {
+            const emo = normalizeEmotion(m2[1]);
+            newEmotion = emo;
+            newColors = EMOTIONS[emo].colors;
+            rawText = (rawText as string).replace(curlyRegex, '').trim();
+          } else {
+            const parenRegex = /\s*[（(]([^）)]+)[）)]\s*$/i;
+            const m3 = typeof rawText === 'string' ? rawText.match(parenRegex) : null;
+            if (m3) {
+              const emo = resolveEmotionFromLabel(m3[1]);
+              newEmotion = emo;
+              newColors = EMOTIONS[emo].colors;
+              rawText = (rawText as string).replace(parenRegex, '').trim();
+            }
+          }
+          if (newEmotion === 'neutral') {
+            const fallback = inferEmotionFromText(String(rawText || ''));
+            newEmotion = fallback;
+            newColors = EMOTIONS[fallback].colors;
+          }
+        }
+        try {
+          if (typeof rawText === 'string') {
+            rawText = stripEmotionMarkers(rawText);
+          }
+        } catch {}
+        setEmotion(newEmotion);
+        setCurrentColors(newColors);
+        setEmotionLockUntil(Date.now() + 15000);
+        const aiMessage = { id: Date.now() + 1, isUser: false, text: rawText, requestId: response?.request_id };
+        setMessages(prev => {
+          const newMessages = [...prev, aiMessage];
+          return newMessages.length > MAX_MESSAGES ? newMessages.slice(-MAX_MESSAGES) : newMessages;
+        });
+        setScheduledNudges(prev => ({ ...prev, [key]: Date.now() }));
+      } catch {}
+    }, 60000);
+    return () => clearInterval(t);
+  }, [isMounted, isTyping, isNudging, scheduledNudges, selectedModel]);
+  useEffect(() => {
+    let timer: any = null;
+    if (selectedModel && activeTab === 'Chat') {
+      timer = setInterval(async () => {
+        try {
+          const st = await api.getModelStatus(selectedModel.id);
+          setModelLoaded(!!(st?.data?.loaded));
+        } catch {}
+      }, 1500);
+    }
+    return () => { if (timer) clearInterval(timer); };
+  }, [selectedModel, activeTab]);
+  
+  // 引用管理
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null); // 用于自动滚动到最新消息
+  const ttsRef = useRef<any>(null); // TTS实例引用，用于正确清理
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioCacheRef = useRef<Map<number, string>>(new Map());
+  const wsRef = useRef<WebSocket | null>(null);
+  
+  // 计算属性 - 避免在渲染时重复计算
+  const theme = useMemo(() => EMOTIONS[emotion], [emotion]);
+  
+  // 缓存的主题动画配置
+  const backgroundAnimation = useMemo(() => ({
+    animate: {
+      background: [
+        `radial-gradient(circle at 60% 20%, ${currentColors[2]} 0%, #000000 60%)`,
+        `radial-gradient(circle at 40% 80%, ${currentColors[3]} 0%, #000000 60%)`,
+        `radial-gradient(circle at 60% 20%, ${currentColors[2]} 0%, #000000 60%)`
+      ]
+    },
+    transition: {
+      duration: theme.speed * 3,
+      repeat: Infinity,
+      repeatType: "mirror" as const,
+      ease: "easeInOut"
+    }
+  }), [currentColors, theme.speed]);
+
+  useEffect(() => {
+    try {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then((regs) => {
+          try {
+            regs.forEach(r => r.unregister());
+          } catch {}
+        }).catch(() => {});
+      }
+    } catch {}
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          const msgs = arr.filter((v: any) => v && typeof v.id === 'number' && typeof v.isUser === 'boolean' && typeof v.text === 'string');
+          if (msgs.length > 0) {
+            setMessages(msgs.slice(-MAX_MESSAGES));
+          }
+        }
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      const payload = messages.map(m => ({ id: m.id, isUser: m.isUser, text: m.text, fileName: m.fileName, fileType: m.fileType, fileSize: m.fileSize, imageBase64: m.imageBase64 }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    } catch {}
+  }, [messages]);
+  
+  // 处理 TTS 播放/停止
+  const toggleTTS = useCallback(async (msgId: number) => {
+    const LOCAL_TTS_ONLY = true;
+    if (playingMsgId === msgId) {
+      setPlayingMsgId(null);
+      if (audioRef.current) {
+        try {
+          audioRef.current.pause();
+          audioRef.current.currentTime = 0;
+        } catch (error) {
+          logger.error('停止音频时出错', error);
+        }
+        audioRef.current = null;
+      }
+      if (ttsRef.current) {
+        try {
+          ttsRef.current.stop();
+        } catch (error) {
+          logger.error('停止TTS时出错', error);
+        }
+      }
+      return;
+    }
+    if (audioRef.current) {
+      try {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      } catch (error) {
+        logger.error('停止音频时出错', error);
+      }
+      audioRef.current = null;
+    }
+    if (ttsRef.current) {
+      try {
+        ttsRef.current.stop();
+      } catch (error) {
+        logger.error('停止TTS时出错', error);
+      }
+    }
+    setPlayingMsgId(msgId);
+    setAudioLoadingMsgId(msgId);
+    const message = messages.find(m => m.id === msgId);
+    if (message && isMounted) {
+      try {
+        const cached = audioCacheRef.current.get(msgId);
+        if (cached) {
+          const el = new Audio(cached);
+          el.loop = false;
+          audioRef.current = el;
+          el.onended = () => {
+            if (isMounted) {
+              setPlayingMsgId(null);
+              audioRef.current = null;
+            }
+          };
+          try {
+            await el.play();
+            setAudioLoadingMsgId(null);
+            return;
+          } catch (error) {
+            logger.error('播放缓存音频失败', error);
+            setPlayingMsgId(null);
+            setAudioLoadingMsgId(null);
+            return;
+          }
+        }
+        const containsKana = /[\u3040-\u309F\u30A0-\u30FF]/.test(message.text || '');
+        const langAuto = containsKana ? '日文' : '中英混合';
+        const how = '不切';
+        const res = await api.tts({ text: message.text, ...(selectedVoiceId ? { voice_id: selectedVoiceId } : {}), ...(referenceAudio ? { reference_audio: referenceAudio } : {}), text_language: ttsTextLanguage || langAuto, prompt_language: ttsPromptLanguage || ttsTextLanguage || langAuto, how_to_cut: how, parallel_infer: false, split_bucket: false, allow_fallback: false, emotion_key: emotion, ...ttsParamsForEmotion(emotion), speed: ttsSpeed, pitch: ttsPitch });
+        const audio = res?.data?.audio_base64 || '';
+        if (audio) {
+          try { audioCacheRef.current.set(msgId, audio); } catch {}
+          const el = new Audio(audio);
+          el.loop = false;
+          audioRef.current = el;
+          el.onended = () => {
+            if (isMounted) {
+              setPlayingMsgId(null);
+              audioRef.current = null;
+            }
+          };
+          try {
+            await el.play();
+            setAudioLoadingMsgId(null);
+                    } catch (error) {
+                        logger.error('播放音频失败', error);
+                        if (!LOCAL_TTS_ONLY && ttsRef.current) {
+                            try { ttsRef.current.play(message.text); } catch (e) { logger.error('播放TTS时出错', e); }
+                        }
+                        setPlayingMsgId(null);
+                        setAudioLoadingMsgId(null);
+                    }
+                    } else if (!LOCAL_TTS_ONLY && ttsRef.current) {
+                        try { ttsRef.current.play(message.text); } catch (error) { logger.error('播放TTS时出错', error); setPlayingMsgId(null); }
+                        setAudioLoadingMsgId(null);
+                    } else {
+                        setPlayingMsgId(null);
+                        setAudioLoadingMsgId(null);
+                    }
+                } catch (error) {
+                    logger.error('调用后端TTS失败', error);
+                    if (!LOCAL_TTS_ONLY && ttsRef.current) {
+                        try { ttsRef.current.play(message.text); } catch (e) { logger.error('播放TTS时出错', e); setPlayingMsgId(null); }
+                    } else { setPlayingMsgId(null); }
+                    setAudioLoadingMsgId(null);
+                }
+            }
+        }, [playingMsgId, messages, isMounted, referenceAudio, emotion, selectedVoiceId]);
+
+  // Push订阅
+  const subscribeNotifications = useCallback(async () => {
+    try {
+      if (!('serviceWorker' in navigator)) return;
+      const reg = await navigator.serviceWorker.ready;
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') return;
+      const pubRes = await api.getPushPublicKey();
+      const key = (pubRes && (pubRes.public_key || (pubRes.data && pubRes.data.public_key))) || '';
+      if (!key) return;
+      const urlBase64ToUint8Array = (base64String: string) => {
+        const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+        const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+        const rawData = window.atob(base64);
+        const outputArray = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+        return outputArray;
+      };
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) });
+      await api.subscribePush({ subscription: sub });
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      const synth = (window as any).speechSynthesis;
+      const tts = {
+        utter: null as any,
+        play(text: string) {
+          if (!synth) return;
+          if (this.utter) synth.cancel();
+          const u = new (window as any).SpeechSynthesisUtterance(text);
+          const containsKana = /[\u3040-\u309F\u30A0-\u30FF]/.test(text || '');
+          u.lang = containsKana ? 'ja-JP' : 'zh-CN';
+          this.utter = u;
+          u.onend = () => {
+            try { setPlayingMsgId(null); } catch {}
+          };
+          synth.speak(u);
+        },
+        stop() {
+          if (synth) synth.cancel();
+          this.utter = null;
+        }
+      };
+      ttsRef.current = tts;
+    } catch (e) {
+      ttsRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    // 默认选择LLM模型（与后端一致）
+    const initial = { id: 'qwen/Qwen2___5-7B-Instruct', name: 'Qwen2.5-7B-Instruct Q4_K_M', type: 'llm', path: 'models/qwen/Qwen2___5-7B-Instruct-Q4_K_M.gguf' };
+    setSelectedModel(initial);
+    setModelLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    const hideTopRight = () => {
+      const nodes = Array.from(document.querySelectorAll('button, select, div')) as HTMLElement[];
+      for (const el of nodes) {
+        const t = (el.textContent || '').trim();
+        if (t.includes('量化') || t.includes('Q4_K_M') || t.includes('Q5_K_M')) {
+          el.style.display = 'none';
+        }
+      }
+    };
+    hideTopRight();
+    const id = setInterval(hideTopRight, 800);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    try {
+      const devPorts = new Set(['3001','3000','3002','5173']);
+      const isDev = typeof window !== 'undefined' && devPorts.has(String(window.location.port || ''));
+      const base = config.apiBaseUrl || `${window.location.protocol}//${window.location.host}`;
+      const u = new URL(base);
+      const wsUrl = `${u.protocol === 'https:' ? 'wss://' : 'ws://'}${u.host}/api/v1/ws`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setIsWsConnected(true);
+        logger.info('WebSocket已连接', { url: wsUrl });
+        // 发送简单的ping保持活跃
+        ws.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+      };
+
+      ws.onclose = (ev) => {
+        setIsWsConnected(false);
+        logger.warn('WebSocket已断开', { code: ev.code, reason: ev.reason });
+      };
+
+      ws.onerror = (err) => {
+        logger.error('WebSocket错误', { error: err, url: wsUrl });
+      };
+
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data);
+          // logger.debug('收到WebSocket消息', msg); // Reduce log spam
+
+          if (!msg) return;
+
+          // 处理模型更新
+          if (msg.type === 'models_update' && msg.data && Array.isArray(msg.data.models)) {
+            const list = msg.data.models.map((x: any) => ({ id: x.id, name: x.name, type: x.type, path: x.path }));
+            setModels(prev => {
+              const isSame = prev.length === list.length && prev.every((p, i) => 
+                p.id === list[i].id && 
+                p.name === list[i].name && 
+                p.type === list[i].type && 
+                p.path === list[i].path
+              );
+              return isSame ? prev : list;
+            });
+            if (!selectedModel) {
+              const defaultItem = list.find((x: any) => x.id === DEFAULT_LLM_ID) || list.find((x: any) => x.type === 'llm');
+              if (defaultItem) setSelectedModel(defaultItem);
+            }
+          }
+          // 处理聊天回复
+          else if (msg.type === 'message' && msg.subtype === 'response') {
+            setIsTyping(false);
+            const content = msg.content || '';
+            
+            // 解析情绪 (如果后端返回了情绪信息)
+            // 这里假设后端返回的 content 可能包含 [EMO:...] 标签，或者 msg 对象中有 emotion 字段
+            let newEmotion: EmotionType = 'neutral';
+            let newColors = EMOTIONS.neutral.colors;
+            let rawText = content;
+
+            const emoRegex = /^\[EMO:\s*(\{.*?\})\]/;
+            const match = typeof rawText === 'string' ? rawText.match(emoRegex) : null;
+            if (match) {
+              try {
+                const weightObj = JSON.parse(match[1]);
+                newColors = calculateMixedColors(weightObj);
+                newEmotion = getDominantEmotion(weightObj);
+                rawText = (rawText as string).replace(emoRegex, '').trim();
+              } catch (e) {
+                logger.error('情绪解析JSON失败', e);
+              }
+            } else if (msg.emotion) {
+              try {
+                const emo = normalizeEmotion(String(msg.emotion));
+                newEmotion = emo;
+                newColors = EMOTIONS[emo].colors;
+                if (emo === 'neutral' && typeof rawText === 'string') {
+                  const curlyRegex2 = /\s*\{([^}]*)\}\s*$/;
+                  const m2b = rawText.match(curlyRegex2);
+                  if (m2b) {
+                    const e2 = normalizeEmotion(m2b[1]);
+                    if (e2 !== 'neutral') {
+                      newEmotion = e2;
+                      newColors = EMOTIONS[e2].colors;
+                    }
+                  } else {
+                    const parenRegex2 = /\s*\((neutral|happy|angry|excited|lost|wronged|jealous|coquetry|shy)\)\s*$/i;
+                    const m3b = rawText.match(parenRegex2);
+                    if (m3b) {
+                      const e3 = normalizeEmotion(m3b[1]);
+                      if (e3 !== 'neutral') {
+                        newEmotion = e3;
+                        newColors = EMOTIONS[e3].colors;
+                      }
+                    }
+                  }
+                }
+              } catch {}
+            } else {
+              const curlyRegex = /\s*\{([^}]*)\}\s*$/;
+              const m2 = typeof rawText === 'string' ? rawText.match(curlyRegex) : null;
+              if (m2) {
+                const emo = normalizeEmotion(m2[1]);
+                newEmotion = emo;
+                newColors = EMOTIONS[emo].colors;
+                rawText = (rawText as string).replace(curlyRegex, '').trim();
+              } else {
+                const parenRegex = /\s*[（(]([^）)]+)[）)]\s*$/i;
+                const m3 = typeof rawText === 'string' ? rawText.match(parenRegex) : null;
+                if (m3) {
+                  const emo = resolveEmotionFromLabel(m3[1]);
+                  newEmotion = emo;
+                  newColors = EMOTIONS[emo].colors;
+                  rawText = (rawText as string).replace(parenRegex, '').trim();
+                }
+              }
+              if (newEmotion === 'neutral') {
+                const fallback = inferEmotionFromText(String(rawText || ''));
+                newEmotion = fallback;
+                newColors = EMOTIONS[fallback].colors;
+              }
+            }
+
+            try {
+              if (typeof rawText === 'string') {
+                rawText = stripEmotionMarkers(rawText);
+              }
+            } catch {}
+            setEmotion(newEmotion);
+            setCurrentColors(newColors);
+            setEmotionLockUntil(Date.now() + 15000);
+
+            const aiMessage = {
+              id: Date.now() + 1,
+              isUser: false,
+              text: rawText,
+              requestId: msg.message_id
+            };
+
+            setMessages(prev => {
+              const newMessages = [...prev, aiMessage];
+              return newMessages.length > MAX_MESSAGES ? newMessages.slice(-MAX_MESSAGES) : newMessages;
+            });
+          }
+        } catch (e) {
+          logger.error('处理WebSocket消息出错', e);
+        }
+      };
+
+      return () => {
+        try { 
+          ws.close(); 
+          wsRef.current = null;
+        } catch {}
+      };
+    } catch (e) {
+      logger.error('建立WebSocket连接失败', e);
+    }
+  }, []);
+  
+  // 自动滚动到最新消息
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
+  
+  // 处理文件选择
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !isMounted) return;
+    
+    logger.info('选中文件', { fileName: file.name });
+    
+    // 显示文件上传消息 - 不存储实际文件对象，只存储元数据
+    const fileMessage = {
+      id: Date.now(),
+      isUser: true,
+      text: `[文件上传: ${file.name}]`,
+      fileName: file.name,
+      fileType: file.type,
+      fileSize: file.size
+      // 移除 file 属性，避免内存泄漏
+    };
+    
+    // 添加消息并确保不超过上限
+    setMessages(prev => {
+      const newMessages = [...prev, fileMessage];
+      // 如果超过上限，只保留最新的 MAX_MESSAGES 条消息
+      return newMessages.length > MAX_MESSAGES ? 
+        newMessages.slice(-MAX_MESSAGES) : newMessages;
+    });
+    
+    setIsTyping(true);
+    
+    try {
+      const response = await api.uploadFile('/api/v1/upload', file);
+      
+      // 确保组件仍在挂载状态
+      if (!isMounted) return;
+      
+      setIsTyping(false);
+      
+      // 显示上传成功的消息
+      const serverPath = response?.data?.file_path || response?.file_path;
+      if (typeof serverPath === 'string' && serverPath.length > 0) {
+        if (file.type && file.type.startsWith('image/') && selectedModel && selectedModel.type === 'vision') {
+          try {
+            const res = await api.visionDescribe({ model_name: selectedModel.id, image_path: serverPath });
+            const desc = res?.data?.description || '图像识别完成';
+            setMessages(prev => {
+              const newMessages = [...prev, { id: Date.now() + 1, isUser: false, text: desc } as Message];
+              return newMessages.length > MAX_MESSAGES ? newMessages.slice(-MAX_MESSAGES) : newMessages;
+            });
+          } catch {
+            setMessages(prev => {
+              const newMessages = [...prev, { id: Date.now() + 1, isUser: false, text: '视觉模型处理失败' } as Message];
+              return newMessages.length > MAX_MESSAGES ? newMessages.slice(-MAX_MESSAGES) : newMessages;
+            });
+          }
+        } else {
+          setReferenceAudio(serverPath);
+          logger.info('参考音频已设置', { path: serverPath });
+          setMessages(prev => {
+            const newMessages = [...prev, { 
+              id: Date.now() + 1,
+              isUser: false,
+              text: `文件 ${file.name} 上传成功，已作为参考音频`
+            }];
+            return newMessages.length > MAX_MESSAGES ? 
+              newMessages.slice(-MAX_MESSAGES) : newMessages;
+          });
+        }
+      } else {
+        setMessages(prev => {
+          const newMessages = [...prev, { 
+            id: Date.now() + 1,
+            isUser: false,
+            text: response.message || `文件 ${file.name} 上传成功`
+          }];
+          return newMessages.length > MAX_MESSAGES ? 
+            newMessages.slice(-MAX_MESSAGES) : newMessages;
+        });
+      }
+    } catch (error) {
+      logger.error('文件上传失败', error);
+      
+      // 确保组件仍在挂载状态
+      if (!isMounted) return;
+      
+      setIsTyping(false);
+      setMessages(prev => {
+        const newMessages = [...prev, { 
+          id: Date.now() + 1,
+          isUser: false,
+          text: `文件上传失败，请稍后重试。`
+        }];
+        return newMessages.length > MAX_MESSAGES ? 
+          newMessages.slice(-MAX_MESSAGES) : newMessages;
+      });
+    }
+    finally {
+      // 清空文件输入，以便可以重新选择同一个文件
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  }, [isMounted, selectedModel]);
+
+  // 获取系统状态数据
+  const fetchStats = useCallback(async () => {
+    try {
+      const res = await api.getHealthMetrics();
+      const metrics = (res && res.data) ? res.data : res;
+      
+      // 确保组件仍在挂载状态
+      if (isMounted) {
+        const cpu = Number(metrics?.cpu_percent ?? 0);
+        const gpu = Number(metrics?.gpu_percent ?? metrics?.gpu?.percent ?? 0);
+        const memory = Number(metrics?.memory?.percent ?? 0);
+        setStats({ cpu: isNaN(cpu) ? 0 : cpu, gpu: isNaN(gpu) ? 0 : gpu, memory: isNaN(memory) ? 0 : memory });
+        logger.debug('系统状态更新', { 
+          status: 'success',
+          hasStats: !!metrics 
+        });
+      }
+    } catch (error) {
+      logger.warn('系统状态获取失败，使用模拟数据', { error: String(error) });
+      
+      // 确保组件仍在挂载状态
+      if (isMounted) {
+        // 错误处理：使用模拟数据作为后备
+        const mockCpu = Math.floor(Math.random() * 30) + 5;
+        const mockGpu = Math.floor(Math.random() * 25) + 2;
+        const mockMem = Math.floor(Math.random() * 50) + 20;
+        setStats({ cpu: mockCpu, gpu: mockGpu, memory: mockMem });
+      }
+    }
+  }, [isMounted]);
+
+  // 设置定时器定期获取系统状态数据
+  useEffect(() => {
+    logger.info('组件挂载，初始化系统状态轮询');
+    fetchStats();
+    // 增加轮询间隔到10秒，减少请求频率
+    const timer = setInterval(fetchStats, 10000);
+    
+    // 清理函数
+    return () => {
+      clearInterval(timer);
+      logger.info('组件卸载，清除系统状态轮询');
+      // 清理TTS实例
+      if (ttsRef.current) {
+        try {
+          ttsRef.current.stop();
+          ttsRef.current = null;
+        } catch (error) {
+          logger.error('清理TTS实例时出错', error);
+        }
+      }
+    };
+  }, [fetchStats]);
+  
+  // 组件挂载和卸载状态管理
+  useEffect(() => {
+    logger.info('组件生命周期: 挂载');
+    setIsMounted(true);
+    (async () => {
+      try {
+        const res = await api.listVoices();
+        const list = (res?.data?.voices || []) as any[];
+        setVoices(list);
+        if (!selectedVoiceId && list.length > 0) {
+          setSelectedVoiceId(String(list[0].id || ''));
+        }
+      } catch {}
+    })();
+    (async () => {
+      try {
+        const res = await api.listVoices();
+        const list = (res?.data?.voices || []) as any[];
+        setVoices(list);
+        if (!selectedVoiceId && list.length > 0) {
+          setSelectedVoiceId(String(list[0].id || ''));
+        }
+      } catch {}
+    })();
+    
+    return () => {
+      // 组件卸载时设置标志，防止内存泄漏
+      logger.info('组件生命周期: 卸载');
+      setIsMounted(false);
+      
+      // 确保停止所有正在进行的操作
+      if (ttsRef.current) {
+        try {
+          ttsRef.current.stop();
+          ttsRef.current = null;
+        } catch (error) {
+          logComponentError('组件卸载时清理TTS出错', error as Error);
+        }
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api.listModels();
+        let list = (res?.data?.models || []).map((x: any) => ({ id: x.id, name: x.name, type: x.type, path: x.path }));
+        // Deduplicate items by id
+        list = Array.from(new Map(list.map((item: any) => [item.id, item])).values());
+        const llmDefaults = [
+          { id: 'l3/L3-8B-Stheno-v3.2', name: 'L3-8B-Stheno-v3.2 Q5_K_M', type: 'llm', path: 'models/L3-8B-Stheno-v3.2-Q5_K_M.gguf' },
+          { id: 'qwen/Qwen2___5-7B-Instruct', name: 'Qwen2.5-7B-Instruct Q4_K_M', type: 'llm', path: 'models/qwen/Qwen2___5-7B-Instruct-Q4_K_M.gguf' }
+        ];
+        const merged = list.length ? list : llmDefaults;
+        setModels(merged);
+        const preferL3 = merged.find((x: any) => x.type === 'llm' && /l3/i.test(String(x.id) + String(x.name))) || null;
+        const first = preferL3 || merged[0] || null;
+        setSelectedModel(first ? { id: first.id, name: first.name, type: first.type, path: first.path } : null);
+        setModelLoaded(true);
+      } catch {}
+    })();
+  }, []);
+  
+  // 当消息更新时自动滚动到底部
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
+
+  // 消息发送处理 - 优化实现，支持请求ID和更好的错误处理
+  const handleSend = useCallback(async () => {
+    if (!input.trim() || !isMounted) return;
+    
+    const userMessage = { 
+      id: Date.now(), 
+      isUser: true, 
+      text: input 
+    };
+    
+    // 记录用户消息（截取前30个字符）
+    const messagePreview = input.substring(0, 30) + (input.length > 30 ? '...' : '');
+    logger.info('用户发送消息', { messagePreview, length: input.length });
+    
+    setInput('');
+    
+    // 添加用户消息并确保不超过上限
+    setMessages(prev => {
+      const newMessages = [...prev, userMessage];
+      return newMessages.length > MAX_MESSAGES ? 
+        newMessages.slice(-MAX_MESSAGES) : newMessages;
+    });
+    const trimmed = input.trim();
+    if (/^\/(img|image)\s+/i.test(trimmed)) {
+      const prompt = trimmed.replace(/^\/(img|image)\s+/i, '');
+      const pendingId = Date.now() + 1;
+      setMessages(prev => {
+        const newMessages = [...prev, { id: pendingId, isUser: false, text: '图像生成中...' } as Message];
+        return newMessages.length > MAX_MESSAGES ? newMessages.slice(-MAX_MESSAGES) : newMessages;
+      });
+      (async () => {
+        try {
+          const res = await api.generateImage(prompt, undefined, selectedLora || undefined, loraWeight);
+          const base64 = res?.data?.image_base64 || '';
+          setMessages(prev => prev.map(m => m.id === pendingId ? { ...m, text: base64 ? '图像生成完成' : '图像生成失败', imageBase64: base64 } as Message : m));
+        } catch {
+          setMessages(prev => prev.map(m => m.id === pendingId ? { ...m, text: '图像生成失败' } as Message : m));
+        }
+      })();
+      return;
+    }
+
+    if (/^\/(tts|say)\s+/i.test(trimmed)) {
+      setIsTyping(true);
+      const text = trimmed.replace(/^\/(tts|say)\s+/i, '');
+      try {
+        const res = await api.tts({
+          text,
+          text_language: '中英混合',
+          how_to_cut: '不切',
+          parallel_infer: false,
+          split_bucket: false,
+          allow_fallback: false,
+          emotion_key: emotion,
+          ...ttsParamsForEmotion(emotion)
+        });
+        setIsTyping(false);
+        const audio = res?.data?.audio_base64 || '';
+        if (audio) {
+          try { const el = new Audio(audio); el.play(); setPlayingMsgId(userMessage.id); } catch {}
+        }
+        setMessages(prev => {
+          const newMessages = [...prev, { id: Date.now() + 1, isUser: false, text: audio ? '语音合成完成' : '后端TTS不可用' } as Message];
+          return newMessages.length > MAX_MESSAGES ? newMessages.slice(-MAX_MESSAGES) : newMessages;
+        });
+      } catch (e) {
+        setIsTyping(false);
+        setMessages(prev => {
+          const newMessages = [...prev, { id: Date.now() + 1, isUser: false, text: 'TTS后端不可用' } as Message];
+          return newMessages.length > MAX_MESSAGES ? newMessages.slice(-MAX_MESSAGES) : newMessages;
+        });
+      }
+      return;
+    }
+    if (/^\/sing\s+/i.test(trimmed)) {
+      setIsTyping(true);
+      const text = trimmed.replace(/^\/(sing)\s+/i, '');
+      try {
+        const res = await api.tts({
+          text,
+          text_language: '中英混合',
+          how_to_cut: '不切',
+          parallel_infer: false,
+          split_bucket: false,
+          sing_mode: true,
+          allow_fallback: false,
+          emotion_key: emotion,
+          ...ttsParamsForEmotion(emotion)
+        });
+        setIsTyping(false);
+        const audio = res?.data?.audio_base64 || '';
+        if (audio) {
+          try { const el = new Audio(audio); el.play(); setPlayingMsgId(userMessage.id); } catch {}
+        }
+        setMessages(prev => {
+          const newMessages = [...prev, { id: Date.now() + 1, isUser: false, text: audio ? '歌唱合成完成' : 'TTS后端不可用' } as Message];
+          return newMessages.length > MAX_MESSAGES ? newMessages.slice(-MAX_MESSAGES) : newMessages;
+        });
+      } catch (e) {
+        setIsTyping(false);
+        setMessages(prev => {
+          const newMessages = [...prev, { id: Date.now() + 1, isUser: false, text: 'TTS后端不可用' } as Message];
+          return newMessages.length > MAX_MESSAGES ? newMessages.slice(-MAX_MESSAGES) : newMessages;
+        });
+      }
+      return;
+    }
+    
+    setIsTyping(true);
+
+    // 尝试使用WebSocket发送
+    if (isWsConnected && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      try {
+        const requestId = Date.now().toString(36) + Math.random().toString(36).substring(2, 5);
+        wsRef.current.send(JSON.stringify({
+          type: 'message',
+          content: input,
+          message_id: requestId,
+          model: selectedModel?.id,
+          timestamp: Date.now()
+        }));
+        logger.info('已通过WebSocket发送消息', { requestId });
+        // WebSocket发送成功后，等待onmessage回调处理回复
+        // 注意：如果WebSocket发送后后端没有回复，isTyping可能会一直为true
+        // 可以设置一个超时来重置isTyping，但为了简单起见暂时依赖后端回复
+        return;
+      } catch (e) {
+        logger.warn('WebSocket发送失败，降级到HTTP', e);
+        // 发送失败则继续执行下面的HTTP逻辑
+      }
+    }
+
+    try {
+      await measurePerformance('消息发送处理', async () => {
+        const response = await api.sendMessage(input, { modelName: selectedModel?.id });
+        if (!isMounted) return;
+        setIsTyping(false);
+
+        let rawText = (response && (response.reply || response.response))
+          ? (response.reply || response.response)
+          : '收到消息';
+        let newEmotion: EmotionType = 'neutral';
+        let newColors = EMOTIONS.neutral.colors;
+
+        const emoRegex = /^\[EMO:\s*(\{.*?\})\]/;
+        const match = typeof rawText === 'string' ? rawText.match(emoRegex) : null;
+        if (match) {
+          try {
+            const weightObj = JSON.parse(match[1]);
+            newColors = calculateMixedColors(weightObj);
+            newEmotion = getDominantEmotion(weightObj);
+            rawText = (rawText as string).replace(emoRegex, '').trim();
+            logger.info('情绪解析成功', { weights: weightObj, dominant: newEmotion });
+          } catch (e) {
+            logger.error('情绪解析JSON失败', e);
+          }
+        } else if (response?.emotion) {
+          const emo = normalizeEmotion(String(response.emotion));
+          newEmotion = emo;
+          newColors = EMOTIONS[emo].colors;
+          if (emo === 'neutral' && typeof rawText === 'string') {
+            const curlyRegex2 = /\s*\{([^}]*)\}\s*$/;
+            const m2b = rawText.match(curlyRegex2);
+            if (m2b) {
+              const e2 = normalizeEmotion(m2b[1]);
+              if (e2 !== 'neutral') {
+                newEmotion = e2;
+                newColors = EMOTIONS[e2].colors;
+              }
+              rawText = rawText.replace(curlyRegex2, '').trim();
+            } else {
+              const parenRegex2 = /\s*\((neutral|happy|angry|excited|lost|wronged|jealous|coquetry|shy)\)\s*$/i;
+              const m3b = rawText.match(parenRegex2);
+              if (m3b) {
+                const e3 = normalizeEmotion(m3b[1]);
+                if (e3 !== 'neutral') {
+                  newEmotion = e3;
+                  newColors = EMOTIONS[e3].colors;
+                }
+                rawText = rawText.replace(parenRegex2, '').trim();
+              }
+            }
+          }
+        } else {
+          const curlyRegex = /\s*\{([^}]*)\}\s*$/;
+          const m2 = typeof rawText === 'string' ? rawText.match(curlyRegex) : null;
+          if (m2) {
+            const emo = normalizeEmotion(m2[1]);
+            newEmotion = emo;
+            newColors = EMOTIONS[emo].colors;
+            rawText = (rawText as string).replace(curlyRegex, '').trim();
+          } else {
+            const parenRegex = /\s*[（(]([^）)]+)[）)]\s*$/i;
+            const m3 = typeof rawText === 'string' ? rawText.match(parenRegex) : null;
+            if (m3) {
+              const emo = resolveEmotionFromLabel(m3[1]);
+              newEmotion = emo;
+              newColors = EMOTIONS[emo].colors;
+              rawText = (rawText as string).replace(parenRegex, '').trim();
+            }
+          }
+          if (newEmotion === 'neutral') {
+            const fallback = inferEmotionFromText(String(rawText || ''));
+            newEmotion = fallback;
+            newColors = EMOTIONS[fallback].colors;
+          }
+        }
+
+        try {
+          if (typeof rawText === 'string') {
+            rawText = stripEmotionMarkers(rawText);
+          }
+        } catch {}
+        setEmotion(newEmotion);
+        setCurrentColors(newColors);
+        setEmotionLockUntil(Date.now() + 15000);
+
+        const aiMessage = {
+          id: Date.now() + 1,
+          isUser: false,
+          text: rawText,
+          requestId: response?.request_id
+        };
+
+        setMessages(prev => {
+          const newMessages = [...prev, aiMessage];
+          return newMessages.length > MAX_MESSAGES ? newMessages.slice(-MAX_MESSAGES) : newMessages;
+        });
+      });
+    } catch (error) {
+      // 记录错误
+      logger.error('消息发送失败', error as Error, { 
+        errorMessage: String(error),
+        messagePreview
+      });
+      
+      // 确保组件仍在挂载状态
+      if (!isMounted) return;
+      
+      setIsTyping(false);
+      
+      // 显示错误消息
+      setMessages(prev => {
+        const newMessages = [...prev, { 
+          id: Date.now() + 1,
+          isUser: false,
+          text: '抱歉，我暂时无法处理您的请求，请稍后再试。' 
+        }];
+        return newMessages.length > MAX_MESSAGES ? 
+          newMessages.slice(-MAX_MESSAGES) : newMessages;
+      });
+    }
+  }, [input, isMounted, selectedModel, isWsConnected]);
+
+  // 键盘事件处理
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  }, [handleSend]);
+
+  return (
+    <div className="w-screen h-screen bg-[#050505] text-gray-200 font-sans overflow-hidden flex">
+      {/* 背景氛围 */}
+      <motion.div 
+        className="fixed inset-0 pointer-events-none transition-all duration-[2000ms] mix-blend-screen blur-[40px] saturate-150 z-10"
+        initial={false}
+        animate={{ ...backgroundAnimation.animate, opacity: [0.35, 0.85, 0.35] }}
+        transition={backgroundAnimation.transition}
+        key={`bg-${currentColors.join('-')}-${emotion}`}
+      />
+      <motion.div
+        className="fixed inset-0 pointer-events-none mix-blend-screen z-10"
+        initial={false}
+        animate={{ opacity: [0.15, 0.45, 0.15], scale: [1, 1.06, 1] }}
+        transition={{ duration: theme.speed * 2, repeat: Infinity, repeatType: "mirror", ease: "easeInOut" }}
+        style={{ background: `radial-gradient(circle at 50% 50%, ${currentColors[0]} 0%, transparent 60%)` }}
+        key={`pulse-${currentColors.join('-')}-${emotion}`}
+      />
+      
+      {/* 侧边栏 */}
+      <motion.div 
+        initial={false}
+        animate={{ width: sidebarOpen ? 260 : 80 }}
+        transition={{ duration: 0.2, ease: "easeInOut" }}
+        className="h-full bg-[#121212] border-r border-white/5 flex flex-col z-20 transition-all duration-200 ease-in-out relative"
+      >
+        <div className="h-16 flex items-center px-6 border-b border-white/5">
+          <button 
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="p-1 rounded-md text-white/50 hover:text-white hover:bg-white/10 transition-colors"
+            title={sidebarOpen ? "收起侧边栏" : "展开侧边栏"}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="4" x2="20" y1="12" y2="12"></line>
+              <line x1="4" x2="20" y1="6" y2="6"></line>
+              <line x1="4" x2="20" y1="18" y2="18"></line>
+            </svg>
+          </button>
+          
+          <AnimatePresence mode="wait">
+            {sidebarOpen && (
+                <motion.span 
+                  key="avelinetext"
+                  className="font-semibold tracking-wide text-white ml-3 whitespace-nowrap"
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: 'auto' }}
+                  exit={{ opacity: 0, width: 0 }}
+                  transition={{
+                      ease: [0.22, 1, 0.36, 1],
+                      duration: 0.3,
+                      delay: 0.1
+                  }}
+                >
+                  Aveline
+                </motion.span>
+            )}
+          </AnimatePresence>
+        </div>
+
+        <div className="flex-1 py-6 px-3 space-y-2">
+          {SIDEBAR_ITEMS.map((item) => (
+            <SidebarButton
+              key={item.id}
+              item={item}
+              isActive={activeTab === item.label}
+              isExpanded={sidebarOpen}
+              onClick={() => setActiveTab(item.label)}
+            />
+          ))}
+        </div>
+
+        <div className="p-4 border-t border-white/5">
+          <div className="space-y-2">
+            <button
+              onClick={subscribeNotifications}
+              className="w-full p-2 flex items-center gap-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/70 hover:text-white"
+              title="订阅推送通知"
+            >
+              <Bell size={18} />
+              {sidebarOpen && <span className="text-sm">订阅通知</span>}
+            </button>
+            <button 
+              onClick={() => setSidebarOpen(!sidebarOpen)} 
+              className="w-full p-2 flex items-center justify-center rounded-lg hover:bg-white/5 text-white/40"
+            >
+              {sidebarOpen ? <Settings size={20} /> : <Command size={20} />}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* 主内容区 */}
+      <div className="flex-1 flex flex-col relative z-10 bg-black/20 backdrop-blur-sm">
+        {/* 头部：呼吸灯效果 */}
+        <motion.header 
+          className="h-16 flex items-center justify-between px-8 backdrop-blur-md relative overflow-hidden" 
+          style={{ 
+            backgroundColor: 'rgba(0, 0, 0, 0)', 
+            borderBottom: '1px solid rgba(255, 255, 255, 0.1)', 
+            borderColor: `${currentColors[0]}20`
+          }} 
+          animate={{ 
+            opacity: [0.95, 1, 0.95] 
+          }} 
+          transition={{ 
+            duration: theme.speed, 
+            repeat: Infinity, 
+            ease: "easeInOut" 
+          }}
+        >
+          {/* 流动背景 */}
+          <motion.div 
+            className="absolute inset-0 z-0 pointer-events-none" 
+            style={{ 
+              width: '150%', 
+              height: '100%', 
+              background: `linear-gradient(to right, 
+                rgba(0,0,0,0), 
+                ${currentColors[3]}30 30%, 
+                ${currentColors[1]}40 50%, 
+                ${currentColors[3]}30 70%, 
+                rgba(0,0,0,0) 
+              )`
+            }} 
+            animate={{ x: ['-50%', '0%', '-50%'] }}
+            transition={{ 
+              duration: theme.speed * 4, 
+              repeat: Infinity, 
+              ease: "easeInOut" 
+            }}
+          />
+
+          {/* 玻璃效果遮罩 */}
+          <div className="absolute inset-0 bg-black/60 z-10" />
+          
+          <div className="flex flex-col z-20"> 
+            <span className="text-sm font-semibold text-white">Aveline</span> 
+            <span className="text-xs text-white/40 font-mono uppercase tracking-widest">AI Core Online</span> 
+          </div>
+          
+          <div className="flex items-center gap-4 z-20">
+            <span className="text-xs text-white/60 font-mono">{clock}</span>
+            <DeviceWidget cpu={stats.cpu} gpu={stats.gpu} memory={stats.memory} colors={currentColors} emotion={emotion} />
+          </div>
+        </motion.header>
+
+        {activeTab === 'Chat' && (
+          <>
+            <div 
+              className="flex-1 overflow-y-auto p-8 scroll-smooth"
+              style={{
+                maskImage: 'linear-gradient(to bottom, transparent 0%, black 20px), linear-gradient(to top, transparent 0%, black 20px)',
+                WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 20px), linear-gradient(to top, transparent 0%, black 20px)',
+                scrollBehavior: 'smooth'
+              }}
+            >
+              <div className="max-w-4xl mx-auto space-y-6">
+                {messages.map((msg) => (
+                  <div 
+                    key={msg.id} 
+                    className={cn("flex w-full", msg.isUser ? "justify-end" : "justify-start")}
+                  >
+                    <MessageBubble 
+                      message={msg}
+                      playingMsgId={playingMsgId}
+                      onToggleTTS={toggleTTS}
+                      colors={msg.isUser ? undefined : currentColors}
+                      loadingAudio={audioLoadingMsgId === msg.id}
+                    />
+                  </div>
+                ))}
+                {isTyping && <TypingIndicator />}
+                <div ref={messagesEndRef} /> 
+              </div>
+            </div>
+            <div className="p-8 pt-0">
+              <div className="max-w-4xl mx-auto">
+                <div 
+                  className={cn(
+                    "relative bg-[#18181b] rounded-full p-2 pl-4 flex items-center transition-all duration-200",
+                    "border border-white/10",
+                    "focus-within:border-white/30 focus-within:shadow-[0_0_20px_rgba(255,255,255,0.05)]",
+                    "hover:border-white/20"
+                  )}>
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    onChange={handleFileSelect} 
+                    className="hidden" 
+                  />
+                  <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="p-2 mr-1 rounded-full text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+                    title="上传文件"
+                  >
+                    <Paperclip size={20} />
+                  </button>
+                  <div className="w-[1px] h-4 bg-white/10 mx-2" />
+                  <button 
+                    className="p-2 mr-2 rounded-full text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+                    title="语音输入"
+                  >
+                    <Mic size={20} />
+                  </button>
+                  {voices.length > 0 && (
+                    <select
+                      value={selectedVoiceId}
+                      onChange={e => setSelectedVoiceId(e.target.value)}
+                      className="bg-black/30 text-white/80 text-xs px-2 py-1 rounded-md border border-white/10 mr-2"
+                      title="选择声音克隆配置"
+                    >
+                      {voices.map(v => (
+                        <option key={String(v.id)} value={String(v.id)}>{String(v.name || v.id)}</option>
+                      ))}
+                    </select>
+                  )}
+                  <input 
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Ask Aveline..."
+                    className="flex-1 bg-transparent border-none outline-none text-white h-10 placeholder:text-white/20"
+                  />
+                  <button 
+                    onClick={handleSend}
+                    className="p-3 rounded-full bg-white text-black hover:bg-gray-200 transition-colors shadow-[0_0_10px_rgba(255,255,255,0.2)]"
+                  >
+                    <Send size={18} />
+                  </button>
+                </div>
+                <div className="text-center mt-3 text-[10px] text-white/20 font-mono uppercase">
+                  AI Core Online  latency 14ms
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+        {activeTab === 'Plugins' && (<ErrorBoundary><PluginsPanel models={models} selectedModel={selectedModel} setSelectedModel={setSelectedModel} /></ErrorBoundary>)}
+        {activeTab === 'Memory' && (
+          <div className="flex-1 p-8">
+            <div className="max-w-4xl mx-auto space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="text-white/80 text-sm">聊天记录共 {messages.length} 条</div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={async () => {
+                      try { await api.clearMemory(); } catch {}
+                      try { localStorage.removeItem(STORAGE_KEY); } catch {}
+                      setMessages([{ id: Date.now(), isUser: false, text: "系统就绪。Aveline 核心已加载。" }]);
+                    }}
+                    className="px-3 py-1 rounded-md bg-white/10 hover:bg-white/20 text-white text-xs"
+                  >清空历史</button>
+                  <button
+                    onClick={() => {
+                      try {
+                        const data = JSON.stringify(messages);
+                        const blob = new Blob([data], { type: 'application/json' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url; a.download = 'aveline_messages.json'; a.click();
+                        URL.revokeObjectURL(url);
+                      } catch {}
+                    }}
+                    className="px-3 py-1 rounded-md bg-white text-black text-xs hover:bg-gray-200"
+                  >导出</button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {messages.map(m => (
+                  <div key={m.id} className="flex items-center justify-between bg-[#18181b] border border-white/10 rounded-md px-3 py-2">
+                    <div className="text-xs text-white/80 truncate max-w-[70%]">
+                      {m.isUser ? '用户' : 'Aveline'}: {m.text}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => navigator.clipboard && navigator.clipboard.writeText(m.text)}
+                        className="px-2 py-1 rounded-md bg-white/10 hover:bg-white/20 text-white text-[10px]"
+                      >复制</button>
+                      {!m.isUser && (
+                        <button
+                          onClick={() => toggleTTS(m.id)}
+                          className="px-2 py-1 rounded-md bg-white text-black text-[10px] hover:bg-gray-200"
+                        >播放</button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+        {activeTab === 'Console' && (
+          <div className="flex-1 p-8"><div className="text-white/60 text-sm">Console 面板</div></div>
+        )}
+      </div>
+    </div>
+  );
+}
+  const DEFAULT_LLM_ID = 'l3/L3-8B-Stheno-v3.2';

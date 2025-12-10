@@ -107,25 +107,7 @@ class ModelManager:
             logger.info(f"正在扫描模型目录: {models_dir}")
             
             if os.path.exists(models_dir):
-                # 1. 扫描通用目录结构
-                for name in os.listdir(models_dir):
-                    path = os.path.join(models_dir, name)
-                    if os.path.isdir(path):
-                        # 排除特殊目录，稍后单独处理
-                        if name.lower() in ["llm", "img", "image", "voice", "tts"]:
-                            continue
-                            
-                        # 简单的启发式检查：如果包含 config.json，认为是模型
-                        if os.path.exists(os.path.join(path, "config.json")):
-                            # 排除 TTS 模型目录 (通常包含 GPT_SoVITS)
-                            if "GPT-SoVITS" in name:
-                                continue
-                                
-                            if name not in self._models:
-                                logger.info(f"发现本地模型: {name}")
-                                self.register_model(name, "llm", path)
-
-                # 2. 扫描 LLM 目录
+                # 1. 扫描 LLM 目录
                 llm_dir = os.path.join(models_dir, "llm")
                 if os.path.exists(llm_dir):
                     for name in os.listdir(llm_dir):
@@ -168,8 +150,8 @@ class ModelManager:
                                     logger.info(f"发现本地 LORA 模型: {model_name}")
                                     self.register_model(model_name, "lora", path)
 
-                    # 扫描 SDXL/Forge 目录
-                    forge_dir = os.path.join(img_dir, "stable-diffusion-webui-forge-main", "models", "Stable-diffusion")
+                    # 扫描 SDXL/Forge 目录 (已更新路径到 sdxl 文件夹内)
+                    forge_dir = os.path.join(img_dir, "sdxl", "stable-diffusion-webui-forge-main", "models", "Stable-diffusion")
                     if os.path.exists(forge_dir):
                         logger.info(f"正在扫描 Forge 模型目录: {forge_dir}")
                         for name in os.listdir(forge_dir):
@@ -181,7 +163,7 @@ class ModelManager:
                                     self.register_model(model_name, "image_gen", path)
                     
                     # 扫描 Forge Lora 目录
-                    forge_lora_dir = os.path.join(img_dir, "stable-diffusion-webui-forge-main", "models", "Lora")
+                    forge_lora_dir = os.path.join(img_dir, "sdxl", "stable-diffusion-webui-forge-main", "models", "Lora")
                     if os.path.exists(forge_lora_dir):
                          logger.info(f"正在扫描 Forge Lora 目录: {forge_lora_dir}")
                          for name in os.listdir(forge_lora_dir):
@@ -318,11 +300,18 @@ class ModelManager:
         """获取已加载的模型列表"""
         return [name for name, info in self._models.items() if info.is_loaded]
 
-    def list_models(self) -> List[Dict[str, Any]]:
-        """获取所有注册的模型列表"""
+    def list_models(self, model_type: str = None) -> List[Dict[str, Any]]:
+        """
+        获取所有注册的模型列表
+        Args:
+            model_type: 可选，按模型类型筛选 ('llm', 'image_gen', 'vision', etc.)
+        """
         with self._global_lock:
             models_list = []
             for name, info in self._models.items():
+                if model_type and info.model_type != model_type:
+                    continue
+                    
                 models_list.append({
                     "id": info.model_name,  # Frontend expects 'id'
                     "name": info.model_name,

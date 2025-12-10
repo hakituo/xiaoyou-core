@@ -1098,17 +1098,18 @@ async def search_web(
         }
 
 @router.get("/models")
-async def list_models():
+async def list_models(type: Optional[str] = Query(None, description="Filter by model type (e.g., 'llm', 'image_gen')")):
     """
     获取可用模型列表
     """
     request_id = str(uuid.uuid4())
     try:
         manager = get_model_manager()
-        models = manager.list_models()
+        models = manager.list_models(model_type=type)
         return {
             "status": "success",
             "data": models,
+            "models": models, # Backward compatibility
             "request_id": request_id,
             "timestamp": datetime.now().isoformat()
         }

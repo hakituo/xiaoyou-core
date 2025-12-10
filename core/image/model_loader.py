@@ -31,12 +31,12 @@ logger = logging.getLogger("MODEL_LOADER")
 # 模型路径常量定义
 CHECKPOINT_DIR = "d:\\AI\\xiaoyou-core\\models\\check_point"
 CHECKPOINT_DIR_NEW = "d:\\AI\\xiaoyou-core\\models\\img\\sd1.5\\check_point"
-SDXL_CHECKPOINT_DIR = "d:\\AI\\xiaoyou-core\\models\\img\\sdxl\\checkpoints"
+SDXL_CHECKPOINT_DIR = "d:\\AI\\xiaoyou-core\\models\\img\\sdxl\\stable-diffusion-webui-forge-main\\models\\Stable-diffusion"
 ARCHIVE_DIR = "d:\\AI\\xiaoyou-core\\models\\archive"
 
 # 本地 Diffusers 资源路径 (来自 Forge)
-SD15_LOCAL_PATH = "d:\\AI\\xiaoyou-core\\models\\img\\stable-diffusion-webui-forge-main\\backend\\huggingface\\runwayml\\stable-diffusion-v1-5"
-SDXL_LOCAL_PATH = "d:\\AI\\xiaoyou-core\\models\\img\\stable-diffusion-webui-forge-main\\backend\\huggingface\\stabilityai\\stable-diffusion-xl-base-1.0"
+SD15_LOCAL_PATH = "d:\\AI\\xiaoyou-core\\models\\img\\sdxl\\stable-diffusion-webui-forge-main\\backend\\huggingface\\runwayml\\stable-diffusion-v1-5"
+SDXL_LOCAL_PATH = "d:\\AI\\xiaoyou-core\\models\\img\\sdxl\\stable-diffusion-webui-forge-main\\backend\\huggingface\\stabilityai\\stable-diffusion-xl-base-1.0"
 
 
 class ModelDiscovery:
@@ -97,7 +97,7 @@ class ModelDiscovery:
         search_dirs = [checkpoint_dir_new, sdxl_checkpoint_dir, checkpoint_dir, img_models_dir, models_dir]
         
         # 添加 Forge 的模型目录
-        forge_dir = os.path.join(img_models_dir, 'stable-diffusion-webui-forge-main', 'models', 'Stable-diffusion')
+        forge_dir = os.path.join(img_models_dir, 'sdxl', 'stable-diffusion-webui-forge-main', 'models', 'Stable-diffusion')
         if os.path.exists(forge_dir):
             search_dirs.append(forge_dir)
             
