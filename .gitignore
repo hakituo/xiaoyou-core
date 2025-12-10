@@ -5,7 +5,10 @@ models/
 output/
 ref_audio/
 venv_core/
-temp\
+captured_trace.json
+temp/
+legacy/
+logs/
 
 # --- Sensitive Data & Secrets ---
 .env
