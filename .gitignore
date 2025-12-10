@@ -1,119 +1,48 @@
-# 环境变量文件
-.env
-.env.local
-.env.*.local
-.env.*
+# Core directories to ignore
+history/
+paper/
+models/
+output/
+ref_audio/
+venv_core/
 
-# 敏感信息文件
-secret.*
-key.*
-*_token*
+# API Keys and Secrets
 *_api_key*
 *_secret*
-*credentials*
+*_token*
+sk-*
+*.key
+*.pem
+*.p12
 
-# Python编译文件
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
 *.so
-.Python
 
-# 日志文件
-*.log
-logs/
-
-# 历史记录目录
-history/
-
-# 语音文件目录
-multimodal/voice/*.mp3
-multimodal/voice/*.wav
-
-# 数据库文件
-*.db
-*.sqlite
-
-# IDE相关文件
+# IDE
 .idea/
 .vscode/
-*.swp
-*.swo
-*~
+.trae/
 
-# 操作系统文件
-.DS_Store
-Thumbs.db
-
-# 虚拟环境
-venv/
-env/
-ENV/
-
-# 测试相关
-.pytest_cache/
-coverage/
-
-# 打包文件
-*.egg-info/
-build/
-
-# 模型文件（不要提交到GitHub）
-models/
-
-# 论文相关文件（除了实验脚本）
-paper/paper.pdf
-paper/paper.tex
-paper/*.html
-paper/*.aux
-paper/*.out
-paper/*.log
-paper/CN/*.html
-paper/EN/*.html
-!paper/experiment/
-paper/experiment/*.pdf
-paper/experiment/experiment_results/
-
-# 报告文件排除
-System_Architecture_and_Performance_Report.*
-
-# 虚拟环境目录
-venv_*/
-dist/
-*.whl
-
-# 输出和临时文件目录
-tts_output/
-output/
-uploads/
-
-# 临时测试脚本
-test_coqui_tts_direct.py
-analyze_audio.py
-demo_multimodal.py
+# Specific files
+md_to_format.py
 demo_new_models.py
 desktop_pet.py
-md_to_format.py
-
-# IDE Config
-.trae/
+captured_trace.json
 
 # User Data & Chat Records
 clients/bots/bots/
 clients/bots/data/
-clients/bots/config/Console/
-clients/bots/config.json
-clients/bots/config.yml
+clients/bots/config/
 clients/bots/qq_bot_config.json
-clients/bots/qq_bot.log
-clients/bots/mirai.log
+clients/bots/*.log
 clients/bots/logs/
 
 # Binaries & Large Files
 clients/bots/mcl*
 clients/bots/plugins/*.jar
 clients/bots/libs/*.jar
-captured_trace.json
 external/llama.cpp-master/
 external/gradle-9.2.1/
 
