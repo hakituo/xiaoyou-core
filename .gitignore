@@ -1,53 +1,124 @@
-# Core directories to ignore
+# --- User Specified Exclusions ---
 history/
 paper/
 models/
 output/
 ref_audio/
 venv_core/
+temp\
 
-# API Keys and Secrets
-*_api_key*
-*_secret*
-*_token*
-sk-*
+# --- Sensitive Data & Secrets ---
+.env
+.env.*
+!.env.example
 *.key
 *.pem
 *.p12
+*.pfx
+*_token*
+*_api_key*
+*_secret*
+sk-*
+id_rsa
+id_rsa.pub
+secrets.yaml
+secrets.json
 
-# Python
+# --- Python ---
 __pycache__/
 *.py[cod]
+*$py.class
 *.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# IDE
+# --- Node.js / Frontend ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm/
+.next/
+.nuxt/
+.cache/
+dist/
+out/
+build/
+
+# --- Android ---
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+bin/
+gen/
+local.properties
+.gradle/
+clients/android/app/build/
+
+# --- IDEs & Editors ---
 .idea/
 .vscode/
 .trae/
+*.swp
+*.swo
+*~
+*.sublime-workspace
+*.sublime-project
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
 
-# Specific files
-md_to_format.py
-demo_new_models.py
-desktop_pet.py
-captured_trace.json
+# --- Logs ---
+*.log
+logs/
+clients/frontend/Aveline_UI/logs/
+clients/bots/*.log
+clients/bots/logs/
 
-# User Data & Chat Records
+# --- Specific Application Files (User Requested) ---
 clients/bots/bots/
 clients/bots/data/
 clients/bots/config/
 clients/bots/qq_bot_config.json
-clients/bots/*.log
-clients/bots/logs/
+clients/bots/mirai.log
+clients/bots/qq_bot.log
 
-# Binaries & Large Files
+# --- Large Binaries & External ---
 clients/bots/mcl*
 clients/bots/plugins/*.jar
 clients/bots/libs/*.jar
 external/llama.cpp-master/
 external/gradle-9.2.1/
 
-# Android
-clients/android/app/build/
-clients/android/.gradle/
-clients/android/local.properties
-
+# --- Temporary / Junk ---
+tmp/
+temp/
+*.bak
+*.tmp
+*.temp
+test_coqui_tts_direct.py
+analyze_audio.py
+demo_multimodal.py
+demo_new_models.py
+desktop_pet.py
+md_to_format.py
