@@ -20,7 +20,7 @@ class PerformanceMonitor:
     def __init__(self, config: Dict[str, Any] = None):
         self.config = config or {}
         self.enabled = self.config.get("enabled", True)
-        self.interval = self.config.get("interval", 5.0)  # 监控间隔（秒）
+        self.interval = self.config.get("interval", 1.0)  # 监控间隔（秒）
         self.history_size = self.config.get("history_size", 60)  # 历史数据保留条数
         
         # 检查GPU可用性

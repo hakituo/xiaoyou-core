@@ -86,9 +86,11 @@ class CoreEngine:
                 module = VLService()
                 await module.initialize()
             elif module_name == "memory":
-                from .memory import MemoryManager
-                module = MemoryManager()
-                await module.initialize()
+                # from .memory import MemoryManager # 假设的路径，实际可能不同
+                # 使用 memory module 包装器
+                from core.modules.memory.module import MemoryModule
+                module = MemoryModule()
+                # await module.initialize() # MemoryModule __init__ 中已部分初始化，这里可能不需要
             else:
                 logger.warning(f"未知模块: {module_name}")
                 return None

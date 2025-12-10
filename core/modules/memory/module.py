@@ -31,12 +31,14 @@ class MemoryModule:
             
         # 尝试初始化子组件
         try:
-            # 修正导入路径: memory/memory_manager.py
-            from memory.memory_manager import MemoryManager
-            self.manager = MemoryManager()
+            # 修正导入路径: memory/weighted_memory_manager.py
+            from memory.weighted_memory_manager import WeightedMemoryManager
+            # MemoryModule 目前作为通用接口，不直接实例化特定用户的 Manager
+            # self.manager = WeightedMemoryManager() 
+            self.manager = None
         except ImportError as e:
             self.manager = None
-            logger.warning(f"MemoryManager 导入失败: {e}，部分功能可能不可用")
+            logger.warning(f"WeightedMemoryManager 导入失败: {e}")
 
     async def save_memory(self, key, value):
         """保存记忆 (异步)"""

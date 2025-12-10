@@ -68,6 +68,7 @@ class GPTSoVITSEngine(TTSEngine):
         super().__init__()
         self.api_url = api_url
         self.default_lang = default_lang
+        self.sample_rate = 32000 # GPT-SoVITS 默认通常是 32000
         
     async def initialize(self):
         await super().initialize()
@@ -125,10 +126,23 @@ class GPTSoVITSEngine(TTSEngine):
         params = {
             "text": text,
             "text_lang": lang,
-            "ref_audio_path": kwargs.get("ref_audio_path", default_ref_audio),
+            "ref_audio_path": kwargs.get("ref_audio_path") or kwargs.get("reference_audio") or default_ref_audio,
             "prompt_text": kwargs.get("prompt_text", "这是中文纯语音测试，不包含英文内容"),
             "prompt_lang": kwargs.get("prompt_lang", "zh"),
+            "top_k": kwargs.get("top_k", 5),
+            "top_p": kwargs.get("top_p", 1.0),
+            "temperature": kwargs.get("temperature", 1.0),
+            "speed": kwargs.get("speed", 1.0),
         }
+        
+        # 可选参数，如果存在则添加
+        if "batch_size" in kwargs:
+            params["batch_size"] = kwargs["batch_size"]
+        if "speed_factor" in kwargs:
+            params["speed_factor"] = kwargs["speed_factor"]
+        if "pitch" in kwargs: # 部分API可能支持
+            params["pitch"] = kwargs["pitch"]
+
         
         # 如果有参考音频参数，也可以在这里添加
         # if "ref_audio_path" in kwargs:
@@ -181,6 +195,7 @@ class EdgeTTSEngine(TTSEngine):
         super().__init__()
         self.voice = voice
         self.rate = rate
+        self.sample_rate = 24000 # Edge-TTS 默认通常是 24000
         if not edge_tts:
             logger.warning("edge-tts package not found. Please install it with: pip install edge-tts")
         if not sf:
@@ -302,6 +317,12 @@ class TTSManager:
             self.engine = DummyTTSEngine(self.sample_rate)
             
         await self.engine.initialize()
+        
+        # 动态更新采样率
+        if hasattr(self.engine, 'sample_rate'):
+            self.sample_rate = self.engine.sample_rate
+            logger.info(f"Updated TTSManager sample rate to: {self.sample_rate}")
+            
         self.initialized = True
         logger.info("TTS engine initialized")
     

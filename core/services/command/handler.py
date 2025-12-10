@@ -1,11 +1,22 @@
 import asyncio
 from typing import Dict, Any, Tuple
-from memory.memory_manager import MemoryManager
+from core.utils.logger import get_logger
+from core.agents.chat_agent import get_default_chat_agent
+# from memory.memory_manager import MemoryManager
+from memory.weighted_memory_manager import WeightedMemoryManager
+
+logger = get_logger("COMMAND_HANDLER")
 
 class CommandHandler:
     """Command processing system using dictionary mapping for efficient command handling"""
     
     def __init__(self):
+        # self.memory_manager = MemoryManager()
+        # 命令处理通常不需要长期记忆，或者使用独立的命令历史
+        # 这里为了兼容性，可以实例化一个轻量级的 WeightedMemoryManager
+        self.memory_manager = WeightedMemoryManager(user_id="command_system", max_short_term=50)
+        self.chat_agent = get_default_chat_agent()
+        
         # Command mapping dictionary
         self.commands = {
             'clear': self._handle_clear,
@@ -29,7 +40,7 @@ class CommandHandler:
             "/help - Show this help information"
         ])
     
-    def handle(self, text: str, memory: MemoryManager) -> Tuple[bool, str]:
+    def handle(self, text: str, memory: WeightedMemoryManager) -> Tuple[bool, str]:
         """
         Process commands from user input
         
@@ -53,7 +64,17 @@ class CommandHandler:
         return True, f"Unknown command: {command}, use /help to see available commands"
     
     def _handle_clear(self, memory, args):
-        return memory.clear()
+        """清除历史记录"""
+        try:
+            # 清除短期记忆
+            with self.memory_manager.lock:
+                self.memory_manager.short_term_memory = []
+            
+            # 保存变更
+            self.memory_manager.save_memory()
+            return "History cleared."
+        except Exception as e:
+            return f"Failed to clear history: {e}"
     
     def _handle_save(self, memory, args):
         return memory.save_history()

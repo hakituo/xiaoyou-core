@@ -90,7 +90,8 @@ class AvelineService:
             response, _ = await self.generate_response(
                 user_input=prompt,
                 conversation_id="system_greeting",
-                max_tokens=60
+                max_tokens=60,
+                save_history=False
             )
             
             return response
@@ -256,7 +257,8 @@ class AvelineService:
         system_prompt: Optional[str] = None,
         max_tokens: int = 512,
         temperature: float = 0.7,
-        model_hint: Optional[str] = None
+        model_hint: Optional[str] = None,
+        save_history: bool = True
     ):
         """
         Stream response generation
@@ -275,7 +277,11 @@ class AvelineService:
                 
             # Use ChatAgent's stream_chat
             # Note: ChatAgent expects user_id, using conversation_id as user_id for now
-            async for chunk in self.chat_agent.stream_chat(user_id=conversation_id, message=user_input):
+            async for chunk in self.chat_agent.stream_chat(
+                user_id=conversation_id, 
+                message=user_input, 
+                save_history=save_history
+            ):
                 # Pass through the structured chunk directly
                 yield chunk
                 
@@ -291,7 +297,8 @@ class AvelineService:
         max_tokens: int = 512,
         temperature: float = 0.7,
         timeout: Optional[float] = None,
-        model_hint: Optional[str] = None
+        model_hint: Optional[str] = None,
+        save_history: bool = True
     ) -> Tuple[str, Dict[str, Any]]:
         """Main entry point for generating responses (Non-streaming)"""
         
@@ -315,7 +322,11 @@ class AvelineService:
                 self.chat_agent = get_default_chat_agent()
 
             # Aggregate stream
-            async for chunk in self.chat_agent.stream_chat(user_id=conversation_id, message=user_input):
+            async for chunk in self.chat_agent.stream_chat(
+                user_id=conversation_id, 
+                message=user_input, 
+                save_history=save_history
+            ):
                 if "content" in chunk:
                     full_response += chunk["content"]
                 
@@ -326,8 +337,29 @@ class AvelineService:
                         "data": chunk.get("data")
                     })
             
+            # Extract emotion from aggregated response
+            final_content, emotion_label = self.chat_agent.extract_and_strip_emotion(full_response)
+            if emotion_label:
+                metadata["emotion"] = emotion_label
+                
+            # Parse proactive actions
+            # 1. Image Generation: [GEN_IMG: prompt]
+            img_match = re.search(r'\[GEN_IMG:\s*(.*?)\]', final_content)
+            if img_match:
+                metadata["image_prompt"] = img_match.group(1)
+                final_content = final_content.replace(img_match.group(0), "")
+                
+            # 2. Voice Selection: [VOICE: style]
+            voice_match = re.search(r'\[VOICE:\s*(.*?)\]', final_content)
+            if voice_match:
+                metadata["voice_id"] = voice_match.group(1)
+                final_content = final_content.replace(voice_match.group(0), "")
+                metadata["message_type"] = "voice"
+            
+            final_content = final_content.strip()
+
             metadata["processing_time_ms"] = int((time.time() - start_time) * 1000)
-            return full_response, metadata
+            return final_content, metadata
 
         except Exception as e:
             logger.error(f"generate_response error: {e}")

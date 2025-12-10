@@ -30,7 +30,8 @@ logger = logging.getLogger("MODEL_LOADER")
 
 # 模型路径常量定义
 CHECKPOINT_DIR = "d:\\AI\\xiaoyou-core\\models\\check_point"
-CHECKPOINT_DIR_NEW = "d:\\AI\\xiaoyou-core\\models\\img\\check_point"
+CHECKPOINT_DIR_NEW = "d:\\AI\\xiaoyou-core\\models\\img\\sd1.5\\check_point"
+SDXL_CHECKPOINT_DIR = "d:\\AI\\xiaoyou-core\\models\\img\\sdxl\\checkpoints"
 ARCHIVE_DIR = "d:\\AI\\xiaoyou-core\\models\\archive"
 
 # 本地 Diffusers 资源路径 (来自 Forge)
@@ -88,11 +89,12 @@ class ModelDiscovery:
         """
         checkpoint_dir = CHECKPOINT_DIR
         checkpoint_dir_new = CHECKPOINT_DIR_NEW
+        sdxl_checkpoint_dir = SDXL_CHECKPOINT_DIR
         models_dir = "d:\\AI\\xiaoyou-core\\models"
         img_models_dir = "d:\\AI\\xiaoyou-core\\models\\img"
         model_paths = []
         
-        search_dirs = [checkpoint_dir_new, checkpoint_dir, img_models_dir, models_dir]
+        search_dirs = [checkpoint_dir_new, sdxl_checkpoint_dir, checkpoint_dir, img_models_dir, models_dir]
         
         # 添加 Forge 的模型目录
         forge_dir = os.path.join(img_models_dir, 'stable-diffusion-webui-forge-main', 'models', 'Stable-diffusion')

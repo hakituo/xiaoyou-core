@@ -20,8 +20,17 @@ import torch
 from diffusers import FluxPipeline # 用于类型检查
 
 # 导入新的模型加载器模块
-from core.image.model_loader import ModelLoader, ModelDiscovery
+from core.image.model_loader import ModelLoader, ModelDiscovery, SD15_LOCAL_PATH, SDXL_LOCAL_PATH
 from config.integrated_config import get_settings
+
+# Constants
+SD15_BASE_DIR = "d:\\AI\\xiaoyou-core\\models\\img\\sd1.5"
+SD15_CHECKPOINT_DIR = os.path.join(SD15_BASE_DIR, "check_point")
+SD15_LORA_DIR = os.path.join(SD15_BASE_DIR, "lora")
+
+SDXL_BASE_DIR = "d:\\AI\\xiaoyou-core\\models\\img\\sdxl"
+SDXL_CHECKPOINT_DIR = os.path.join(SDXL_BASE_DIR, "checkpoints")
+SDXL_LORA_DIR = os.path.join(SDXL_BASE_DIR, "lora")
 
 # 导入项目模块
 # 注意：确保这些模块的路径在 sys.path 中
@@ -329,6 +338,67 @@ class ImageManager:
                 logger.error(f"卸载图像模型失败 {model_id}: {e}")
                 return False
     
+    async def list_models(self) -> Dict[str, Any]:
+        """
+        List available models on disk (SD1.5 checkpoints, LoRAs, and SDXL)
+        """
+        models = {
+            "sd15": {
+                "checkpoints": [],
+                "loras": []
+            },
+            "sdxl": {
+                "models": [],
+                "loras": []
+            }
+        }
+
+        # Scan SD1.5 Checkpoints
+        if os.path.exists(SD15_CHECKPOINT_DIR):
+            for f in os.listdir(SD15_CHECKPOINT_DIR):
+                if f.endswith('.safetensors') or f.endswith('.ckpt'):
+                    models["sd15"]["checkpoints"].append({
+                        "name": f,
+                        "path": os.path.join(SD15_CHECKPOINT_DIR, f)
+                    })
+        
+        # Scan SD1.5 LoRAs
+        if os.path.exists(SD15_LORA_DIR):
+            for f in os.listdir(SD15_LORA_DIR):
+                if f.endswith('.safetensors') or f.endswith('.pt'):
+                     models["sd15"]["loras"].append({
+                        "name": f,
+                        "path": os.path.join(SD15_LORA_DIR, f)
+                    })
+
+        # Scan SDXL Checkpoints
+        if os.path.exists(SDXL_CHECKPOINT_DIR):
+            for f in os.listdir(SDXL_CHECKPOINT_DIR):
+                if f.endswith('.safetensors') or f.endswith('.ckpt'):
+                    models["sdxl"]["models"].append({
+                        "name": f,
+                        "path": os.path.join(SDXL_CHECKPOINT_DIR, f)
+                    })
+
+        # Scan SDXL LoRAs
+        if os.path.exists(SDXL_LORA_DIR):
+            for f in os.listdir(SDXL_LORA_DIR):
+                if f.endswith('.safetensors') or f.endswith('.pt'):
+                     models["sdxl"]["loras"].append({
+                        "name": f,
+                        "path": os.path.join(SDXL_LORA_DIR, f)
+                    })
+
+        # Add default SDXL model if local path exists and list is empty
+        if os.path.exists(SDXL_LOCAL_PATH) and not models["sdxl"]["models"]:
+             models["sdxl"]["models"].append({
+                "name": "SDXL Base 1.0 (Default)",
+                "path": SDXL_LOCAL_PATH,
+                "type": "sdxl"
+            })
+            
+        return models
+
     async def generate_image(self,
                            prompt: str,
                            config: Optional[ImageGenerationConfig] = None,
@@ -386,6 +456,17 @@ class ImageManager:
             
         if config is None:
             config = ImageGenerationConfig()
+
+        # [SDXL Compatibility]
+        # Check if current model is SDXL (by path or name)
+        is_sdxl = False
+        if "sdxl" in str(use_model_id).lower() or "stable-diffusion-xl" in str(use_model_id).lower():
+            is_sdxl = True
+            logger.info(f"[图像生成] 检测到 SDXL 模型: {use_model_id}")
+            # SDXL LoRA Support enabled
+            if config.lora_path:
+                logger.info(f"[图像生成] SDXL 模式下加载 LoRA: {config.lora_path}")
+
         
         # 直接执行图像生成
         try:
@@ -502,16 +583,49 @@ class ImageManager:
                 }
                 
                 # LoRA 处理 (简化版)
-                try:
+                # 检查是否为 SDXL 模型，如果是则跳过 LoRA 加载
+                is_sdxl = False
+                if model_id and ("sdxl" in model_id.lower() or "xl" in model_id.lower()):
+                     is_sdxl = True
+                
+                # Check actual model class
+                if "StableDiffusionXLPipeline" in str(type(model)):
+                    is_sdxl = True
+
+                if not is_sdxl:
+                    try:
+                        if hasattr(config, 'lora_path') and config.lora_path:
+                            lora_path = config.lora_path
+                            # 尝试解析 LoRA 路径
+                            if not os.path.isabs(lora_path):
+                                # 尝试在 SD1.5 LoRA 目录查找
+                                potential_path = os.path.join(SD15_LORA_DIR, lora_path)
+                                if os.path.exists(potential_path):
+                                    lora_path = potential_path
+                                else:
+                                    # 尝试直接作为文件名查找
+                                    found = False
+                                    if os.path.exists(SD15_LORA_DIR):
+                                        for f in os.listdir(SD15_LORA_DIR):
+                                            if f == lora_path or f.startswith(lora_path):
+                                                lora_path = os.path.join(SD15_LORA_DIR, f)
+                                                found = True
+                                                break
+                                    if not found:
+                                        logger.warning(f"LoRA文件未找到: {config.lora_path}")
+
+                            if hasattr(model, 'load_lora_weights'):
+                                logger.info(f"加载 LoRA: {lora_path} (权重: {getattr(config, 'lora_weight', 0.7)})")
+                                model.load_lora_weights(lora_path)
+                                if hasattr(model, 'fuse_lora'):
+                                    try:
+                                        model.fuse_lora(lora_scale=float(getattr(config, 'lora_weight', 0.7)))
+                                    except Exception: pass
+                    except Exception as lora_err:
+                        logger.warning(f"LoRA应用失败: {lora_err}")
+                else:
                     if hasattr(config, 'lora_path') and config.lora_path:
-                        if hasattr(model, 'load_lora_weights'):
-                            model.load_lora_weights(config.lora_path)
-                            if hasattr(model, 'fuse_lora'):
-                                try:
-                                    model.fuse_lora(lora_scale=float(getattr(config, 'lora_weight', 0.7)))
-                                except Exception: pass
-                except Exception as lora_err:
-                    logger.warning(f"LoRA应用失败: {lora_err}")
+                        logger.info(f"SDXL模型检测到 LoRA 请求 ({config.lora_path})，但已跳过 (防止后端崩溃)")
 
                 pipeline_output = await asyncio.to_thread(model, **gen_kwargs)
                 image_result = pipeline_output.images[0]

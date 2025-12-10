@@ -6,7 +6,8 @@ import re
 from typing import Optional
 import aiofiles
 
-from memory.memory_manager import MemoryManager
+# from memory.memory_manager import MemoryManager
+from memory.weighted_memory_manager import WeightedMemoryManager
 from core.text_infer import generate_response
 from core.services.command.handler import handle_command_async
 from config.integrated_config import get_settings

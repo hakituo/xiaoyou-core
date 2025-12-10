@@ -2,14 +2,22 @@ import asyncio
 import json
 import random
 import os
-from typing import Dict, List, Any, Optional, AsyncGenerator
+import re
+from typing import Dict, List, Any, Optional, AsyncGenerator, Tuple
 from dataclasses import dataclass
 from datetime import datetime
 from core.llm import get_llm_module, LLMConfig, create_instance
+from core.modules.llm.module import LLMModule as LocalLLMModule
+from config.integrated_config import get_settings
 from core.utils.logger import get_logger
 # from memory.memory_manager import MemoryManager
 from memory.weighted_memory_manager import WeightedMemoryManager
-from memory.emotion_responder import EmotionResponder
+# from memory.emotion_responder import EmotionResponder
+from core.emotion import get_emotion_manager, EmotionType
+from core.managers.session_manager import get_session_manager
+from core.utils.text_processor import extract_and_strip_emotion
+from core.tools.registry import ToolRegistry
+from core.tools.implementations import WebSearchTool, ImageGenerationTool, TimeTool, CalculatorTool
 
 # 修正导入路径，不再使用已不存在的 aveline_manager
 # 使用 core.character.aveline 中的 AvelineCharacter 获取信息
@@ -28,7 +36,7 @@ class AgentConfig:
     """
     agent_name: str = "default_chat_agent"
     system_prompt: str = "你是一个助手，请用中文回答用户问题。"
-    max_history_length: int = 10
+    max_history_length: int = 20
     temperature: float = 0.7
 
 class ChatAgent:
@@ -42,14 +50,41 @@ class ChatAgent:
             config: Agent配置
         """
         self.config = config or AgentConfig()
-        self.memory_manager = None
+        self.memory_managers: Dict[str, WeightedMemoryManager] = {}
+        self.emotion_manager = get_emotion_manager()
         self.emotion_responder = None
         self.dependency_manager = None
         self.defect_manager = None
         self.llm_module = None
+        self.summary_llm = None
         self.is_initialized = False
         self.memory_echoes = []
         self._lock = asyncio.Lock()
+        
+        # 初始化工具注册表
+        self.tool_registry = ToolRegistry()
+        self.tool_registry.register(WebSearchTool())
+        self.tool_registry.register(ImageGenerationTool())
+        self.tool_registry.register(TimeTool())
+        self.tool_registry.register(CalculatorTool())
+
+    def _get_memory_manager(self, user_id: str):
+        """获取或创建指定用户的记忆管理器"""
+        if user_id not in self.memory_managers:
+            try:
+                logger.info(f"为用户/会话 {user_id} 初始化 WeightedMemoryManager")
+                mm = WeightedMemoryManager(
+                    user_id=user_id,
+                    max_short_term=self.config.max_history_length,
+                    max_long_term=100,
+                    auto_save_interval=300
+                )
+                self.memory_managers[user_id] = mm
+            except Exception as e:
+                logger.error(f"初始化权重记忆管理器失败: {e}")
+                # 再次尝试，或者抛出异常。移除旧的MemoryManager降级
+                raise e
+        return self.memory_managers[user_id]
 
     async def initialize(self):
         """
@@ -59,24 +94,14 @@ class ChatAgent:
             if self.is_initialized:
                 return
             logger.info(f"初始化ChatAgent: {self.config.agent_name}")
-            # 初始化内存管理器 - 切换至 WeightedMemoryManager 以支持高级功能
-            try:
-                self.memory_manager = WeightedMemoryManager(
-                    user_id="default",  # 默认用户，后续可扩展
-                    max_short_term=self.config.max_history_length,
-                    max_long_term=100, # 长期记忆容量
-                    auto_save_interval=300
-                )
-                logger.info("已启用增强型权重记忆管理器 (WeightedMemoryManager)")
-            except Exception as e:
-                logger.error(f"初始化权重记忆管理器失败，降级使用基础管理器: {e}")
-                from memory.memory_manager import MemoryManager
-                self.memory_manager = MemoryManager()
-                
+            
             # 初始化情绪响应器
             try:
-                self.emotion_responder = EmotionResponder()
-                logger.info("已初始化情绪响应器")
+                # 尝试从新版情绪模块获取，如果不可用则忽略
+                # 注意：EmotionResponder 已被集成到 EmotionManager 中，
+                # 但为了兼容旧代码的 self.emotion_responder 引用，我们可以在这里做适配
+                # 或者直接修改 _save_conversation_history 不再依赖 emotion_responder
+                pass
             except Exception as e:
                 logger.warning(f"初始化情绪响应器失败: {e}")
 
@@ -88,9 +113,6 @@ class ChatAgent:
             except Exception as e:
                 logger.warning(f"初始化依恋/缺陷管理器失败: {e}")
 
-            if hasattr(self.memory_manager, "initialize"):
-                await self.memory_manager.initialize()
-            
             # 加载记忆回响
             try:
                 echoes_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'character', 'special_events.json')
@@ -105,6 +127,24 @@ class ChatAgent:
             # 初始化LLM模块
             self.llm_module = get_llm_module()
             await self.llm_module.initialize()
+            
+            # 初始化摘要LLM (CPU Offload)
+            try:
+                settings = get_settings()
+                if settings.model.summary_model_path:
+                    logger.info(f"正在初始化摘要模型 (CPU): {settings.model.summary_model_path}")
+                    self.summary_llm = LocalLLMModule(config={
+                        "text_model_path": settings.model.summary_model_path,
+                        "device": "cpu"
+                    })
+                    if await self.summary_llm._load_model():
+                        logger.info("摘要模型加载成功")
+                    else:
+                        logger.warning("摘要模型加载失败，将使用主模型进行摘要")
+                        self.summary_llm = None
+            except Exception as e:
+                logger.error(f"初始化摘要模型出错: {e}")
+                self.summary_llm = None
             
             # 从Aveline角色管理器获取角色配置，更新系统提示词
             try:
@@ -130,7 +170,7 @@ class ChatAgent:
                 config = LLMConfig(
                     model_name="default",
                     device="auto",
-                    max_context_length=2048,
+                    max_context_length=4096,
                     temperature=self.config.temperature
                 )
                 await create_instance("default_llm", config)
@@ -161,16 +201,112 @@ class ChatAgent:
             if not message_id:
                 message_id = f"msg_{user_id}_{datetime.now().timestamp()}"
             logger.info(f"处理用户 {user_id} 的消息，ID: {message_id}")
+            
             # 构建对话历史
             messages = await self._build_conversation_history(user_id, message)
-            # 调用LLM生成响应
-            response_content = await self.llm_module.chat(messages, temperature=self.config.temperature)
-            # 保存对话到历史记录
+            
+            # Tool execution loop
+            max_turns = 3
+            current_turn = 0
+            response_content = ""
+            
+            while current_turn < max_turns:
+                # 调用LLM生成响应
+                response_content = await self.llm_module.chat(messages, temperature=self.config.temperature)
+                
+                # Check for tool use
+                tool_match = re.search(r'\[TOOL_USE:\s*({.*?})\]', response_content, re.DOTALL)
+                
+                if tool_match:
+                    json_str = tool_match.group(1)
+                    try:
+                        tool_call = json.loads(json_str)
+                        tool_name = tool_call.get("name")
+                        tool_args = tool_call.get("arguments", {})
+                        
+                        tool = self.tool_registry.get_tool(tool_name)
+                        if tool:
+                            logger.info(f"Executing tool {tool_name} with args {tool_args}")
+                            tool_result = await tool.run(**tool_args)
+                            
+                            # Add tool result to history
+                            messages.append({"role": "assistant", "content": response_content})
+                            messages.append({"role": "system", "content": f"Tool '{tool_name}' output:\n{tool_result}\n\nPlease continue the conversation based on this information."})
+                            
+                            current_turn += 1
+                            continue # Loop again with new history
+                        else:
+                            messages.append({"role": "system", "content": f"Error: Tool '{tool_name}' not found."})
+                            current_turn += 1
+                            continue
+                    except Exception as e:
+                         messages.append({"role": "system", "content": f"Error parsing tool call: {e}"})
+                         current_turn += 1
+                         continue
+                
+                # No tool use, this is the final response
+                break
+            
+            # 提取情绪
+            final_content, emotion_label = extract_and_strip_emotion(response_content)
+            
+            # 解析主动行为指令
+            image_prompt = None
+            voice_id = None
+            
+            # 1. Image Generation: [GEN_IMG: prompt]
+            img_match = re.search(r'\[GEN_IMG:\s*(.*?)\]', final_content)
+            if img_match:
+                image_prompt = img_match.group(1)
+                final_content = final_content.replace(img_match.group(0), "")
+                
+            # 2. Voice Selection: [VOICE: style]
+            voice_match = re.search(r'\[VOICE:\s*(.*?)\]', final_content)
+            message_type = "text"
+            if voice_match:
+                voice_id = voice_match.group(1)
+                # Keep the content, but mark as voice message
+                # The frontend will hide the text content if it's a voice message until played
+                final_content = final_content.replace(voice_match.group(0), "")
+                message_type = "voice"
+                
+            final_content = final_content.strip()
+
+            # 使用新的情绪管理器处理
+            try:
+                # 处理文本以更新情绪状态
+                # 这里我们使用 LLM 提取的标签 (如果存在)，否则使用自动检测
+                # process_text 内部会优先使用 [EMO:...] 标签
+                # 但我们需要把原始的 response_content 传进去，因为它包含标签
+                emo_state = self.emotion_manager.process_text(user_id, response_content)
+                
+                # 如果检测出的情绪与 LLM 提取的一致（或更详细），使用检测器的结果
+                # EmotionManager 返回的是 EmotionType 枚举，需要转换
+                if emo_state and emo_state.primary_emotion:
+                    emotion_label = emo_state.primary_emotion.value
+                
+                # 获取响应策略（例如呼吸灯控制）
+                # 这里暂时不修改返回结构，保持兼容性，但可以记录日志或触发硬件调用
+                strategy = self.emotion_manager.get_response_strategy(user_id)
+                # TODO: 将 strategy 中的 metadata (呼吸灯颜色) 发送到硬件接口
+                
+            except Exception as e:
+                logger.warning(f"情绪管理器处理失败: {e}")
+
+            # 保存对话到历史记录 (保存原始回复，以便LLM上下文保留协议格式)
             await self._save_conversation_history(user_id, message, response_content, message_id)
-            logger.info(f"为用户 {user_id} 生成响应，消息ID: {message_id}")
+            
+            # 尝试异步生成会话标题 (仅在前几轮对话时)
+            asyncio.create_task(self._maybe_generate_session_title(user_id, message, final_content))
+            
+            logger.info(f"为用户 {user_id} 生成响应，消息ID: {message_id}, 情绪: {emotion_label}")
             return {
                 "success": True,
-                "content": response_content,
+                "content": final_content,
+                "emotion": emotion_label,
+                "image_prompt": image_prompt,
+                "voice_id": voice_id,
+                "message_type": message_type,
                 "message_id": message_id,
                 "user_id": user_id,
                 "timestamp": datetime.now().timestamp()
@@ -183,6 +319,38 @@ class ChatAgent:
                 "message_id": message_id,
                 "user_id": user_id
             }
+
+    async def _maybe_generate_session_title(self, session_id: str, user_msg: str, assistant_msg: str):
+        """
+        尝试生成会话标题
+        """
+        try:
+            mm = self._get_memory_manager(session_id)
+            history_len = 0
+            if hasattr(mm, "get_history"):
+                history = mm.get_history()
+                history_len = len(history)
+            
+            # 只在前3轮对话内生成/更新标题
+            if history_len > 6:
+                return
+
+            # 构建生成标题的提示词
+            prompt = [
+                {"role": "system", "content": "你是标题生成助手。请根据用户的输入和助手的回答，生成一个简短的会话标题（不超过10个字）。不要包含标点符号，不要包含'标题'二字。直接输出标题内容。"},
+                {"role": "user", "content": f"用户: {user_msg}\n助手: {assistant_msg}"}
+            ]
+            
+            # 使用较小的模型或默认模型生成，温度设低一点
+            title = await self.llm_module.chat(prompt, temperature=0.3, max_tokens=20)
+            title = title.strip().replace('"', '').replace('“', '').replace('”', '').replace('标题：', '').replace('Title:', '')
+            
+            if title:
+                logger.info(f"为会话 {session_id} 生成标题: {title}")
+                get_session_manager().update_session(session_id, title=title)
+                
+        except Exception as e:
+            logger.warning(f"生成会话标题失败: {e}")
 
     def _get_dynamic_system_prompt(self) -> str:
         """生成动态系统提示词"""
@@ -248,7 +416,14 @@ class ChatAgent:
                 if profile_parts:
                     user_profile_injection = "\n\n# User Profile (当前交互对象)\n" + "\n".join(profile_parts)
 
-            extra_injections = dependency_injection + defect_injection + user_profile_injection
+            # Inject Tool Descriptions
+            tool_injection = ""
+            if self.tool_registry:
+                tool_desc = self.tool_registry.get_tools_description()
+                if tool_desc:
+                    tool_injection = f"\n\n# Available Tools (Intelligent Agent Capabilities)\nYou have access to the following tools. To use them, output a JSON block in this format: [TOOL_USE: {{\"name\": \"tool_name\", \"arguments\": {{...}}}}]\n\n{tool_desc}\n\nExample: [TOOL_USE: {{\"name\": \"calculator\", \"arguments\": {{\"expression\": \"2 + 2\"}}}}]\n"
+
+            extra_injections = dependency_injection + defect_injection + user_profile_injection + tool_injection
 
             # 自动模式切换逻辑
             # 1. 检查 LLM 模型名称
@@ -291,7 +466,26 @@ class ChatAgent:
                     current_emotion=state.get("current_emotion", random.randint(40, 80)),
                     memory_echo=echo_content
                 )
-                 return base_prompt + extra_injections
+                 
+                 # 强制添加情绪标签提醒
+                 force_reminder = (
+                     "\n\n[SYSTEM REMINDER]\n"
+                     "IMPORTANT: You control a physical breathing light via your emotion tags.\n"
+                     "You MUST start EVERY response with [EMO: emotion_label].\n"
+                     "Valid emotions: neutral, happy, shy, angry, jealous, wronged, coquetry, lost, excited.\n"
+                     "Format: [EMO: happy] Your text here...\n\n"
+                     "VOICE MESSAGE CAPABILITY:\n"
+                     "You have the ability to send VOICE messages instead of just text.\n"
+                     "Use this when you want to be intimate, emotional, playful, or secretive.\n"
+                     "To send a voice message, append [VOICE: style] to the end of your response.\n"
+                     "Valid styles: default, whisper, soft, happy, angry, shy, coquetry.\n"
+                     "Example: [EMO: shy] 靠近点...我只想对你一个人说... [VOICE: whisper]\n"
+                     "IMPORTANT: When you use [VOICE: ...], the text content will be HIDDEN from the user until they click play. Use this for secrets or surprises!\n"
+                     "If you fail to include the EMO tag, the hardware interface will malfunction.\n"
+                     "Do not output tags inside a code block.\n"
+                     "NOTE: The current time is {current_time}. You DO NOT need to call the 'get_current_time' tool unless you need millisecond precision or specific timezone info."
+                 ).format(current_time=datetime.now().strftime("%Y-%m-%d %H:%M"))
+                 return base_prompt + extra_injections + force_reminder
             else:
                 # 普通模式或其他模板
                 return template + extra_injections
@@ -300,9 +494,15 @@ class ChatAgent:
             # logger.warning(f"格式化系统提示词失败: {e}")
             return template
 
-    async def stream_chat(self, user_id: str, message: str, message_id: str = None) -> AsyncGenerator[Dict[str, Any], None]:
+    async def stream_chat(self, user_id: str, message: str, message_id: str = None, save_history: bool = True) -> AsyncGenerator[Dict[str, Any], None]:
         """
         流式处理用户消息
+        
+        Args:
+            user_id: 用户ID
+            message: 用户消息
+            message_id: 消息ID
+            save_history: 是否保存历史记录
         """
         if not self.is_initialized:
             await self.initialize()
@@ -413,7 +613,8 @@ class ChatAgent:
                 }
 
             # 保存完整对话到历史记录
-            await self._save_conversation_history(user_id, message, full_response_content, message_id)
+            if save_history:
+                await self._save_conversation_history(user_id, message, full_response_content, message_id)
             yield {
                 "content": "",
                 "done": True
@@ -426,10 +627,90 @@ class ChatAgent:
                 "done": True
             }
 
+    def extract_and_strip_emotion(self, content: str) -> Tuple[str, Optional[str]]:
+        """
+        从回复中提取情绪标签
+        代理到 core.utils.text_processor.extract_and_strip_emotion
+        """
+        return extract_and_strip_emotion(content)
+
+    async def _perform_context_summary(self, user_id: str, memory_manager: WeightedMemoryManager):
+        """
+        执行上下文摘要（CPU Offload）
+        """
+        try:
+            # 获取短期记忆
+            memories = []
+            with memory_manager.lock:
+                memories = list(memory_manager.short_term_memory)
+            
+            # 如果记忆不足 20 条，不处理
+            if len(memories) < 20:
+                return
+
+            logger.info(f"检测到上下文长度达到 {len(memories)}，触发摘要逻辑...")
+
+            # 取前 10 条进行摘要 (保留最近 10 条 + 新摘要)
+            to_summarize = memories[:-10]  # 除了最后10条之外的所有
+            if not to_summarize:
+                return
+                
+            # 构建摘要请求
+            text_block = "\n".join([f"{m.get('source', 'unknown')}: {m.get('content', '')}" for m in to_summarize])
+            
+            prompt = [
+                {"role": "system", "content": "You are a memory compressor. Summarize the following conversation segment into a concise paragraph. Capture key events, emotions, and facts. Output ONLY the summary text."},
+                {"role": "user", "content": f"Summarize this:\n{text_block}"}
+            ]
+            
+            # 使用摘要模型或主模型
+            summary = ""
+            if self.summary_llm:
+                summary = await self.summary_llm.chat(prompt, temperature=0.3)
+            elif self.llm_module:
+                logger.warning("摘要模型未启用，使用主模型进行摘要（可能占用GPU资源）")
+                summary = await self.llm_module.chat(prompt, temperature=0.3)
+            
+            if not summary:
+                return
+
+            logger.info(f"生成摘要成功: {summary[:50]}...")
+            
+            # 更新记忆管理器
+            with memory_manager.lock:
+                # 1. 移除被摘要的记忆
+                # 重新获取引用以防变化
+                current_memories = memory_manager.short_term_memory
+                
+                # 找到我们要移除的那些记忆的ID
+                ids_to_remove = {m['id'] for m in to_summarize}
+                
+                # 过滤
+                memory_manager.short_term_memory = [m for m in current_memories if m['id'] not in ids_to_remove]
+                
+            # 2. 添加摘要作为重要记忆 (Outside lock to avoid potential issues, add_memory handles lock)
+            memory_manager.add_memory(
+                content=f"【历史摘要】 {summary}",
+                source="system_summary",
+                is_important=True,
+                topics=["summary", "history_offload"]
+            )
+            
+        except Exception as e:
+            logger.error(f"执行上下文摘要失败: {e}")
+
     async def _build_conversation_history(self, user_id: str, message: str) -> List[Dict[str, str]]:
         """
         构建对话历史，包含系统提示词和历史消息
         """
+        # [Stheno Optimization] Global context limit check
+        
+        # Trigger CPU offload summary if needed
+        memory_manager = self._get_memory_manager(user_id)
+        if memory_manager and isinstance(memory_manager, WeightedMemoryManager):
+            # Run summary logic in background
+            asyncio.create_task(self._perform_context_summary(user_id, memory_manager))
+ 
         # 获取动态系统提示词
         system_prompt = self._get_dynamic_system_prompt()
         
@@ -437,16 +718,46 @@ class ChatAgent:
             {"role": "system", "content": system_prompt}
         ]
         
+        # 获取当前用户的记忆管理器
+        memory_manager = self._get_memory_manager(user_id)
+        
+        # 尝试检索相关记忆 (RAG) - 增强记忆连贯性
+        if memory_manager and message:
+            try:
+                relevant_memories = []
+                # 优先使用混合搜索
+                if hasattr(memory_manager, "hybrid_search"):
+                    # 使用较低的阈值以捕获更多潜在关联
+                    results = memory_manager.hybrid_search(message, limit=3, min_similarity=0.45)
+                    for mem in results:
+                        content = mem.get('content', '')
+                        # 避免重复过短的记忆
+                        if len(content) > 5:
+                            relevant_memories.append(f"- {content}")
+                
+                if relevant_memories:
+                    rag_content = "【相关记忆回溯】(Relevant Memories)\n以下是与当前话题相关的过往记忆，请结合上下文参考：\n" + "\n".join(relevant_memories)
+                    messages.append({"role": "system", "content": rag_content})
+                    logger.info(f"已注入 {len(relevant_memories)} 条相关记忆")
+            except Exception as e:
+                logger.warning(f"记忆检索失败: {e}")
+
         # 获取历史消息
-        if self.memory_manager:
+        if memory_manager:
             # 尝试适配不同的 MemoryManager 接口
             try:
-                if hasattr(self.memory_manager, "get_recent_history"):
-                    history = await self.memory_manager.get_recent_history(user_id, self.config.max_history_length)
-                elif hasattr(self.memory_manager, "get_history"):
-                    # MemoryManager (memory_manager.py) 是单用户的，但这里可能有歧义
-                    # 假设它返回所有历史
-                    history = self.memory_manager.get_history()
+                # WeightedMemoryManager 使用 get_recent_history
+                # 注意：EnhancedMemoryManager.get_recent_history 是同步的，不需要 await
+                # 但为了兼容性，检查是否是协程
+                if hasattr(memory_manager, "get_recent_history"):
+                    import inspect
+                    if inspect.iscoroutinefunction(memory_manager.get_recent_history):
+                        history = await memory_manager.get_recent_history(user_id, self.config.max_history_length)
+                    else:
+                        history = memory_manager.get_recent_history(user_id, self.config.max_history_length)
+                elif hasattr(memory_manager, "get_history"):
+                    # 兼容旧接口
+                    history = memory_manager.get_history()
                     # 手动过滤最后N条
                     if len(history) > self.config.max_history_length:
                         history = history[-self.config.max_history_length:]
@@ -455,6 +766,8 @@ class ChatAgent:
             except Exception as e:
                 logger.warning(f"获取历史消息失败: {e}")
                 history = []
+
+
 
             for msg in history:
                 # 确保历史消息格式正确
@@ -481,17 +794,29 @@ class ChatAgent:
             assistant_response: 助手响应
             message_id: 消息ID
         """
-        if not self.memory_manager:
+        memory_manager = self._get_memory_manager(user_id)
+        if not memory_manager:
             return
+
+        # 更新会话时间戳
+        try:
+            get_session_manager().update_session(user_id)
+        except Exception:
+            pass
 
         try:
             # 优先处理 WeightedMemoryManager
-            if isinstance(self.memory_manager, WeightedMemoryManager):
+            if isinstance(memory_manager, WeightedMemoryManager):
                 # 1. 情感分析与重要性判断 (Aveline 记忆规则)
                 emotions = []
                 is_important = False
                 
-                if self.emotion_responder:
+                if self.emotion_manager:
+                    # 使用 EmotionManager 的 detect_emotion (如果存在)
+                    # 或者复用之前提取的 emotion_label (但这需要传递进来)
+                    # 这里为了简单，我们重新检测或跳过
+                    pass
+                elif self.emotion_responder:
                     emotion_result = self.emotion_responder.detect_emotion(user_message)
                     # detect_emotion 返回的是字典，key可能是 'emotion' 或直接是类型
                     # 查看 EmotionResponder._detect_emotion_keyword: return {"emotion": emotion, ...}
@@ -503,7 +828,7 @@ class ChatAgent:
                     # Aveline 规则: "高权重记‘难过语句’"
                     if emotion_type in ["伤心", "悲伤", "难过", "痛苦", "焦虑"]:
                         is_important = True
-                    
+
                     # Aveline 规则: "中权重记‘亲密行为’"
                     intimate_keywords = ["抱抱", "亲亲", "爱你", "喜欢你", "依靠", "贴贴", "吻", "摸摸"]
                     if any(kw in user_message for kw in intimate_keywords):
@@ -511,7 +836,7 @@ class ChatAgent:
                         is_important = True
 
                 # 保存用户消息
-                self.memory_manager.add_memory(
+                memory_manager.add_memory(
                     content=user_message,
                     emotions=emotions,
                     is_important=is_important,
@@ -519,10 +844,17 @@ class ChatAgent:
                 )
                 
                 # 保存助手响应
-                self.memory_manager.add_memory(
+                memory_manager.add_memory(
                     content=assistant_response,
                     source="assistant"
                 )
+                
+                # 尝试生成/更新会话标题
+                try:
+                    asyncio.create_task(self._maybe_generate_session_title(user_id, user_message, assistant_response))
+                except Exception as e:
+                    logger.warning(f"创建标题生成任务失败: {e}")
+                    
                 return
 
             # 保存用户消息
@@ -530,31 +862,19 @@ class ChatAgent:
             # memory_manager.py: add_message(self, role, content, is_important=False)
             # enhanced/weighted: 可能不同
             
-            if hasattr(self.memory_manager, "add_message"):
+            if hasattr(memory_manager, "add_message"):
                 # 检查参数数量或名称来决定如何调用
-                # 这里简化处理，假设如果是 memory_manager.py 的实例，它不接受 user_id
-                # 但 ChatAgent 应该是多用户的，所以这里有一个架构矛盾
-                # 临时修复：忽略 user_id 参数如果使用的是单用户 MemoryManager
-                
-                # 既然 MemoryManager 是在 initialize 中创建的：self.memory_manager = MemoryManager()
-                # 它是 memory_manager.py 的实例。
-                # 所以它不支持 user_id 参数。
-                # 但是 ChatAgent 逻辑上需要区分用户。
-                # 这里我们只能按照 MemoryManager 的签名调用，并记录警告
-                
-                # TODO: 重构 MemoryManager 以支持多用户，或在 ChatAgent 中维护多实例
-                
                 import inspect
-                sig = inspect.signature(self.memory_manager.add_message)
+                sig = inspect.signature(memory_manager.add_message)
                 if "user_id" in sig.parameters:
-                    await self.memory_manager.add_message(
+                    await memory_manager.add_message(
                         user_id=user_id,
                         role="user",
                         content=user_message,
                         message_id=message_id,
                         timestamp=datetime.now().timestamp()
                     )
-                    await self.memory_manager.add_message(
+                    await memory_manager.add_message(
                         user_id=user_id,
                         role="assistant",
                         content=assistant_response,
@@ -563,14 +883,15 @@ class ChatAgent:
                     )
                 else:
                     # 单用户模式 fallback
-                    self.memory_manager.add_message("user", user_message)
-                    self.memory_manager.add_message("assistant", assistant_response)
+                    memory_manager.add_message("user", user_message)
+                    memory_manager.add_message("assistant", assistant_response)
                     # 异步保存
-                    if hasattr(self.memory_manager, "async_save_history"):
-                        await self.memory_manager.async_save_history()
+                    if hasattr(memory_manager, "async_save_history"):
+                        await memory_manager.async_save_history()
                     
         except Exception as e:
             logger.warning(f"保存对话历史失败: {str(e)}")
+
     async def clear_history(self, user_id):
         """
         清除用户对话历史
@@ -580,7 +901,20 @@ class ChatAgent:
         if not self.is_initialized:
             await self.initialize()
         try:
-            await self.memory_manager.clear_conversation_history(user_id)
+            memory_manager = self._get_memory_manager(user_id)
+            if hasattr(memory_manager, "clear_conversation_history"):
+                await memory_manager.clear_conversation_history(user_id)
+            elif hasattr(memory_manager, "clear_history"):
+                 # WeightedMemoryManager doesn't seem to have clear_conversation_history that takes user_id
+                 # But it has clear_history() maybe?
+                 # Let's check MemoryManager
+                 pass
+            
+            # Since we are using session-based isolation, maybe we should just delete the session?
+            # But here we just clear the memory.
+            # Re-initializing memory manager might be cleaner.
+            self.memory_managers.pop(user_id, None)
+            
             logger.info(f"清除用户 {user_id} 的对话历史")
         except Exception as e:
             logger.error(f"清除对话历史失败: {str(e)}")

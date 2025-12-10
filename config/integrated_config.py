@@ -54,6 +54,7 @@ class ModelSettings(BaseSettings):
     max_memory: Optional[int] = Field(default=None, description="最大内存使用(MB)")
     name: str = Field(default="qianwen-turbo", description="默认模型名称")
     text_path: Optional[str] = Field(default=None, description="文本模型路径")
+    summary_model_path: Optional[str] = Field(default=None, description="摘要/工具模型路径(CPU Offload)")
     vision_path: Optional[str] = Field(default=None, description="视觉模型路径")
     image_gen_path: Optional[str] = Field(default=None, description="图像生成模型路径")
     whisper_path: Optional[str] = Field(default=None, description="Whisper模型路径")
@@ -69,6 +70,13 @@ class ModelSettings(BaseSettings):
     load_mode: str = Field(default="local", description="模型加载模式(online/local)")
     local_model_prefix: str = Field(default="./models/", description="本地模型路径前缀")
     
+    # 生成参数
+    temperature: float = Field(default=1.2, description="生成温度")
+    min_p: float = Field(default=0.1, description="Min-P 采样")
+    repetition_penalty: float = Field(default=1.15, description="重复惩罚")
+    top_p: float = Field(default=1.0, description="Top-P 采样")
+    max_new_tokens: int = Field(default=1024, description="最大生成长度")
+
     model_config = SettingsConfigDict(
         env_prefix="XIAOYOU_MODEL_",
         extra="allow"
@@ -104,8 +112,8 @@ class VoiceSettings(BaseSettings):
     default_engine: str = Field(default="local", description="默认语音引擎")
     default_voice: str = Field(default="zh-CN-XiaoxiaoNeural", description="默认语音")
     default_speed: float = Field(default=1.0, description="默认语速")
-    gpt_model_path: Optional[str] = Field(default=None, description="GPT模型路径")
-    sovits_model_path: Optional[str] = Field(default=None, description="SoVITS模型路径")
+    gpt_model_path: Optional[str] = Field(default="models/voice/GPT/流萤-e10.ckpt", description="GPT模型路径")
+    sovits_model_path: Optional[str] = Field(default="models/voice/SoVITS/Aveline_Violet_Mix.pth", description="SoVITS模型路径")
     reference_audio: Optional[str] = Field(default=None, description="参考音频路径")
     
     model_config = SettingsConfigDict(
@@ -258,6 +266,21 @@ def _apply_yaml_config(settings: AppSettings, yaml_config: Dict[str, Any]):
                         if "sovits_model_path" in gpt_conf:
                             settings.voice.sovits_model_path = gpt_conf["sovits_model_path"]
         
+        # Model Generation Settings
+        if "model" in yaml_config and "generation" in yaml_config["model"]:
+            gen_conf = yaml_config["model"]["generation"]
+            if isinstance(gen_conf, dict):
+                if "temperature" in gen_conf:
+                    settings.model.temperature = gen_conf["temperature"]
+                if "min_p" in gen_conf:
+                    settings.model.min_p = gen_conf["min_p"]
+                if "repetition_penalty" in gen_conf:
+                    settings.model.repetition_penalty = gen_conf["repetition_penalty"]
+                if "top_p" in gen_conf:
+                    settings.model.top_p = gen_conf["top_p"]
+                if "max_new_tokens" in gen_conf:
+                    settings.model.max_new_tokens = gen_conf["max_new_tokens"]
+
         # Server Settings (Partial mapping)
         if "server" in yaml_config:
             server_conf = yaml_config["server"]

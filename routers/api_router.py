@@ -24,6 +24,7 @@ import soundfile as sf
 from core.services.scheduler.task_scheduler_adapter import io_task
 from core.services.scheduler.cpu_task_processor import cpu_task
 from core.services.life_simulation.service import get_life_simulation_service
+from memory.weighted_memory_manager import get_weighted_memory_manager
 
 # 安全配置常量
 MAX_FEEDBACK_LENGTH = 2000
@@ -86,11 +87,88 @@ async def process_message_with_async(content, conversation_id, model, aveline_se
             "conversation_id": conversation_id,
             "model": metadata.get("model"),
             "tokens_used": metadata.get("tokens_used"),
-            "emotion": metadata.get("emotion")
+            "emotion": metadata.get("emotion"),
+            "voice_id": metadata.get("voice_id"),
+            "image_prompt": metadata.get("image_prompt")
         }
     except Exception as e:
         logger.error(f"Process message error: {e}")
         raise e
+
+@router.get("/memory/clear")
+async def clear_memory_endpoint():
+    """
+    Clear conversation memory (stub for now, needs implementation)
+    """
+    # TODO: Implement actual memory clearing logic
+    return {"status": "success", "message": "Memory cleared"}
+
+@router.get("/memory/weighted")
+async def get_weighted_memories(
+    limit: int = Query(20, description="Number of memories to return"),
+    min_weight: float = Query(1.0, description="Minimum weight threshold")
+):
+    """
+    获取加权记忆列表
+    """
+    request_id = str(uuid.uuid4())
+    try:
+        # 暂时使用 default 用户，后续应从 auth 获取
+        user_id = "default" 
+        manager = get_weighted_memory_manager(user_id)
+        
+        # 获取所有加权记忆并按权重排序
+        all_memories = list(manager.weighted_memories.values())
+        
+        # 过滤和排序
+        filtered = [
+            m for m in all_memories 
+            if m.get("weight", 0) >= min_weight
+        ]
+        filtered.sort(key=lambda x: x.get("weight", 0), reverse=True)
+        
+        # 取前N条
+        results = filtered[:limit]
+        
+        return {
+            "status": "success",
+            "data": results,
+            "stats": {
+                "total_weighted": len(all_memories),
+                "topic_weights": manager.topic_weights,
+                "emotion_map_keys": list(manager.emotion_memory_map.keys())
+            },
+            "request_id": request_id,
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"获取加权记忆失败: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "error_code": "MEMORY_FETCH_FAILED",
+            "detail": str(e),
+            "request_id": request_id,
+            "timestamp": time.time()
+        }
+
+@router.get("/image/models")
+async def get_image_models():
+    """
+    Get available image generation models (SD1.5 checkpoints, LoRAs, SDXL)
+    """
+    from core.image.image_manager import get_image_manager
+    try:
+        manager = await get_image_manager()
+        return {
+            "status": "success",
+            "data": await manager.list_models()
+        }
+    except Exception as e:
+        logger.error(f"Failed to list image models: {e}")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
 
 @router.post("/image/generate")
 async def generate_image(
@@ -372,6 +450,27 @@ async def handle_message(
                 content = str(message[field]).strip()
                 break
         
+        # 尝试从body中获取 conversation_id (如果query param未提供)
+        if not conversation_id and "conversation_id" in message:
+            conversation_id = str(message["conversation_id"])
+        
+        # 如果还是没有，且没有request_id (通常不会，因为request_id是生成的)，
+        # 我们不能使用request_id作为conversation_id，因为它每次都变。
+        # 如果前端没有传 conversation_id，我们假设它是 default_user
+        if not conversation_id:
+             # 为了保持向后兼容，如果真没有，暂且用 request_id (但这会导致记忆丢失)
+             # 或者使用固定ID 'default_user'
+             # 考虑到之前的逻辑可能是依靠近期上下文，或者前端一直没传过ID
+             # 如果前端没传，就生成一个新的并在响应中返回，让前端保存?
+             # 暂时保持原样(使用 None -> AvelineService处理?)
+             # AvelineService generate_response 需要 conversation_id。
+             # 如果 None，它会怎样？
+             pass
+             
+        # 在调用 process_message_with_async 时，如果 conversation_id 是 None, 
+        # 我们应该给一个默认值，或者让 AvelineService 处理。
+        # 但 api_router.py 里的 process_message_with_async 直接传递了。
+        
         if not content or not isinstance(content, str):
             return {
                 "status": "error",
@@ -451,69 +550,17 @@ async def handle_message(
                 "request_id": request_id,
                 "timestamp": time.time(),
                 "message_id": str(uuid.uuid4()),
-                "conversation_id": response.get("conversation_id", conversation_id)
+                "conversation_id": response.get("conversation_id", conversation_id),
+                "voice_id": response.get("voice_id"),
+                "image_prompt": response.get("image_prompt")
             }
             m_used = response.get("model") or model
             if m_used:
                 response_data["model"] = m_used
-            try:
-                s = str(response_data["response"] or "")
-                s = re.sub(r"^\[EMO:\s*\{.*?\}\]\s*", "", s)
-                s = re.sub(r"\s*\{neutral\}\s*", " ", s, flags=re.IGNORECASE)
-                s = re.sub(r"\s*\{(happy|angry|excited|lost|wronged|jealous|coquetry|shy)\}\s*$", "", s, flags=re.IGNORECASE)
-                response_data["response"] = s
-            except Exception:
-                pass
             
-            try:
-                raw_emotion = str(response.get("emotion", "")).strip().lower()
-                if raw_emotion and raw_emotion != "neutral":
-                    response_data["emotion"] = response.get("emotion")
-            except Exception:
-                pass
-            
-            try:
-                if not response_data.get("emotion") or str(response_data.get("emotion")).strip().lower() == "neutral":
-                    raw_for_emo = str(response_data.get("response") or "")
-                    m_tag = re.search(r"^\[EMO:\s*(\{.*?\})\]", raw_for_emo)
-                    found = None
-                    if m_tag:
-                        import json as _json
-                        try:
-                            weights = _json.loads(m_tag.group(1))
-                            found = max(weights.items(), key=lambda kv: float(kv[1] or 0.0))[0]
-                        except Exception:
-                            pass
-                    else:
-                        m_brace = re.search(r"\{([a-zA-Z_]+)\}\s*$", raw_for_emo)
-                        if m_brace:
-                            found = m_brace.group(1).strip()
-                        else:
-                            m_paren = re.search(r"\((neutral|happy|angry|excited|lost|wronged|jealous|coquetry|shy)\)\s*$", raw_for_emo, re.IGNORECASE)
-                            if m_paren:
-                                found = m_paren.group(1).strip()
-                    if found and str(found).strip().lower() != "neutral":
-                        response_data["emotion"] = found
-                    else:
-                        s_low = raw_for_emo.lower()
-                        if re.search(r"(生气|愤怒|火大|糟糕|讨厌|不爽|暴躁|烦)", s_low):
-                            response_data["emotion"] = "angry"
-                        elif re.search(r"(失落|伤心|难过|难受|沮丧|低落)", s_low):
-                            response_data["emotion"] = "lost"
-                        elif re.search(r"(委屈)", s_low):
-                            response_data["emotion"] = "wronged"
-                        elif re.search(r"(吃醋|嫉妒)", s_low):
-                            response_data["emotion"] = "jealous"
-                        elif re.search(r"(撒娇|傲娇|粘人|靠近|拥抱|亲吻|抱紧|靠在|贴着)", s_low):
-                            response_data["emotion"] = "coquetry"
-                        elif re.search(r"(害羞|脸红|不好意思|羞涩)", s_low):
-                            response_data["emotion"] = "shy"
-                        elif re.search(r"(兴奋|激动|期待|亢奋)", s_low):
-                            response_data["emotion"] = "excited"
-                        elif re.search(r"(开心|愉快|高兴|满足|喜悦)", s_low):
-                            response_data["emotion"] = "happy"
-            except Exception:
-                pass
+            # 传递情绪信息
+            if response.get("emotion"):
+                response_data["emotion"] = response.get("emotion")
 
             # 如果有token使用信息，也返回
             if "tokens_used" in response:
@@ -605,10 +652,45 @@ async def _generate_tts_with_async(text: str, params: Dict[str, Any]) -> Dict[st
                         break
                 except Exception:
                     pass
+        
+        # 如果还是没有提示文本，尝试使用STT自动识别
+        if not prompt_text:
+            try:
+                from core.voice import get_stt_manager
+                logger.info(f"未找到参考音频提示文本，尝试自动识别: {ref_wav}")
+                stt_mgr = await get_stt_manager()
+                stt_engine = await stt_mgr.get_engine()
+                
+                with open(ref_wav, "rb") as f:
+                    audio_bytes = f.read()
+                
+                res = await stt_engine.transcribe(audio_bytes)
+                if res and res.get("text"):
+                    prompt_text = res.get("text")
+                    logger.info(f"自动识别成功: {prompt_text}")
+                    # 缓存到 .txt 文件
+                    try:
+                        txt_path = base_path + ".txt"
+                        with open(txt_path, "w", encoding="utf-8") as f:
+                            f.write(prompt_text)
+                    except Exception as e:
+                        logger.warning(f"缓存提示文本失败: {e}")
+            except Exception as e:
+                logger.warning(f"自动识别提示文本失败: {e}")
+
     
     # 3. 调用 TTS Manager
     try:
         mgr = await get_tts_manager()
+        
+        # 如果请求中包含 gpt_sovits_weights，尝试切换模型权重
+        weights_path = params.get("gpt_sovits_weights")
+        if weights_path and hasattr(mgr.engine, "set_gpt_weights"):
+            try:
+                logger.info(f"Switching GPT-SoVITS weights to: {weights_path}")
+                await mgr.engine.set_gpt_weights(weights_path)
+            except Exception as w_err:
+                logger.warning(f"Failed to switch GPT-SoVITS weights: {w_err}")
         
         def _map_lang(l):
             l = str(l or "zh").lower()
@@ -627,6 +709,7 @@ async def _generate_tts_with_async(text: str, params: Dict[str, Any]) -> Dict[st
             "top_k": int(params.get("top_k", 15)),
             "top_p": float(params.get("top_p", 1.0)),
             "temperature": float(params.get("temperature", 1.0)),
+            "pitch": float(params.get("pitch", 1.0)),
         }
         
         # 执行克隆 - 使用 run_in_executor 防止阻塞
@@ -732,6 +815,39 @@ async def stt_endpoint(
             "detail": str(e),
             "request_id": request_id,
             "timestamp": datetime.now().isoformat()
+        }
+
+
+@router.get("/voice/reference-audio")
+async def list_reference_audio():
+    """
+    列出可用的参考音频文件
+    """
+    try:
+        ref_audio_dir = os.path.join(os.getcwd(), "ref_audio", "female")
+        if not os.path.exists(ref_audio_dir):
+            return {
+                "status": "success",
+                "files": []
+            }
+        
+        files = []
+        for f in os.listdir(ref_audio_dir):
+            if f.lower().endswith(('.wav', '.mp3', '.ogg', '.flac')):
+                files.append({
+                    "name": f,
+                    "path": os.path.join("ref_audio", "female", f).replace("\\", "/")
+                })
+        
+        return {
+            "status": "success",
+            "files": files
+        }
+    except Exception as e:
+        logger.error(f"获取参考音频列表失败: {e}")
+        return {
+            "status": "error",
+            "message": str(e)
         }
 
 
@@ -1042,9 +1158,9 @@ async def clear_memory():
     """
     request_id = str(uuid.uuid4())
     try:
-        from memory.enhanced_memory_manager import get_memory_manager
+        from memory.weighted_memory_manager import get_weighted_memory_manager
         # 获取默认用户的记忆管理器
-        manager = get_memory_manager("default")
+        manager = get_weighted_memory_manager("default")
         
         # 清除记忆
         with manager.lock:

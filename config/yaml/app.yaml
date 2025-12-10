@@ -35,6 +35,15 @@ memory:
 model:
   default: "qianwen-turbo"
   path: "./models/"
+  summary_model_path: null # CPU Offload 模型路径 (例如: "./models/Qwen-7B-Chat-Int4")
+  # 生成参数 (针对 L3-8B-Stheno 优化)
+  generation:
+    temperature: 1.2
+    min_p: 0.1
+    repetition_penalty: 1.15
+    top_p: 1.0  # 关闭 Top-P (设为 1.0)
+    top_k: 0    # 关闭 Top-K (可选，或设为较大值)
+    max_new_tokens: 1024
   # 模型加载选项
   load_options:
     # 是否自动调整精度 (fp16/bf16/fp32)
@@ -64,8 +73,8 @@ voice:
   default_speed: 1.0
   reference_audio: "ref_audio\\female\\ref_calm.wav"
   gpt_sovits:
-    gpt_model_path: "d:\\AI\\xiaoyou-core\\models\\voice\\流萤-e10.ckpt"
-    sovits_model_path: "d:\\AI\\xiaoyou-core\\models\\voice\\Aveline_Violet_Mix.pth"
+    gpt_model_path: "d:\\AI\\xiaoyou-core\\models\\voice\\GPT\\流萤-e10.ckpt"
+    sovits_model_path: "d:\\AI\\xiaoyou-core\\models\\voice\\SoVITS\\Aveline_Violet_Mix.pth"
 
 # 缓存配置
 cache:

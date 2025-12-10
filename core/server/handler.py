@@ -62,14 +62,14 @@ class WebSocketHandler:
         
         # Initialize User Memory Map
         try:
-            from memory.memory_manager import MemoryManager
-            self.MemoryManagerClass = MemoryManager
+            from memory.weighted_memory_manager import WeightedMemoryManager
+            self.MemoryManagerClass = WeightedMemoryManager
         except ImportError:
-            logging.warning("MemoryManager not found. Using mock.")
+            logging.warning("WeightedMemoryManager not found. Using mock.")
             self.MemoryManagerClass = MemoryManagerMock
             
         self.user_memory_map = defaultdict(
-            lambda: self.MemoryManagerClass(user_id="default", max_length=50, auto_save_interval=300)
+            lambda: self.MemoryManagerClass(user_id="default", max_short_term=50, max_long_term=100)
         )
         
         # Initialize Adapters
@@ -189,14 +189,31 @@ class WebSocketHandler:
                     await websocket.send(json.dumps(chunk))
                     
             # Update local memory for fallback consistency (ChatAgent handles its own memory)
-            user_memory.add_message("user", prompt)
-            user_memory.add_message("ai", response_text)
+            # user_memory.add_message("user", prompt)
+            # user_memory.add_message("ai", response_text)
+            pass
             
         else:
             # Fallback to TRMAdapter (Legacy)
-            user_memory.add_message("user", prompt)
-            response_text = await self._query_llm(user_id, prompt, user_memory.get_history())
-            user_memory.add_message("ai", response_text)
+            if hasattr(user_memory, "add_memory"):
+                user_memory.add_memory(prompt, source="user")
+            else:
+                user_memory.add_message("user", prompt)
+
+            # Get history (Try multiple methods)
+            history = []
+            if hasattr(user_memory, "get_recent_history"):
+                history = await user_memory.get_recent_history(user_id) if asyncio.iscoroutinefunction(user_memory.get_recent_history) else user_memory.get_recent_history(user_id)
+            elif hasattr(user_memory, "get_history"):
+                history = user_memory.get_history()
+            
+            response_text = await self._query_llm(user_id, prompt, history)
+            
+            if hasattr(user_memory, "add_memory"):
+                user_memory.add_memory(response_text, source="assistant")
+            else:
+                user_memory.add_message("ai", response_text)
+            
             detected_emotion = None
         
         self.system_status["total_queries"] += 1

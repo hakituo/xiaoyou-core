@@ -49,13 +49,43 @@ start "Xiaoyou Core Main" cmd /k "cd /d "%BASE_DIR%" && "%PYTHON_EXE%" main.py"
 :: 3. Start Frontend
 echo.
 echo [3/3] Starting Frontend UI...
-set "FRONTEND_DIR=%BASE_DIR%\frontend\Aveline_UI"
+set "FRONTEND_DIR=%BASE_DIR%\clients\frontend\Aveline_UI"
 
 if not exist "%FRONTEND_DIR%" (
     echo [WARNING] Frontend directory not found: %FRONTEND_DIR%
     echo Skipping frontend startup.
 ) else (
-    start "Xiaoyou Frontend" cmd /k "cd /d "%FRONTEND_DIR%" && npm run dev"
+    echo.
+    echo [INFO] Starting Frontend Dev Server...
+    start "Xiaoyou Web" "%BASE_DIR%\start_web.bat"
+    
+    echo.
+    echo [INFO] Waiting for Frontend Server (port 3001)...
+    
+    set "MAX_RETRIES=60"
+    set "RETRY_COUNT=0"
+    
+    :CHECK_PORT
+    powershell -Command "try { $client = New-Object System.Net.Sockets.TcpClient; $client.Connect('127.0.0.1', 3001); $client.Close(); exit 0 } catch { exit 1 }"
+    if %errorlevel% equ 0 (
+        echo [INFO] Frontend Server is ready!
+        goto START_PET
+    )
+    
+    timeout /t 1 /nobreak > nul
+    set /a RETRY_COUNT+=1
+    if %RETRY_COUNT% lss %MAX_RETRIES% (
+        echo [INFO] Waiting for port 3001... (%RETRY_COUNT%/%MAX_RETRIES%)
+        goto CHECK_PORT
+    )
+    
+    echo [WARNING] Frontend Server did not respond on port 3001 after 60 seconds.
+    echo [WARNING] Attempting to start Desktop Pet anyway...
+
+    :START_PET
+    echo.
+    echo [INFO] Launching Desktop Pet (Electron)...
+    start "Xiaoyou Pet" "%BASE_DIR%\start_pet.bat"
 )
 
 echo.

@@ -19,14 +19,16 @@ class LLMModule:
         初始化LLM模块
         
         Args:
-            config: 模块配置字典 (已弃用，优先使用 integrated_config)
+            config: 模块配置字典，可覆盖全局配置
         """
         self.settings = get_settings()
         self.config = config or {}
         
-        # 优先从 integrated_config 获取路径
-        self.text_model_path = self.settings.model.text_path or self.config.get("text_model_path", "./models/qwen")
-        self.device = self.settings.model.device
+        # 优先使用传入的 config，其次是全局 settings
+        self.text_model_path = self.config.get("text_model_path") or self.settings.model.text_path or "./models/qwen"
+        
+        # Device 处理：优先 config，其次 settings
+        self.device = self.config.get("device") or self.settings.model.device
         
         if self.device == "auto" or not self.device:
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -101,7 +103,7 @@ class LLMModule:
         生成文本回复
         
         Args:
-            prompt: 提示词
+            prompt: 提示词 (str) 或 消息列表 (list)
             max_tokens: 最大生成token数
             temperature: 温度参数
             
@@ -114,29 +116,66 @@ class LLMModule:
                     success = await self._load_model()
                     if not success:
                         return {"status": "error", "error": "模型加载失败"}
-                        
-                max_tokens = max_tokens or 512
-                temperature = temperature or 0.7
                 
-                return await asyncio.to_thread(self._chat_sync, prompt, max_tokens, temperature)
+                # 从配置获取默认值
+                max_tokens = max_tokens or self.settings.model.max_new_tokens or 512
+                temperature = temperature or self.settings.model.temperature or 1.2
+                min_p = self.settings.model.min_p
+                repetition_penalty = self.settings.model.repetition_penalty
+                top_p = self.settings.model.top_p
+                
+                return await asyncio.to_thread(self._chat_sync, prompt, max_tokens, temperature, min_p, repetition_penalty, top_p)
                 
             except Exception as e:
                 logger.error(f"生成文本时出错: {str(e)}")
                 return {"status": "error", "error": str(e)}
 
-    def _chat_sync(self, prompt, max_tokens, temperature):
+    def _chat_sync(self, prompt, max_tokens, temperature, min_p, repetition_penalty, top_p):
         """同步推理逻辑"""
-        inputs = self.tokenizer(prompt, return_tensors="pt")
+        
+        # 处理消息列表，应用 Chat Template
+        if isinstance(prompt, list):
+            try:
+                # 使用 apply_chat_template 自动格式化为 Llama-3 格式
+                # 假设 prompt 是 [{"role": "system", "content": ...}, {"role": "user", "content": ...}]
+                prompt_text = self.tokenizer.apply_chat_template(
+                    prompt, 
+                    tokenize=False, 
+                    add_generation_prompt=True
+                )
+            except Exception as e:
+                logger.warning(f"应用Chat Template失败，回退到原始文本: {e}")
+                prompt_text = str(prompt)
+        else:
+            prompt_text = str(prompt)
+
+        inputs = self.tokenizer(prompt_text, return_tensors="pt")
         if self.device == "cuda":
             inputs = {k: v.cuda() for k, v in inputs.items()}
             
         with torch.no_grad():
+            # 构建生成参数
+            gen_kwargs = {
+                "max_new_tokens": max_tokens,
+                "temperature": temperature,
+                "do_sample": True,
+                "repetition_penalty": repetition_penalty,
+                "pad_token_id": self.tokenizer.eos_token_id
+            }
+            
+            # 支持 Min-P (如果 transformers 版本支持或手动实现，这里假设直接传递给 generate)
+            # 注意: transformers 原生可能不支持 min_p，如果是 v4.38+ 可能支持
+            # 如果不支持，可以尝试 top_p
+            if min_p is not None:
+                # 检查是否支持 min_p
+                gen_kwargs["min_p"] = min_p
+            
+            if top_p is not None:
+                gen_kwargs["top_p"] = top_p
+
             output = self.model.generate(
                 **inputs,
-                max_new_tokens=max_tokens,
-                temperature=temperature,
-                do_sample=True,
-                pad_token_id=self.tokenizer.eos_token_id
+                **gen_kwargs
             )
             
         response = self.tokenizer.decode(

@@ -1,7 +1,7 @@
 # 小友核心 (Xiaoyou Core) 技术架构与开发参考手册
 
-**版本**: 1.3.0
-**最后更新**: 2025-12-05
+**版本**: 1.4.0
+**最后更新**: 2025-12-09
 **状态**: 维护中
 
 ---
@@ -14,13 +14,14 @@
 *   **混合服务架构**: 结合 HTTP (REST) 的无状态优势与 WebSocket 的实时双向通信能力。
 *   **资源隔离调度**: 引入 C++ 编写的 `cpp_scheduler`，实现 LLM（GPU）、TTS（CPU）和 图像生成（GPU 异步队列）的硬件级资源隔离，防止资源争抢导致的系统卡顿。
 *   **多模态融合**: 原生支持 LLM 对话、Stable Diffusion 图像生成、本地/云端语音合成与识别。
+*   **模块化与重构**: 采用 Clean Architecture 思想，将情绪、生命周期、错误处理等逻辑解耦为独立模块，提升可维护性。
 *   **插件化设计**: 核心业务逻辑封装在 `core/services` 与 `core/modules` 中，易于扩展。
 
 ### 1.2 技术栈
 *   **后端语言**: Python 3.10+, C++17 (调度器)
 *   **Web 框架**: FastAPI (HTTP/WebSocket), Uvicorn (ASGI Server)
 *   **AI 框架**: PyTorch, Diffusers (SD), LangChain/LlamaIndex (LLM), FunASR/Paraformer (语音)
-*   **前端框架**: React 18, Vite, TailwindCSS, TypeScript
+*   **前端框架**: React 18, Vite, TailwindCSS, TypeScript, Electron (Desktop App)
 *   **数据存储**: SQLite (短期记忆/配置), FAISS/Chroma (向量记忆 - 计划中)
 *   **配置管理**: YAML (`app.yaml`) + 环境变量
 
@@ -104,36 +105,65 @@ graph TD
 *   **感官反馈 (Sensory Integration)**:
     *   集成 `Aveline` 角色管理器的感官触发器。
     *   **Sensory Triggers**: 识别特定关键词（如“晚安”、“抱歉”），实时输出 UI 控制信号（呼吸灯颜色、语音语调调整）。
+*   **语音消息能力 (Voice Message Capability)**:
+    *   **机制**: 支持 AI 主动决定发送语音消息（通过 `[VOICE: style]` 标签）。
+    *   **展现**: 语音消息文本内容在前端默认隐藏，仅显示“Voice Message”，点击播放后通过听觉获取信息，增强私密感与沉浸感。
 *   **文件路径**: `core/agents/chat_agent.py`
 
-### 3.2 记忆系统 (Memory System)
-*   **架构**: 采用多层级记忆架构。
-    *   **短期记忆**: 基于 LRU 策略，保留最近 N 轮对话。
-    *   **长期记忆**: 基于 `WeightedMemoryManager` (增强型权重记忆管理器)，支持话题聚类与重要性加权。
-    *   **记忆回响 (Memory Echoes)**: 随机从 `special_events.json` 中提取过往记忆片段注入 System Prompt，模拟“回忆”功能。
-*   **配置**: `config/integrated_config.py` (统一配置中心)。
+### 3.3 图像生成与视觉 (Image & Vision)
+*   **图像生成 (Generation)**:
+    *   **入口**: POST `/api/v1/image/generate` 或 聊天指令 "画一个..."。
+    *   **管理器**: `core.image.image_manager.ImageManager`。
+    *   **模型架构**: 
+        *   **Stable Diffusion 1.5**: 支持 Checkpoint + LoRA (动态加载，目录 `models/img/sd1.5/check_point` 及 `models/img/sd1.5/lora`)。
+        *   **SDXL**: 支持 Checkpoint (目录 `models/img/sdxl/checkpoints`)。虽已预留 `models/img/sdxl/lora` 目录，但在前端暂未启用 LoRA 加载以防冲突。
+    *   **安全机制**: 严格隔离 SD1.5 与 SDXL 的 LoRA 加载，防止后端因模型架构不匹配而崩溃。
+*   **视觉感知 (Vision)**:
+    *   **模块**: `core.modules.vision.module.VisionModule`。
+    *   **模型**: Qwen2-VL-2B (支持图像理解与描述)。
+    *   **功能**: 支持多模态对话，能够理解并描述用户上传的图片内容。
 
-### 3.3 图像生成 (Image Generation)
-*   **入口**: POST `/api/v1/image/generate` 或 聊天指令 "画一个..."。
-*   **管理器**: `core.image.image_manager.ImageManager` (单例模式)。
-*   **模型加载**: `core.image.model_loader.ModelDiscovery` 自动扫描 `models/img` 及 `stable-diffusion-webui-forge-main` 目录。
-*   **执行**: 使用 `diffusers` 库，强制 `local_files_only=True` 以避免网络超时。支持 `v1-inference.yaml` 自定义配置。
-
-### 3.2 语音交互 (Voice Interaction)
+### 3.4 语音模块 (Voice Manager)
 *   **模块**: `core/voice/` 及 `core/modules/voice/`。
 *   **功能**:
-    *   **TTS (文本转语音)**: 支持本地引擎 (EdgeTTS, PyTTSx3) 和云端接口。
-    *   **STT (语音转文本)**: 集成 FunASR 等模型进行实时语音识别。
+    *   **TTS (文本转语音)**: 
+        *   集成 GPT-SoVITS (通过 `gpt_sovits_adapter`)，支持动态权重切换 (`gpt_sovits_weights`) 以实现不同声线。
+        *   集成本地引擎 (EdgeTTS) 作为备用。
+    *   **STT (语音转文本)**: 集成 Whisper (large-v3/tiny) 进行高精度语音识别。
 *   **调度**: 语音任务通常被分配到 CPU Worker (通过 `cpp_scheduler` 或 Python 线程池) 以释放 GPU 给 LLM/SD。
 
-### 3.3 任务调度 (Task Scheduler)
+### 3.5 情绪管理模块 (Emotion Module)
+*   **定位**: `core/emotion`，独立的、完整的情绪识别与响应系统。
+*   **功能**: 
+    1.  **多模态检测**: 支持从 LLM 标记 (`[EMO: happy]`)、文本关键词等多种来源检测情绪。
+    2.  **细粒度分类**: 支持 12 种情绪类型 (Happy, Sad, Angry, Anxious, Tired, Shy, Excited, Jealous, Wronged, Lost, Coquetry, Neutral)。
+    3.  **状态管理**: 维护用户当前的实时情绪状态，包含主情绪、置信度、强度等。
+    4.  **响应策略**: 提供基于情绪的响应策略，包括安慰话术模板、硬件控制指令（呼吸灯颜色 RGB、呼吸频率）。
+    5.  **计算与累积**: `EmotionCalculator` 实现非线性情绪累积与时间衰减，支持复杂的情绪动态变化。
+    6.  **历史记录**: 持久化存储用户情绪变化历史。
+*   **核心类**: `EmotionManager` (Facade), `EmotionDetector`, `EmotionResponder`, `EmotionStore`, `EmotionState`, `EmotionCalculator`.
+
+### 3.6 记忆系统 (Memory System)
+*   **架构理念**: 单一事实来源 (Single Source of Truth)，统一使用加权记忆模型，已移除冗余的 EnhancedMemory。
+*   **模块化结构 (Modular Design)**:
+    *   **WeightedMemoryManager (Facade)**: `memory/weighted_memory_manager.py`。负责对外统一接口、并发控制 (Async Lock) 与数据持久化。
+    *   **Core Logic**: `memory/core/`
+        *   **权重计算 (Weights)**: `memory/core/weights.py`。负责计算基础权重、时间衰减、重要性加成与情绪奖励。
+        *   **工具集 (Utils)**: `memory/core/utils.py`。提供无状态的 NLP 工具，如关键词提取、话题自动检测、用户偏好分析。
+*   **核心机制**:
+    *   **混合检索**: 结合关键词匹配、向量相似度 (Vector Search) 与动态权重排序。
+    *   **CPU Offload Summary**: 使用 Qwen 模型在 CPU 端异步执行长对话总结，避免阻塞主对话流 (GPU)。
+    *   **自动优化**: 每次交互自动更新记忆权重 (Access Count)，低权重记忆随时间自然衰减。
+*   **交互**: 紧密集成 `EmotionModule`，支持“情绪-记忆”共鸣检索。
+
+### 3.7 任务调度 (Task Scheduler)
 *   **Python 端**: `core/services/scheduler` 处理业务逻辑任务调度，如定时任务、异步任务包装。
 *   **C++ 端**: `cpp_scheduler` (独立服务)。
     *   **交互方式**: 通过 HTTP API (`InferServiceClient`) 进行通信。
     *   **核心价值**: 解决 Python GIL 限制和 GPU 显存争抢。
     *   **架构**: 异步事件驱动 (libuv)，将 LLM 推理(GPU)、TTS(CPU)、绘图(GPU队列) 分发到不同 Worker 进程/线程。
 
-### 3.4 Aveline 角色与情感系统 (Aveline Character & Emotion System)
+### 3.8 Aveline 角色与情感系统 (Aveline Character & Emotion System)
 *   **角色核心 (AvelineCharacter)**:
     *   负责加载 `Aveline.json` 完整配置，管理角色人设、触发器与反射机制。
     *   **双重触发机制**: 同时支持 **Sensory Triggers** (感官触发，如“晚安”控制UI) 与 **Behavior Chains** (行为链，如调用外部服务)。
@@ -162,8 +192,36 @@ graph TD
     *   **触发**: 当 `ChatAgent` 检测到强情绪（权重>=0.6）时。
     *   **实现**: 生成 `ui_interaction` 类型的 WebSocket 消息，前端需解析并展示。
 
-### 3.5 工具与实用程序 (Tools & Utilities)
-*   **向量搜索工具**: `core/vector_search.py` (独立工具类，当前核心业务主要使用 `WeightedMemoryManager`，此文件可能作为独立工具或遗留代码存在)。
+### 3.9 工具与实用程序 (Tools & Utilities)
+*   **向量搜索工具**: `core/vector_search.py` (独立工具类，当前核心业务主要使用 `WeightedMemoryManager`，但向量搜索已准备就绪，支持 RAG 知识库扩展)。
+
+### 3.10 智能代理工具链 (Intelligent Agent Tool Chain)
+*   **定位**: `core/tools`，赋予 AI 使用外部工具与系统功能的能力。
+*   **架构**: 
+    *   **Registry**: `core.tools.registry.ToolRegistry` 负责工具的注册与管理。
+    *   **BaseTool**: 所有工具的基类，定义标准接口与 Schema。
+    *   **ChatAgent 集成**: `ChatAgent` 在系统提示词中动态注入工具描述，并解析 `[TOOL_USE]` 指令执行工具（支持 ReAct 循环）。
+*   **内置工具**:
+    *   **WebSearch**: 调用 Bocha API 进行联网搜索。
+    *   **ImageGeneration**: 调用 `ImageManager` 生成图像。
+    *   **Time**: 获取系统当前时间。
+    *   **Calculator**: 安全的数学表达式计算。
+
+### 3.11 Electron 桌面宠物 (Electron Desktop Pet)
+*   **定位**: `clients/frontend/Aveline_UI/electron`，基于 Electron 的桌面端宿主。
+*   **特性**:
+    *   **透明窗口**: 背景透明，无边框，完美融入桌面环境。
+    *   **Always on Top**: 始终置顶，确保小友随时可见。
+    *   **Pet Mode**: 通过 URL Hash (`#/pet-mode`) 激活精简 UI，仅展示角色与必要交互，隐藏无关面板。
+*   **启动**: `npm run electron:dev` (开发模式) 或构建后运行。
+
+### 3.12 语音管理器 (Voice Manager)
+*   **定位**: `core/voice/`，负责 TTS (语音合成) 和 STT (语音识别) 的统一管理。
+*   **核心功能**:
+    *   **多引擎支持**: 支持 Edge-TTS (在线/轻量) 和 GPT-SoVITS (本地/高质量) 引擎切换。
+    *   **自动转录 (Auto-Transcription)**: 针对用户自定义的参考音频，若缺失 `.txt` 标注文件，系统会自动调用 STT 引擎进行识别并缓存，确保克隆效果（音调/韵律）的准确性。
+    *   **参数透传**: 完整支持 `speed`, `pitch`, `top_k`, `top_p`, `temperature` 等参数从 API 到推理引擎的透传，允许精细化控制语音表现。
+    *   **采样率自适应**: 自动识别 TTS 引擎（GPT-SoVITS 32k / Edge-TTS 24k）的采样率，防止因重采样错误导致的音调异常（变低/变慢）。
 
 ---
 
@@ -171,27 +229,40 @@ graph TD
 
 ```text
 d:\AI\xiaoyou-core\
-├── app_main.py                 # [入口] 主程序入口，启动 WebSocket 服务器
+├── main.py                     # [入口] 主程序入口，启动 FastAPI/WebSocket 服务器
+├── legacy\                     # [归档] 旧代码与未使用文件 (mvp_core, app_main.py 等)
+├── backups\                    # [备份] 自动备份与环境备份
+├── clients\                    # [客户端] 多端接入 (Android, QQ Bot, Frontend)
+│   ├── android\                # Android App 源码
+│   ├── bots\                   # QQ/Discord 机器人适配
+│   └── frontend\               # Aveline_UI 前端项目
 ├── config\                     # [配置]
 │   └── yaml\
 │       └── app.yaml            # 主配置文件 (端口、模型路径、功能开关)
+├── memory\                     # [记忆系统] (Modular)
+│   ├── weighted_memory_manager.py # [Facade] 统一入口
+│   └── core\                   # [核心组件]
+│       ├── weights.py          # 权重计算逻辑
+│       └── utils.py            # NLP 工具集
 ├── core\                       # [核心代码]
 │   ├── core_engine\            # 引擎核心 (配置管理、生命周期、事件总线)
+│   ├── emotion\                # [新增] 独立情绪管理模块
 │   ├── image\                  # 图像生成业务逻辑 (ImageManager)
+│   ├── lifecycle\              # [新增] 应用生命周期管理 (lifespan)
 │   ├── server\                 # WebSocket 服务器实现
 │   ├── services\               # 业务服务 (Aveline, Scheduler, LifeSim)
 │   ├── modules\                # AI 能力模块 (LLM, Vision, Memory)
 │   ├── voice\                  # 语音底层引擎
 │   ├── character\              # 角色管理 (aveline.py - Aveline 逻辑核心)
+│   ├── utils\                  # 通用工具 (错误处理、静态文件挂载、文本处理)
 │   └── interfaces\             # 接口适配器 (WebSocket Adapter)
 ├── routers\                    # [路由] FastAPI 路由定义
-│   ├── api_router.py           # 通用 API (图像生成等)
+│   ├── api_router.py           # 通用 API
+│   ├── session_router.py       # [新增] 会话管理 API
 │   ├── health_router.py        # 健康检查 API
 │   └── websocket_router.py     # WebSocket 握手与升级
-├── frontend\                   # [前端]
-│   └── Aveline_UI\             # React 项目源码
-│       ├── src\api\apiService.ts # 前后端接口定义
-│       └── src\components\     # UI 组件
+├── docs\                       # [文档] 技术文档、开发指南、计划书
+├── external\                   # [外部依赖] 第三方工具与库 (Gradle, llama.cpp)
 ├── cpp_scheduler\              # [高性能组件] C++ 资源隔离调度器源码
 ├── models\                     # [模型存储]
 │   ├── img\                    # 存放 .safetensors 图像模型
@@ -234,7 +305,7 @@ d:\AI\xiaoyou-core\
 ### 6.2 启动方式
 1.  **启动核心服务**:
     ```bash
-    python app_main.py
+    python main.py
     ```
 2.  **启动 C++ 调度器 (可选，高性能模式)**:
     ```bash
@@ -243,9 +314,16 @@ d:\AI\xiaoyou-core\
     ```
 3.  **启动前端**:
     ```bash
-    cd frontend/Aveline_UI
+    cd clients/frontend/Aveline_UI
     npm run dev
     ```
+4.  **启动桌面宠物 (Electron)**:
+    ```bash
+    cd clients/frontend/Aveline_UI
+    npm run electron:dev
+    ```
+    *(注：推荐使用根目录下的 `start_services.bat` 一键启动所有服务)*
+
 
 ### 6.3 常见问题
 *   **模型加载失败**: 检查 `models/` 目录下是否存在模型文件，或检查 `app.yaml` 中的路径配置。

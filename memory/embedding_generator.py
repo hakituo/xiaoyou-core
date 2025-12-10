@@ -51,22 +51,33 @@ class EmbeddingGenerator:
                     logger.info(f"开始加载嵌入模型: {self._model_name}")
                     start_time = time.time()
                     
-                    # 尝试导入sentence_transformers (仅本地)
+                    # 尝试导入sentence_transformers
                     try:
-                        from sentence_transformers import SentenceTransformer
-                        # 检查本地是否有缓存或模型，不尝试下载
-                        # 注意：SentenceTransformer默认会尝试下载，这里我们假设如果用户没有手动下载模型，
-                        # 就会失败进入异常处理，从而使用Hash后备，符合用户"不能用Hugging Face"的要求。
-                        # 为了安全，我们可以设置环境变量禁止联网（虽然库本身可能忽略）
+                        # 设置环境变量以支持国内下载（如果本地没有模型）
                         import os
-                        os.environ["HF_HUB_OFFLINE"] = "1" 
+                        os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+                        # 忽略SSL验证错误（针对某些特定网络环境）
+                        import ssl
+                        try:
+                            _create_unverified_https_context = ssl._create_unverified_context
+                        except AttributeError:
+                            pass
+                        else:
+                            ssl._create_default_https_context = _create_unverified_https_context
+
+                        from sentence_transformers import SentenceTransformer
                         
+                        # 尝试加载模型
+                        # 如果本地没有，SentenceTransformer会尝试下载
+                        # 我们使用hf-mirror镜像源来加速下载
+                        logger.info("尝试加载 SentenceTransformer 模型...")
                         self._model = SentenceTransformer(self._model_name)
-                        self._use_fallback = False
-                        logger.info("成功加载sentence_transformers模型")
+                        self._use_hash_fallback = False
+                        logger.info("成功加载 sentence_transformers 模型")
+                        
                     except Exception as e:
-                        logger.warning(f"无法加载本地sentence_transformers模型 ({e})，将使用哈希嵌入作为后备")
-                        # 不尝试Hugging Face下载，直接使用Hash后备
+                        logger.warning(f"无法加载 sentence_transformers 模型 ({e})，将使用哈希嵌入作为后备")
+                        logger.warning("这可能是因为网络连接问题或模型文件缺失。系统将继续运行，但语义搜索能力将受限。")
                         self._use_hash_fallback = True
                     
                     self._model_loaded = True
@@ -74,7 +85,7 @@ class EmbeddingGenerator:
                     end_time = time.time()
                     logger.info(f"模型加载流程完成，耗时: {end_time - start_time:.2f}秒")
                 except Exception as e:
-                    logger.error(f"加载嵌入模型失败: {e}")
+                    logger.error(f"加载嵌入模型流程发生未预期的错误: {e}")
                     logger.warning("启用简单哈希嵌入作为最后防线")
                     self._use_hash_fallback = True
                     self._model_loaded = True
