@@ -64,7 +64,49 @@ def get_llm_module() -> LLMModule:
     """
     global _llm_module_instance
     if _llm_module_instance is None:
-        # 创建默认LLM模块实例
+        from config.integrated_config import get_settings
+        settings = get_settings()
+        
+        # Check if local models are preferred
+        if settings.system.use_local_models_only:
+            try:
+                from core.modules.llm.module import LLMModule as LocalLLMModule
+                
+                class LocalLLMAdapter(LLMModule):
+                    def __init__(self):
+                        self.local_module = LocalLLMModule()
+                        
+                    async def initialize(self):
+                        await self.local_module._load_model()
+                        
+                    async def chat(self, messages: list, **kwargs):
+                        # Convert messages to prompt list for local module
+                        # Local module expects [{"role":..., "content":...}] which is what messages is
+                        result = await self.local_module.chat(messages, **kwargs)
+                        if result.get("status") == "success":
+                            return result.get("response")
+                        else:
+                            return f"Error: {result.get('error')}"
+                            
+                    async def stream_chat(self, messages: list, **kwargs):
+                        content = await self.chat(messages, **kwargs)
+                        yield {"content": content}
+                        
+                    def get_status(self) -> Dict[str, Any]:
+                        return {
+                            "status": "initialized" if self.local_module.is_loaded else "not_initialized",
+                            "model_path": self.local_module.get_current_model_name(),
+                            "type": "local",
+                            "llm_status": {"instances_count": 1}
+                        }
+                        
+                _llm_module_instance = LocalLLMAdapter()
+                logger.info("Using Local LLM Module as per configuration.")
+                return _llm_module_instance
+            except Exception as e:
+                logger.error(f"Failed to load Local LLM Module: {e}. Falling back to DashScope.")
+        
+        # Default to DashScope
         from .dashscope_client import DashScopeClient
         _llm_module_instance = DashScopeClient()
     return _llm_module_instance

@@ -76,6 +76,7 @@ class ModelSettings(BaseSettings):
     repetition_penalty: float = Field(default=1.15, description="重复惩罚")
     top_p: float = Field(default=1.0, description="Top-P 采样")
     max_new_tokens: int = Field(default=1024, description="最大生成长度")
+    n_ctx: int = Field(default=4096, description="上下文窗口大小")
 
     model_config = SettingsConfigDict(
         env_prefix="XIAOYOU_MODEL_",
@@ -267,19 +268,35 @@ def _apply_yaml_config(settings: AppSettings, yaml_config: Dict[str, Any]):
                             settings.voice.sovits_model_path = gpt_conf["sovits_model_path"]
         
         # Model Generation Settings
-        if "model" in yaml_config and "generation" in yaml_config["model"]:
-            gen_conf = yaml_config["model"]["generation"]
-            if isinstance(gen_conf, dict):
-                if "temperature" in gen_conf:
-                    settings.model.temperature = gen_conf["temperature"]
-                if "min_p" in gen_conf:
-                    settings.model.min_p = gen_conf["min_p"]
-                if "repetition_penalty" in gen_conf:
-                    settings.model.repetition_penalty = gen_conf["repetition_penalty"]
-                if "top_p" in gen_conf:
-                    settings.model.top_p = gen_conf["top_p"]
-                if "max_new_tokens" in gen_conf:
-                    settings.model.max_new_tokens = gen_conf["max_new_tokens"]
+        if "model" in yaml_config:
+            model_conf = yaml_config["model"]
+            if isinstance(model_conf, dict):
+                # Basic Model Settings
+                if "default" in model_conf:
+                    settings.model.name = model_conf["default"]
+                if "path" in model_conf:
+                    settings.model.text_path = model_conf["path"]
+                if "summary_model_path" in model_conf:
+                    settings.model.summary_model_path = model_conf["summary_model_path"]
+                if "vision_path" in model_conf:
+                    settings.model.vision_path = model_conf["vision_path"]
+                if "n_ctx" in model_conf:
+                    settings.model.n_ctx = model_conf["n_ctx"]
+                
+                # Generation Settings
+                if "generation" in model_conf:
+                    gen_conf = model_conf["generation"]
+                    if isinstance(gen_conf, dict):
+                        if "temperature" in gen_conf:
+                            settings.model.temperature = gen_conf["temperature"]
+                        if "min_p" in gen_conf:
+                            settings.model.min_p = gen_conf["min_p"]
+                        if "repetition_penalty" in gen_conf:
+                            settings.model.repetition_penalty = gen_conf["repetition_penalty"]
+                        if "top_p" in gen_conf:
+                            settings.model.top_p = gen_conf["top_p"]
+                        if "max_new_tokens" in gen_conf:
+                            settings.model.max_new_tokens = gen_conf["max_new_tokens"]
 
         # Server Settings (Partial mapping)
         if "server" in yaml_config:
@@ -287,6 +304,24 @@ def _apply_yaml_config(settings: AppSettings, yaml_config: Dict[str, Any]):
             if isinstance(server_conf, dict):
                 if "port" in server_conf:
                     settings.server.port = server_conf["port"]
+        
+        # History Settings
+        if "history" in yaml_config:
+            hist_conf = yaml_config["history"]
+            if isinstance(hist_conf, dict):
+                if "directory" in hist_conf:
+                    settings.memory.history_dir = hist_conf["directory"]
+                if "default_length" in hist_conf:
+                    settings.memory.default_history_length = hist_conf["default_length"]
+                if "max_length" in hist_conf:
+                    settings.memory.max_history_length = hist_conf["max_length"]
+
+        # System Settings
+        if "system" in yaml_config:
+            sys_conf = yaml_config["system"]
+            if isinstance(sys_conf, dict):
+                if "use_local_models_only" in sys_conf:
+                    settings.system.use_local_models_only = sys_conf["use_local_models_only"]
         
         # WebSocket Settings mapping
         if "websocket" in yaml_config:

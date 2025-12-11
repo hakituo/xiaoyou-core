@@ -39,6 +39,7 @@ from core.voice import get_tts_manager, get_speakers, get_stt_manager
 from core.modules.voice.utils.text_processor import TextProcessor
 from core.core_engine.model_manager import get_model_manager
 from config.integrated_config import get_settings
+from core.llm import get_llm_module
 
 try:
     # ModelAdapter is deprecated but might be referenced for type hinting or legacy code
@@ -1217,32 +1218,49 @@ async def list_voices():
 
 @router.post("/generate")
 async def generate_endpoint(payload: Dict[str, Any] = Body(...)):
-    adapter = ModelAdapter()
+    llm = get_llm_module()
     prompt = payload.get("prompt")
     messages = payload.get("messages")
     max_tokens = int(payload.get("max_tokens", 512))
     
     try:
+        # Check if initialization is needed (for LocalLLMAdapter)
+        if hasattr(llm, 'initialize'):
+            # It's better to ensure it's initialized. 
+            # In production, this should be done at startup, but for safety:
+             await llm.initialize()
+
         if messages:
             # Chat completion
-            response = adapter.chat(
-                prompt=prompt or messages[-1].get('content', ''),
+            response = await llm.chat(
                 messages=messages,
                 max_tokens=max_tokens
             )
         else:
-            # Text completion
-            response = adapter.generate(
-                prompt=prompt,
+            # Text completion (treat as chat with one user message)
+            if isinstance(prompt, str):
+                msgs = [{"role": "user", "content": prompt}]
+            else:
+                msgs = [{"role": "user", "content": str(prompt)}]
+                
+            response = await llm.chat(
+                messages=msgs,
                 max_tokens=max_tokens
             )
-            
+        
+        # Handle response format (some llm.chat returns dict, some string)
+        if isinstance(response, dict) and "response" in response:
+            final_text = response["response"]
+        else:
+            final_text = str(response)
+
         return {
             "status": "success",
-            "text": response,
+            "text": final_text,
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
+        logger.error(f"Generation error: {e}")
         return {
             "status": "error",
             "message": str(e)

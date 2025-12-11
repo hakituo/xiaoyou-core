@@ -442,6 +442,7 @@ class WeightedMemoryManager:
                 "emotions": emotions or [],
                 "is_important": is_important,
                 "source": source,
+                "role": source,  # Ensure role is stored for compatibility
                 "metadata": {},
                 "embedding": None
             }
@@ -847,7 +848,7 @@ class WeightedMemoryManager:
                     continue
                     
                 result.append({
-                    "role": msg.get("role", "assistant"), # 默认为 assistant 如果缺失
+                    "role": msg.get("role") or msg.get("source", "assistant"), # 优先使用role，其次source，默认assistant
                     "content": msg.get("content", ""),
                     "timestamp": msg.get("timestamp", 0),
                     "id": msg.get("id", ""),

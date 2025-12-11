@@ -1,7 +1,7 @@
 # 小友核心 (Xiaoyou Core) 技术架构与开发参考手册
 
-**版本**: 1.4.0
-**最后更新**: 2025-12-09
+**版本**: 1.6.0
+**最后更新**: 2025-12-11
 **状态**: 维护中
 
 ---
@@ -13,17 +13,19 @@
 ### 1.1 核心特性
 *   **混合服务架构**: 结合 HTTP (REST) 的无状态优势与 WebSocket 的实时双向通信能力。
 *   **资源隔离调度**: 引入 C++ 编写的 `cpp_scheduler`，实现 LLM（GPU）、TTS（CPU）和 图像生成（GPU 异步队列）的硬件级资源隔离，防止资源争抢导致的系统卡顿。
-*   **多模态融合**: 原生支持 LLM 对话、Stable Diffusion 图像生成、本地/云端语音合成与识别。
+*   **多模态融合**: 原生支持 LLM 对话（支持本地 GGUF 模型与云端 API 切换）、Stable Diffusion 图像生成、GPT-SoVITS 语音合成。
 *   **模块化与重构**: 采用 Clean Architecture 思想，将情绪、生命周期、错误处理等逻辑解耦为独立模块，提升可维护性。
 *   **插件化设计**: 核心业务逻辑封装在 `core/services` 与 `core/modules` 中，易于扩展。
+*   **RAG 知识库与学习系统**: 集成 ChromaDB 向量数据库，支持本地文档（Study Data、Gao Kao）的语义检索与学习辅助功能。新增 **学习模式 (Study Mode)** 与 **英语词汇管理系统 (Vocabulary Manager)**。
 
 ### 1.2 技术栈
 *   **后端语言**: Python 3.10+, C++17 (调度器)
 *   **Web 框架**: FastAPI (HTTP/WebSocket), Uvicorn (ASGI Server)
-*   **AI 框架**: PyTorch, Diffusers (SD), LangChain/LlamaIndex (LLM), FunASR/Paraformer (语音)
+*   **AI 框架**: PyTorch, Diffusers (SD), llama-cpp-python (Local LLM - GGUF Support), GPT-SoVITS (TTS)
 *   **前端框架**: React 18, Vite, TailwindCSS, TypeScript, Electron (Desktop App)
-*   **数据存储**: SQLite (短期记忆/配置), FAISS/Chroma (向量记忆 - 计划中)
-*   **配置管理**: YAML (`app.yaml`) + 环境变量
+*   **数据存储**: SQLite (短期记忆/配置), ChromaDB (向量记忆)
+*   **配置管理**: YAML (`app.yaml`) + 环境变量 (.env)
+*   **嵌入模型**: all-MiniLM-L6-v2 (本地化部署)
 
 ---
 
@@ -128,7 +130,7 @@ graph TD
 *   **功能**:
     *   **TTS (文本转语音)**: 
         *   集成 GPT-SoVITS (通过 `gpt_sovits_adapter`)，支持动态权重切换 (`gpt_sovits_weights`) 以实现不同声线。
-        *   集成本地引擎 (EdgeTTS) 作为备用。
+        *   集成本地引擎 (EdgeTTS) 作为备用。已移除废弃的 Coqui TTS。
     *   **STT (语音转文本)**: 集成 Whisper (large-v3/tiny) 进行高精度语音识别。
 *   **调度**: 语音任务通常被分配到 CPU Worker (通过 `cpp_scheduler` 或 Python 线程池) 以释放 GPU 给 LLM/SD。
 
@@ -151,7 +153,7 @@ graph TD
         *   **权重计算 (Weights)**: `memory/core/weights.py`。负责计算基础权重、时间衰减、重要性加成与情绪奖励。
         *   **工具集 (Utils)**: `memory/core/utils.py`。提供无状态的 NLP 工具，如关键词提取、话题自动检测、用户偏好分析。
 *   **核心机制**:
-    *   **混合检索**: 结合关键词匹配、向量相似度 (Vector Search) 与动态权重排序。
+    *   **混合检索与智能过滤**: 结合关键词匹配与向量相似度。引入智能过滤机制（Length Check, Distance Threshold），避免短文本（如“你好”）触发大规模 RAG 检索导致 Token 爆炸。
     *   **CPU Offload Summary**: 使用 Qwen 模型在 CPU 端异步执行长对话总结，避免阻塞主对话流 (GPU)。
     *   **自动优化**: 每次交互自动更新记忆权重 (Access Count)，低权重记忆随时间自然衰减。
 *   **交互**: 紧密集成 `EmotionModule`，支持“情绪-记忆”共鸣检索。
@@ -223,6 +225,25 @@ graph TD
     *   **参数透传**: 完整支持 `speed`, `pitch`, `top_k`, `top_p`, `temperature` 等参数从 API 到推理引擎的透传，允许精细化控制语音表现。
     *   **采样率自适应**: 自动识别 TTS 引擎（GPT-SoVITS 32k / Edge-TTS 24k）的采样率，防止因重采样错误导致的音调异常（变低/变慢）。
 
+### 3.13 知识库与学习辅助系统 (Knowledge Base & Learning System)
+*   **定位**: `core/vector_search.py` (知识库检索) 及 `core/tools/study/` (学习工具集)。
+*   **知识库 (RAG)**:
+    *   **引擎**: ChromaDB (持久化模式)。
+    *   **数据源**: 集成 "Gao Kao" 资料集与 "data/study_data" 学习资料。
+    *   **检索机制**: 
+        *   **触发条件 (Study Mode)**: 仅在用户显式进入“学习模式”或使用特定模型（如 "GaoKao"）时触发，避免日常闲聊干扰。
+        *   **智能分类 (Subject Classification)**: 根据用户输入自动分类学科（如 Biology, Math, English），并进行精准过滤。
+        *   **每日单词 (Surprise)**: 在学习模式下，偶发性（或英语学科下）主动推送 CET4 单词进行复习。
+    *   **容错**: 支持向量相似度检索 (Semantic Search)，并在 SSL 证书异常时自动回退至哈希嵌入 (Hash Embedding) 以保证可用性。
+*   **学习辅助工具 (Study Tools)**:
+    *   **VocabularyManager**: `core/tools/study/english/vocabulary_manager.py`。基于 SM-2 算法的英语单词记忆管理系统，支持每日单词推送、进度追踪、外部词表导入。
+    *   **VocabTester**: `core/tools/study/english/vocab_tester.py`。统一后端的单词测试 GUI 工具，支持“看词选义”等模式。
+    *   **Gao Kao Tools**:
+        *   **MathPlotTool**: 基于 Python 代码 (matplotlib) 绘制数学图像。
+        *   **FileCreationTool**: 支持生成结构化文件。
+        *   **UpdateWordProgressTool**: 允许 LLM 根据用户反馈更新单词记忆状态。
+    *   **集成方式**: 通过 `ChatAgent` 的 `ToolRegistry` 注册。
+
 ---
 
 ## 4. 项目结构说明 (Directory Structure)
@@ -233,41 +254,31 @@ d:\AI\xiaoyou-core\
 ├── legacy\                     # [归档] 旧代码与未使用文件 (mvp_core, app_main.py 等)
 ├── backups\                    # [备份] 自动备份与环境备份
 ├── clients\                    # [客户端] 多端接入 (Android, QQ Bot, Frontend)
-│   ├── android\                # Android App 源码
-│   ├── bots\                   # QQ/Discord 机器人适配
-│   └── frontend\               # Aveline_UI 前端项目
 ├── config\                     # [配置]
 │   └── yaml\
 │       └── app.yaml            # 主配置文件 (端口、模型路径、功能开关)
 ├── memory\                     # [记忆系统] (Modular)
-│   ├── weighted_memory_manager.py # [Facade] 统一入口
-│   └── core\                   # [核心组件]
-│       ├── weights.py          # 权重计算逻辑
-│       └── utils.py            # NLP 工具集
 ├── core\                       # [核心代码]
-│   ├── core_engine\            # 引擎核心 (配置管理、生命周期、事件总线)
-│   ├── emotion\                # [新增] 独立情绪管理模块
-│   ├── image\                  # 图像生成业务逻辑 (ImageManager)
-│   ├── lifecycle\              # [新增] 应用生命周期管理 (lifespan)
-│   ├── server\                 # WebSocket 服务器实现
-│   ├── services\               # 业务服务 (Aveline, Scheduler, LifeSim)
+│   ├── core_engine\            # 引擎核心
+│   ├── emotion\                # 情绪管理
+│   ├── image\                  # 图像生成
+│   ├── server\                 # WebSocket 服务器
+│   ├── services\               # 业务服务
 │   ├── modules\                # AI 能力模块 (LLM, Vision, Memory)
-│   ├── voice\                  # 语音底层引擎
-│   ├── character\              # 角色管理 (aveline.py - Aveline 逻辑核心)
-│   ├── utils\                  # 通用工具 (错误处理、静态文件挂载、文本处理)
-│   └── interfaces\             # 接口适配器 (WebSocket Adapter)
+│   ├── tools\                  # [工具集]
+│   │   ├── study\              # [新增] 学习辅助工具
+│   │   │   ├── english\        # 英语学习 (VocabularyManager, VocabTester)
+│   │   │   └── common\         # 通用工具
+│   │   ├── registry.py         # 工具注册表
+│   │   └── ...
+│   ├── voice\                  # 语音引擎
+│   └── character\              # 角色管理
 ├── routers\                    # [路由] FastAPI 路由定义
-│   ├── api_router.py           # 通用 API
-│   ├── session_router.py       # [新增] 会话管理 API
-│   ├── health_router.py        # 健康检查 API
-│   └── websocket_router.py     # WebSocket 握手与升级
-├── docs\                       # [文档] 技术文档、开发指南、计划书
-├── external\                   # [外部依赖] 第三方工具与库 (Gradle, llama.cpp)
-├── cpp_scheduler\              # [高性能组件] C++ 资源隔离调度器源码
+├── docs\                       # [文档]
+├── external\                   # [外部依赖]
+├── cpp_scheduler\              # [高性能组件]
 ├── models\                     # [模型存储]
-│   ├── img\                    # 存放 .safetensors 图像模型
-│   └── llm\                    # 存放 .gguf 等大语言模型
-└── tests\                      # [测试] 单元测试与集成测试脚本
+└── tests\                      # [测试]
 ```
 
 ---

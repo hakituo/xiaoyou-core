@@ -40,7 +40,18 @@ class DashScopeClient(LLMModule):
             api_key: DashScope API Key
         """
         super().__init__()
-        self.api_key = api_key or config.get('system.dashscope_api_key') or os.getenv('DASHSCOPE_API_KEY')
+        # Priority: 
+        # 1. Passed arg
+        # 2. Environment variable direct check (Highest priority for security)
+        # 3. Config from app.yaml
+        self.api_key = (
+            api_key 
+            or os.getenv('DASHSCOPE_API_KEY')
+            or config.get('app.system.dashscope_api_key') 
+            or config.get('system.dashscope_api_key') 
+        )
+        # Lock to qwen3-max-2025-09-23 as requested
+        self.default_model = "qwen3-max-2025-09-23"
         self.base_url = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
         self.timeout = 60
         self.session = None
@@ -137,7 +148,7 @@ class DashScopeClient(LLMModule):
         self, 
         prompt: str,
         history: Optional[List[Dict[str, str]]] = None,
-        model: str = "qwen-max",
+        model: str = "qwen3-max-2025-09-23",
         max_tokens: int = 1500,
         temperature: float = 0.8,
         top_p: float = 0.8,

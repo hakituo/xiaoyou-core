@@ -1,5 +1,10 @@
 # 应用程序主要配置
 
+# 系统配置 (System Configuration)
+system:
+  dashscope_api_key: "${DASHSCOPE_API_KEY}"
+  use_local_models_only: true
+
 # 服务器配置
 server:
   port: 8000
@@ -33,16 +38,17 @@ memory:
 
 # 模型配置
 model:
-  default: "qianwen-turbo"
-  path: "./models/"
+  default: "local"
+  path: "D:\\AI\\xiaoyou-core\\models\\llm\\Qwen2___5-7B-Instruct-Q4_K_M.gguf"
+  n_ctx: 16384  # 增加上下文窗口大小 (默认 4096 -> 16384)
   summary_model_path: null # CPU Offload 模型路径 (例如: "./models/Qwen-7B-Chat-Int4")
-  # 生成参数 (针对 L3-8B-Stheno 优化)
+  # 生成参数 (针对 Qwen2.5 优化)
   generation:
-    temperature: 1.2
+    temperature: 0.7
     min_p: 0.1
-    repetition_penalty: 1.15
-    top_p: 1.0  # 关闭 Top-P (设为 1.0)
-    top_k: 0    # 关闭 Top-K (可选，或设为较大值)
+    repetition_penalty: 1.1
+    top_p: 0.9
+    top_k: 40
     max_new_tokens: 1024
   # 模型加载选项
   load_options:
@@ -89,7 +95,7 @@ api:
 limits:
   max_text_length: 4096
   # 消息处理超时时间（秒）
-  message_timeout: 120
+  message_timeout: 300
 
 # 静态文件路径
 paths:

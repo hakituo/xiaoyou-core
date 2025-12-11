@@ -9,6 +9,8 @@ captured_trace.json
 temp/
 legacy/
 logs/
+chromadb/
+data/chroma/
 
 # --- Sensitive Data & Secrets ---
 .env

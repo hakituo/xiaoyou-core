@@ -280,7 +280,8 @@ class AvelineService:
             async for chunk in self.chat_agent.stream_chat(
                 user_id=conversation_id, 
                 message=user_input, 
-                save_history=save_history
+                save_history=save_history,
+                model_hint=model_hint
             ):
                 # Pass through the structured chunk directly
                 yield chunk
@@ -325,7 +326,8 @@ class AvelineService:
             async for chunk in self.chat_agent.stream_chat(
                 user_id=conversation_id, 
                 message=user_input, 
-                save_history=save_history
+                save_history=save_history,
+                model_hint=model_hint
             ):
                 if "content" in chunk:
                     full_response += chunk["content"]

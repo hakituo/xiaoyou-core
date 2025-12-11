@@ -40,8 +40,11 @@ class Config:
     CACHE_SIZE = 1000  # LRU缓存大小
     CACHE_TTL = 3600  # 缓存过期时间（秒）
     
-    # API配置
-    QIANWEN_API_KEY = "sk-7d1c6e7f8a9b4c5d8e9f0a1b2c3d4e5f"  # 通义千问API密钥
+    # API Keys
+    QIANWEN_API_KEY = "sk-315b05704dc4420591c9b8afe29bd0b0"  # 通义千问API密钥
+    
+    # Model Configuration
+    DEFAULT_MODEL = "qwen3-max-2025-09-23"
     
     # 日志配置
     LOG_LEVEL = "INFO"  # "DEBUG", "INFO", "WARNING", "ERROR"

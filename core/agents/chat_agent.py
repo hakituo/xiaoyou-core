@@ -18,6 +18,9 @@ from core.managers.session_manager import get_session_manager
 from core.utils.text_processor import extract_and_strip_emotion
 from core.tools.registry import ToolRegistry
 from core.tools.implementations import WebSearchTool, ImageGenerationTool, TimeTool, CalculatorTool
+from core.tools.study_tools import register_study_tools
+from core.services.study.vocabulary_manager import VocabularyManager
+from core.vector_search import VectorSearch
 
 # 修正导入路径，不再使用已不存在的 aveline_manager
 # 使用 core.character.aveline 中的 AvelineCharacter 获取信息
@@ -67,6 +70,31 @@ class ChatAgent:
         self.tool_registry.register(ImageGenerationTool())
         self.tool_registry.register(TimeTool())
         self.tool_registry.register(CalculatorTool())
+        
+        # 注册高考/辅助工具
+        try:
+            register_study_tools(self.tool_registry)
+            logger.info("已注册Study工具集")
+        except Exception as e:
+            logger.error(f"注册Study工具集失败: {e}")
+
+        # Initialize VectorSearch for RAG
+        try:
+            self.vector_search = VectorSearch(use_in_memory_db=False)
+            logger.info("Initialized VectorSearch for RAG")
+        except Exception as e:
+            logger.warning(f"Failed to initialize VectorSearch: {e}")
+            self.vector_search = None
+
+        # Initialize Vocabulary Manager
+        try:
+            self.vocab_manager = VocabularyManager()
+            self.daily_word_queue = [] # Queue for daily words
+            logger.info("Initialized VocabularyManager")
+        except Exception as e:
+            logger.warning(f"Failed to initialize VocabularyManager: {e}")
+            self.vocab_manager = None
+            self.daily_word_queue = []
 
     def _get_memory_manager(self, user_id: str):
         """获取或创建指定用户的记忆管理器"""
@@ -494,7 +522,7 @@ class ChatAgent:
             # logger.warning(f"格式化系统提示词失败: {e}")
             return template
 
-    async def stream_chat(self, user_id: str, message: str, message_id: str = None, save_history: bool = True) -> AsyncGenerator[Dict[str, Any], None]:
+    async def stream_chat(self, user_id: str, message: str, message_id: str = None, save_history: bool = True, model_hint: str = None) -> AsyncGenerator[Dict[str, Any], None]:
         """
         流式处理用户消息
         
@@ -503,6 +531,7 @@ class ChatAgent:
             message: 用户消息
             message_id: 消息ID
             save_history: 是否保存历史记录
+            model_hint: 模型提示/标识 (用于判断是否是学习模式等)
         """
         if not self.is_initialized:
             await self.initialize()
@@ -590,7 +619,7 @@ class ChatAgent:
         except Exception as e:
             logger.warning(f"检查感官/行为触发失败: {e}")
 
-        messages = await self._build_conversation_history(user_id, message)
+        messages = await self._build_conversation_history(user_id, message, model_hint)
         
         full_response_content = ""
         
@@ -699,7 +728,78 @@ class ChatAgent:
         except Exception as e:
             logger.error(f"执行上下文摘要失败: {e}")
 
-    async def _build_conversation_history(self, user_id: str, message: str) -> List[Dict[str, str]]:
+    def _is_study_mode(self, message: str, model_hint: str = None) -> bool:
+        """Check if study mode is active based on model hint or message content"""
+        # 1. Check model hint
+        if model_hint and any(k in model_hint.lower() for k in ["study", "gaokao", "learning", "tutor"]):
+            return True
+            
+        # 2. Check message triggers
+        triggers = ["进入学习模式", "开始学习", "study mode", "高考模式"]
+        if any(t in message.lower() for t in triggers):
+            return True
+            
+        return False
+
+    def _classify_subject(self, message: str) -> Optional[str]:
+        """Classify message into a study subject based on file naming conventions"""
+        message = message.lower()
+        # Mapping subject keys to keywords in user message
+        # These keys will be used to match filenames in study_data
+        subjects = {
+            "Biology": ["生物", "biology", "细胞", "遗传", "基因", "进化"],
+            "Chemistry": ["化学", "chemistry", "元素", "反应", "有机", "分子"],
+            "Physics": ["物理", "physics", "力学", "电磁", "光", "能量"],
+            "Math": ["数学", "math", "函数", "几何", "导数", "积分", "代数"],
+            "English": ["英语", "english", "单词", "语法", "作文", "听力"],
+            "Chinese": ["语文", "chinese", "古诗", "文言文", "阅读理解", "作文"],
+            "Geography": ["地理", "geography", "地形", "气候", "洋流"],
+            "History": ["历史", "history", "朝代", "事件", "战争", "革命"],
+            "Political_Science": ["政治", "politics", "马克思", "经济", "哲学"]
+        }
+        
+        for subject, keywords in subjects.items():
+            if any(k in message for k in keywords):
+                return subject
+        return None
+
+    def _get_english_word_context(self) -> Optional[Dict[str, str]]:
+        """Get an English word for context injection from VocabularyManager"""
+        if not self.vocab_manager:
+            return None
+            
+        try:
+            # Refill queue if empty
+            if not self.daily_word_queue:
+                # Get more words (mix of review and new)
+                # Limit to 20 for batch, but we can call it multiple times a day
+                self.daily_word_queue = self.vocab_manager.get_daily_words(limit=20)
+                # Shuffle to mix review and new
+                random.shuffle(self.daily_word_queue)
+                if self.daily_word_queue:
+                    logger.info(f"Refilled daily word queue with {len(self.daily_word_queue)} words")
+            
+            if self.daily_word_queue:
+                # Pop one word
+                word_obj = self.daily_word_queue.pop(0)
+                word = word_obj.get("word")
+                trans = word_obj.get("translations", [])
+                
+                # Format translations
+                trans_str = "; ".join([f"{t.get('type')}. {t.get('translation')}" for t in trans])
+                
+                return {
+                    "word": word, 
+                    "meaning": trans_str,
+                    "status": word_obj.get("status", "new") # new or review
+                }
+                
+        except Exception as e:
+            logger.warning(f"Failed to get English word: {e}")
+            
+        return None
+
+    async def _build_conversation_history(self, user_id: str, message: str, model_hint: str = None) -> List[Dict[str, str]]:
         """
         构建对话历史，包含系统提示词和历史消息
         """
@@ -722,17 +822,17 @@ class ChatAgent:
         memory_manager = self._get_memory_manager(user_id)
         
         # 尝试检索相关记忆 (RAG) - 增强记忆连贯性
-        if memory_manager and message:
+        if memory_manager and message and len(message) > 5:
             try:
                 relevant_memories = []
                 # 优先使用混合搜索
                 if hasattr(memory_manager, "hybrid_search"):
-                    # 使用较低的阈值以捕获更多潜在关联
-                    results = memory_manager.hybrid_search(message, limit=3, min_similarity=0.45)
+                    # 提高相似度阈值以减少无关记忆，减少 limit
+                    results = memory_manager.hybrid_search(message, limit=2, min_similarity=0.65)
                     for mem in results:
                         content = mem.get('content', '')
                         # 避免重复过短的记忆
-                        if len(content) > 5:
+                        if len(content) > 10:
                             relevant_memories.append(f"- {content}")
                 
                 if relevant_memories:
@@ -741,6 +841,90 @@ class ChatAgent:
                     logger.info(f"已注入 {len(relevant_memories)} 条相关记忆")
             except Exception as e:
                 logger.warning(f"记忆检索失败: {e}")
+
+        # Determine context
+        is_study = self._is_study_mode(message, model_hint)
+        subject = self._classify_subject(message) if message else None
+
+        # 尝试检索外部知识库 (Knowledge Base RAG)
+        # 仅在学习模式下触发
+        if self.vector_search and message and len(message) > 5 and is_study:
+            try:
+                logger.info(f"RAG Study Mode Active. Detected subject: {subject}")
+                
+                # 2. Query with higher top_k to allow filtering
+                kb_results = self.vector_search.query_full(message, top_k=15)
+                
+                if kb_results:
+                    kb_content_list = []
+                    for res in kb_results:
+                        doc_content = res.get('document', '').strip()
+                        metadata = res.get('metadata', {})
+                        source = metadata.get('source', 'Unknown') # e.g. .../Biology/...
+                        distance = res.get('distance', 1.0)
+                        
+                        # 过滤相关性低的结果
+                        if distance > 0.55: # Slightly looser for study
+                            continue
+                            
+                        # Subject Filtering
+                        if subject:
+                            # Strict filtering: Source MUST contain subject keyword
+                            if subject.lower() not in source.lower():
+                                continue
+                        
+                        # 截断
+                        if len(doc_content) > 800:
+                            doc_content = doc_content[:800] + "...(truncated)"
+
+                        if len(doc_content) > 10:
+                            kb_content_list.append(f"- [Source: {source}] {doc_content}")
+                            
+                        # Limit to top 3 relevant
+                        if len(kb_content_list) >= 3:
+                            break
+                    
+                    if kb_content_list:
+                        kb_section = f"【高考知识库 - {subject or '综合'}】(Knowledge Base)\n以下是检索到的相关资料，请优先基于此资料回答用户问题：\n" + "\n".join(kb_content_list)
+                        messages.append({"role": "system", "content": kb_section})
+                        logger.info(f"已注入 {len(kb_content_list)} 条知识库资料")
+                        
+            except Exception as e:
+                logger.warning(f"知识库检索失败: {e}")
+
+        # 3. English Word Injection (Daily Vocabulary)
+        # Strategy: 
+        # - If subject is English: High chance (80%)
+        # - If study mode (other subjects): Medium chance (30%)
+        # - If normal chat: Low chance (20%) but ensures daily progress
+        
+        inject_chance = 0.20
+        if subject == "English":
+            inject_chance = 0.8
+        elif is_study:
+            inject_chance = 0.3
+            
+        if random.random() < inject_chance:
+            word_ctx = self._get_english_word_context()
+            if word_ctx:
+                word = word_ctx.get("word")
+                meaning = word_ctx.get("meaning")
+                status = word_ctx.get("status")
+                
+                context_type = "Review" if status == "review" else "New Word"
+                
+                # Hidden instruction for LLM to use the word naturally
+                instruction = (
+                    f"\n[Vocabulary Injection - {context_type}]\n"
+                    f"Target Word: {word}\n"
+                    f"Meaning: {meaning}\n"
+                    f"Instruction: Naturally incorporate this word into your response. "
+                    f"If it's a review word, ask if I remember it. "
+                    f"If it's new, use it in a sentence to teach me. "
+                    f"Do NOT explicitly list the translation unless asked. "
+                    f"You can use the 'update_word_progress' tool if I tell you whether I remember it or not."
+                )
+                messages.append({"role": "system", "content": instruction})
 
         # 获取历史消息
         if memory_manager:

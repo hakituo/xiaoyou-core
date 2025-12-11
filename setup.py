@@ -77,7 +77,6 @@ setup(
             'sphinx-rtd-theme>=1.2.0',
         ],
         'audio': [
-            'coqui-tts>=0.14.0',
             'pyaudio>=0.2.13',
             'soundfile>=0.12.0',
             'pydub>=0.25.0',

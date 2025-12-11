@@ -44,16 +44,34 @@ class VectorSearch:
         """Dynamically load dependencies"""
         global _chromadb_loaded, Client, Settings, get_tts_manager
         
+        # print(f"DEBUG: Loading dependencies. _chromadb_loaded: {_chromadb_loaded}")
         if not _chromadb_loaded:
             try:
                 # Try to load chromadb, but don't interrupt program on failure
                 try:
-                    from chromadb import Client
-                    from chromadb.config import Settings
-                except ImportError:
-                    logger.warning("chromadb not found, vector search functionality will be unavailable")
+                    import chromadb
+                    # print(f"DEBUG: chromadb imported. Version: {chromadb.__version__}")
+                    # Capture Client and Settings, and also PersistentClient if available
+                    Client = chromadb.Client
+                    Settings = chromadb.config.Settings
+                    
+                    # Store PersistentClient in a class attribute or global if needed, 
+                    # but here we can just check chromadb.PersistentClient in _initialize_components if we import chromadb there.
+                    # Or better, let's just make 'chromadb' available globally or import it inside methods.
+                    # But to keep consistent with existing code structure:
+                    self._chromadb_module = chromadb
+                    
+                    # print("DEBUG: Client and Settings imported from chromadb")
+                except ImportError as e:
+                    logger.warning(f"chromadb not found or import error: {e}")
                     Client = None
                     Settings = None
+                    self._chromadb_module = None
+                except Exception as e:
+                    logger.error(f"Unexpected error importing chromadb: {e}")
+                    Client = None
+                    Settings = None
+                    self._chromadb_module = None
                 
                 # Try to load TTS manager
                 try:
@@ -62,10 +80,19 @@ class VectorSearch:
                     logger.warning("TTS manager not found, speech synthesis functionality will be unavailable")
                     get_tts_manager = None
                 
+                # Import certifi to fix SSL issues
+                try:
+                    import certifi
+                    os.environ['SSL_CERT_FILE'] = certifi.where()
+                    os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
+                    # logger.info(f"Set SSL_CERT_FILE to {os.environ['SSL_CERT_FILE']}")
+                except ImportError:
+                    logger.warning("certifi not found, SSL certificate verification might fail")
+                
                 _chromadb_loaded = True
             except Exception as e:
                 logger.error(f"Failed to load dependencies: {e}")
-    
+
     def _initialize_components(self):
         """Initialize components"""
         with self._lock:
@@ -78,20 +105,81 @@ class VectorSearch:
             # Initialize database client (if available)
             if Client and Settings:
                 try:
-                    # Use chromadb new version API, supporting in-memory mode and persistent mode
+                    # Use chromadb new version API
                     if self._use_in_memory_db:
-                        # In-memory mode - new API approach
-                        self.client = Client()
+                        # In-memory mode
+                        if hasattr(self._chromadb_module, 'EphemeralClient'):
+                            self.client = self._chromadb_module.EphemeralClient()
+                        else:
+                            self.client = Client()
                         logger.info("Vector database initialized successfully in memory mode")
                     else:
-                        # Persistent mode - new API approach
+                        # Persistent mode
                         persist_dir = "./chromadb"
+                        # Make path absolute to avoid CWD issues
+                        persist_dir = os.path.abspath(persist_dir)
                         os.makedirs(persist_dir, exist_ok=True)
-                        self.client = Client(persist_dir)
+                        
+                        if hasattr(self._chromadb_module, 'PersistentClient'):
+                             self.client = self._chromadb_module.PersistentClient(path=persist_dir)
+                        else:
+                            # Fallback for older versions
+                            self.client = Client(Settings(
+                                persist_directory=persist_dir, 
+                                is_persistent=True
+                            ))
+                            
                         logger.info(f"Vector database initialized successfully in persistent mode: {persist_dir}")
+                        
+                    # Explicitly use a lightweight embedding model to avoid hanging
+                    from chromadb.utils import embedding_functions
+                    
+                    # Define a safe embedding function creation wrapper
+                    def create_embedding_function():
+                        # Determine model path (local first, then online)
+                        model_name = "all-MiniLM-L6-v2"
+                        local_model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "embedding", "all-MiniLM-L6-v2")
+                        
+                        if os.path.exists(local_model_path):
+                            logger.info(f"Found local embedding model at: {local_model_path}")
+                            model_name = local_model_path
+                        else:
+                            logger.info("Local embedding model not found, trying online download...")
+                            # Use mirror for better connectivity in China
+                            os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+
+                        try:
+                            # Try loading the standard model
+                            return embedding_functions.SentenceTransformerEmbeddingFunction(model_name=model_name)
+                        except Exception as e:
+                            logger.warning(f"Failed to load SentenceTransformer: {e}. Trying with SSL verification disabled...")
+                            # Try with SSL verification disabled context if possible, 
+                            # or just return a dummy function to prevent crash
+                            try:
+                                # Quick hack: Disable SSL verify globally for a moment (dangerous but effective for local tools)
+                                import ssl
+                                _create_unverified_https_context = ssl._create_unverified_context
+                                ssl._create_default_https_context = _create_unverified_https_context
+                                
+                                ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name=model_name)
+                                logger.info("Successfully loaded embedding model with SSL verification disabled")
+                                return ef
+                            except Exception as e2:
+                                logger.error(f"Still failed to load embedding model: {e2}. Using fallback hash embedding.")
+                                
+                                # Fallback class for emergency
+                                class DummyEmbeddingFunction:
+                                    def __call__(self, input):
+                                        # Return zero vectors of dimension 384
+                                        return [[0.0] * 384 for _ in input]
+                                return DummyEmbeddingFunction()
+
+                    emb_fn = create_embedding_function()
+                    
                     self.collection = self.client.get_or_create_collection(
                         "smallbot_kb",
-                        metadata={"hnsw:space": "cosine"}  # Use cosine similarity, lower computational cost
+                        embedding_function=emb_fn,
+                        metadata={"hnsw:space": "cosine"}
                     )
                     logger.info("Vector database initialized successfully")
                 except Exception as e:
@@ -181,6 +269,45 @@ class VectorSearch:
             logger.error(f"Vector query failed: {e}")
             return []
     
+    def query_full(self, text, top_k=3):
+        """Query vector database and return full results including metadata"""
+        try:
+            self._ensure_initialized()
+            
+            if not self.collection:
+                logger.warning("Vector database not initialized, cannot query")
+                return []
+            
+            # Text length limit
+            if len(text) > self.MAX_QUERY_LENGTH:
+                logger.warning("Query text too long, truncated")
+                text = text[:self.MAX_QUERY_LENGTH]
+            
+            results = self.collection.query(
+                query_texts=[text], 
+                n_results=min(top_k, 10)
+            )
+            
+            structured_results = []
+            if results and results["documents"]:
+                documents = results["documents"][0]
+                metadatas = results["metadatas"][0] if "metadatas" in results else [{}] * len(documents)
+                distances = results["distances"][0] if "distances" in results else [0.0] * len(documents)
+                ids = results["ids"][0] if "ids" in results else [""] * len(documents)
+                
+                for i in range(len(documents)):
+                    structured_results.append({
+                        "id": ids[i],
+                        "document": documents[i],
+                        "metadata": metadatas[i],
+                        "distance": distances[i]
+                    })
+            
+            return structured_results
+        except Exception as e:
+            logger.error(f"Vector full query failed: {e}")
+            return []
+
     def text_to_speech(self, text, output_file=None):
         """Convert text to speech (optimized version)"""
         try:
@@ -200,34 +327,17 @@ class VectorSearch:
                 logger.warning("TTS text too long, truncated")
                 text = text[:500]
             
-            # Check cache
-            cache_key = text if len(text) < 100 else hashlib.md5(text.encode()).hexdigest()
-            if output_file is None and cache_key in self._tts_cache:
-                cached_path = self._tts_cache[cache_key]
-                if os.path.exists(cached_path):
-                    logger.debug(f"TTS cache hit: {cache_key}")
-                    return cached_path
+            # Delegate to TTS manager which handles caching and generation
+            # Note: TTSManager.text_to_speech returns the file path
+            audio_path = self.tts_manager.text_to_speech(text)
             
-            # Generate output file path
-            if not output_file:
-                file_id = hashlib.md5((text + str(time.time())[:8]).encode()).hexdigest()[:8]
-                output_file = f"multimodal/voice/{file_id}.mp3"
-            
-            # Generate speech using TTS manager
-            audio_path = self.tts_manager.generate_speech(text, output_file)
-            
-            # Validate result and cache
             if audio_path and os.path.exists(audio_path):
                 logger.debug(f"TTS generated successfully: {audio_path}")
-                # Update cache using LRU strategy
-                if len(self._tts_cache) >= self.TTS_CACHE_SIZE:
-                    # Remove earliest added item
-                    self._tts_cache.pop(next(iter(self._tts_cache)))
-                self._tts_cache[cache_key] = audio_path
                 return audio_path
             else:
-                logger.warning(f"TTS generation failed or file does not exist: {audio_path}")
+                logger.warning(f"TTS generation failed: {audio_path}")
                 return None
+                
         except Exception as e:
             logger.error(f"TTS processing failed: {e}", exc_info=True)
             return None

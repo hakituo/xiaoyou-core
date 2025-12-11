@@ -1,6 +1,16 @@
 import os
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+try:
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+except ImportError:
+    AutoModelForCausalLM = None
+    AutoTokenizer = None
+
+try:
+    from llama_cpp import Llama
+except ImportError:
+    Llama = None
+
 import gc
 import asyncio
 from config.integrated_config import get_settings
@@ -35,7 +45,9 @@ class LLMModule:
             
         self.model = None
         self.tokenizer = None
+        self.llama_model = None
         self.is_loaded = False
+        self.is_gguf = False
         self._lock = asyncio.Lock()
         
     async def _load_model(self):
@@ -55,6 +67,41 @@ class LLMModule:
                 logger.error(f"模型路径不存在: {self.text_model_path}")
                 return False
                 
+            # Check for GGUF model
+            if self.text_model_path.lower().endswith(".gguf"):
+                if Llama is None:
+                    logger.error("检测到GGUF模型，但未安装 llama_cpp_python。请运行 pip install llama-cpp-python")
+                    return False
+                
+                logger.info("检测到GGUF模型，使用llama_cpp加载...")
+                self.is_gguf = True
+                
+                # Configure Llama
+                n_gpu_layers = self.config.get('n_gpu_layers', -1) # Default to all layers on GPU if available
+                # 优先使用配置的 n_ctx，如果没有则尝试从 settings 获取，最后默认为 4096
+                n_ctx = self.config.get('n_ctx') or getattr(self.settings.model, 'n_ctx', None) or 4096
+                # n_batch 应该是 n_ctx 的一部分，或者是独立配置。增加默认值以提高性能
+                n_batch = self.config.get('n_batch', 4096)
+                
+                logger.info(f"Initializing Llama model with n_ctx={n_ctx}, n_batch={n_batch}, n_gpu_layers={n_gpu_layers}")
+
+                self.llama_model = Llama(
+                    model_path=self.text_model_path,
+                    n_ctx=n_ctx,
+                    n_gpu_layers=n_gpu_layers,
+                    n_batch=n_batch, 
+                    verbose=True
+                )
+                
+                self.is_loaded = True
+                logger.info("GGUF模型加载成功")
+                return True
+            
+            # Fallback to transformers for non-GGUF models
+            if AutoModelForCausalLM is None:
+                 logger.error("未安装 transformers 库")
+                 return False
+
             model_kwargs = {
                 "low_cpu_mem_usage": True,
                 "torch_dtype": torch.float16 if self.device == "cuda" else torch.float32,
@@ -91,6 +138,10 @@ class LLMModule:
             if self.tokenizer:
                 del self.tokenizer
                 self.tokenizer = None
+            
+            if self.llama_model:
+                del self.llama_model
+                self.llama_model = None
                 
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
@@ -119,10 +170,10 @@ class LLMModule:
                 
                 # 从配置获取默认值
                 max_tokens = max_tokens or self.settings.model.max_new_tokens or 512
-                temperature = temperature or self.settings.model.temperature or 1.2
+                temperature = temperature or self.settings.model.temperature or 0.7
                 min_p = self.settings.model.min_p
-                repetition_penalty = self.settings.model.repetition_penalty
-                top_p = self.settings.model.top_p
+                repetition_penalty = self.settings.model.repetition_penalty or 1.1
+                top_p = self.settings.model.top_p or 0.9
                 
                 return await asyncio.to_thread(self._chat_sync, prompt, max_tokens, temperature, min_p, repetition_penalty, top_p)
                 
@@ -133,6 +184,10 @@ class LLMModule:
     def _chat_sync(self, prompt, max_tokens, temperature, min_p, repetition_penalty, top_p):
         """同步推理逻辑"""
         
+        if self.is_gguf:
+            return self._chat_sync_gguf(prompt, max_tokens, temperature, repetition_penalty, top_p)
+            
+        # Transformers logic
         # 处理消息列表，应用 Chat Template
         if isinstance(prompt, list):
             try:
@@ -164,10 +219,7 @@ class LLMModule:
             }
             
             # 支持 Min-P (如果 transformers 版本支持或手动实现，这里假设直接传递给 generate)
-            # 注意: transformers 原生可能不支持 min_p，如果是 v4.38+ 可能支持
-            # 如果不支持，可以尝试 top_p
             if min_p is not None:
-                # 检查是否支持 min_p
                 gen_kwargs["min_p"] = min_p
             
             if top_p is not None:
@@ -187,4 +239,49 @@ class LLMModule:
             "status": "success",
             "response": response
         }
+
+    def _chat_sync_gguf(self, prompt, max_tokens, temperature, repetition_penalty, top_p):
+        """GGUF (llama_cpp) 同步推理逻辑"""
+        try:
+            # Prepare messages
+            messages = []
+            if isinstance(prompt, str):
+                messages = [{"role": "user", "content": prompt}]
+            elif isinstance(prompt, list):
+                messages = prompt
+            
+            # Use chat completion API
+            try:
+                response = self.llama_model.create_chat_completion(
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    top_p=top_p,
+                    repeat_penalty=repetition_penalty,
+                )
+            except Exception as e:
+                if "index" in str(e) and "out of bounds" in str(e):
+                    logger.warning(f"GGUF推理遇到索引错误，尝试重置模型并重试: {e}")
+                    self.llama_model.reset()
+                    response = self.llama_model.create_chat_completion(
+                        messages=messages,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        top_p=top_p,
+                        repeat_penalty=repetition_penalty,
+                    )
+                else:
+                    raise e
+            
+            content = response['choices'][0]['message']['content']
+            return {
+                "status": "success",
+                "response": content
+            }
+        except Exception as e:
+            logger.error(f"GGUF推理失败: {e}")
+            # 如果是 token 超限，提示用户
+            if "exceed context window" in str(e):
+                return {"status": "error", "error": f"请求长度超过上下文窗口限制 ({self.llama_model.n_ctx()})，请缩短输入或增加 n_ctx 配置。"}
+            return {"status": "error", "error": str(e)}
 
