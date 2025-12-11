@@ -32,58 +32,391 @@
 ## 2. 系统架构 (System Architecture)
 
 ### 2.1 顶层架构图
-系统分为 **接入层**、**服务层**、**核心层** 和 **基础设施层**。
+系统分为 **接口层 (Interface Layer)**、**服务层 (Service Layer)**、**模块层 (Module Layer)** 和 **核心引擎层 (Core Engine Layer)**。
 
 ```mermaid
 graph TD
-    Client[前端客户端 (Web/Mobile/QQ Bot)] -->|WebSocket (6789)| WS_Server[WebSocket Server]
-    Client -->|HTTP (8000)| API_Server[FastAPI Server]
+    %% 客户端层
+    Client[前端客户端 (Web/Mobile/QQ Bot)] -->|WebSocket| WebSocketRouter[WebSocket Router]
+    Client -->|HTTP API| APIRouter[API Router]
 
-    subgraph AccessLayer [接入层]
-        WS_Server --> ConnectionManager
-        API_Server --> APIRouters
+    %% 接口层
+    subgraph InterfaceLayer [接口层]
+        WebSocketRouter -->|消息处理| WSManager[WebSocket Manager]
+        APIRouter -->|请求处理| APIManager[API Manager]
+        WSManager -->|事件发布| EventBus[Event Bus]
+        APIManager -->|调用服务| ServiceManager[Service Manager]
     end
 
+    %% 服务层
     subgraph ServiceLayer [服务层]
-        direction TB
-        Aveline[Aveline Service (主业务)]
-        ActiveCare[Active Care (主动关怀)]
-        LifeSim[Life Simulation (生活模拟)]
-        CmdHandler[Command Handler]
+        ServiceManager -->|调用| AvelineService[Aveline Service]
+        ServiceManager -->|调用| LifeSimulationService[Life Simulation Service]
+        ServiceManager -->|调用| ActiveCareService[Active Care Service]
+        ServiceManager -->|调用| CommandHandler[Command Handler]
+        AvelineService -->|事件订阅| EventBus
+        LifeSimulationService -->|事件订阅| EventBus
+        ActiveCareService -->|事件订阅| EventBus
+        CommandHandler -->|事件订阅| EventBus
     end
 
-    subgraph CoreLayer [核心层]
-        CoreEngine[Core Engine]
-        EventBus[Event Bus]
-        ModelMgr[Model Manager]
-        ConfigMgr[Config Manager]
-        Scheduler[Task Scheduler (Py)]
+    %% 模块层
+    subgraph ModuleLayer [模块层]
+        AvelineService -->|调用| LLMModule[LLM Module]
+        AvelineService -->|调用| ImageModule[Image Module]
+        AvelineService -->|调用| VisionModule[Vision Module]
+        AvelineService -->|调用| VoiceModule[Voice Module]
+        AvelineService -->|调用| MemoryModule[Memory Module]
+        LifeSimulationService -->|调用| MemoryModule
+        ActiveCareService -->|调用| MemoryModule
+        LLMModule -->|模型管理| ModelManager[Model Manager]
+        ImageModule -->|模型管理| ModelManager
+        VisionModule -->|模型管理| ModelManager
+        VoiceModule -->|模型管理| ModelManager
     end
 
+    %% 核心引擎层
+    subgraph CoreEngineLayer [核心引擎层]
+        ModelManager -->|配置管理| ConfigManager[Config Manager]
+        ServiceManager -->|生命周期管理| LifecycleManager[Lifecycle Manager]
+        AvelineService -->|事件发布| EventBus
+        ConfigManager -->|配置加载| AppSettings[App Settings]
+        LifecycleManager -->|服务注册| ServiceRegistry[Service Registry]
+        EventBus -->|事件处理| EventHandlers[Event Handlers]
+        ConfigManager -->|自动检测| ModelDetector[Model Detector]
+    end
+
+    %% 基础设施层
     subgraph Infrastructure [基础设施层]
-        CPPSched[C++ Scheduler API (Port 8080)]
-        GPU[GPU Resources]
-        CPU[CPU Resources]
+        ModelManager -->|资源管理| ResourceMonitor[Resource Monitor]
+        ResourceMonitor -->|GPU监控| GPU[GPU Resources]
+        ResourceMonitor -->|CPU监控| CPU[CPU Resources]
+        ResourceMonitor -->|内存监控| Memory[Memory Resources]
     end
 
-    subgraph ModuleLayer [能力模块]
-        LLM[LLM Connector]
-        Image[Image Manager (SD)]
-        Voice[Voice Manager (TTS/STT)]
-        Memory[Memory Module]
+    %% 数据流
+    WSManager -->|请求| AvelineService
+    APIManager -->|请求| AvelineService
+    AvelineService -->|响应| WSManager
+    AvelineService -->|响应| APIManager
+    WSManager -->|返回响应| WebSocketRouter
+    APIManager -->|返回响应| APIRouter
+    WebSocketRouter -->|返回响应| Client
+    APIRouter -->|返回响应| Client
+end
+```
+
+### 2.2 核心引擎层详细图
+核心引擎层包含系统的核心组件，负责系统的生命周期管理、配置管理、事件处理和模型管理。
+
+```mermaid
+graph TD
+    subgraph CoreEngineLayer [核心引擎层]
+        %% 核心引擎组件
+        CoreEngine[Core Engine]
+        ConfigManager[Config Manager]
+        EventBus[Event Bus]
+        LifecycleManager[Lifecycle Manager]
+        ModelManager[Model Manager]
+        ResourceMonitor[Resource Monitor]
+        ServiceRegistry[Service Registry]
+        ModelDetector[Model Detector]
+        AppSettings[App Settings]
+        EventHandlers[Event Handlers]
+
+        %% 组件关系
+        CoreEngine -->|初始化| ConfigManager
+        CoreEngine -->|初始化| EventBus
+        CoreEngine -->|初始化| LifecycleManager
+        CoreEngine -->|初始化| ModelManager
+        CoreEngine -->|初始化| ResourceMonitor
+        
+        ConfigManager -->|加载配置| AppSettings
+        ConfigManager -->|自动检测模型| ModelDetector
+        ConfigManager -->|配置更新| EventBus
+        
+        EventBus -->|事件订阅| EventHandlers
+        EventBus -->|事件发布| LifecycleManager
+        EventBus -->|事件发布| ModelManager
+        
+        LifecycleManager -->|注册服务| ServiceRegistry
+        LifecycleManager -->|初始化服务| ServiceRegistry
+        LifecycleManager -->|关闭服务| ServiceRegistry
+        
+        ModelManager -->|模型注册| ModelDetector
+        ModelManager -->|资源监控| ResourceMonitor
+        ModelManager -->|事件发布| EventBus
+        
+        ResourceMonitor -->|监控数据| EventBus
+        ResourceMonitor -->|资源告警| EventHandlers
     end
 
-    ConnectionManager --> Aveline
-    APIRouters --> Image & Aveline
+    %% 外部依赖
+    AppSettings -->|配置文件| YAMLConfig[YAML 配置文件]
+    AppSettings -->|环境变量| EnvVars[环境变量]
+    ModelDetector -->|模型文件| ModelFiles[模型文件]
+end
+```
+
+### 2.3 服务层详细图
+服务层包含系统的业务逻辑组件，负责处理业务请求、协调模块调用和管理服务状态。
+
+```mermaid
+graph TD
+    subgraph ServiceLayer [服务层]
+        %% 服务组件
+        AvelineService[Aveline Service]
+        LifeSimulationService[Life Simulation Service]
+        ActiveCareService[Active Care Service]
+        CommandHandler[Command Handler]
+        ServiceManager[Service Manager]
+        ChatAgent[Chat Agent]
+        ResourceMonitor[Resource Monitor]
+
+        %% 组件关系
+        ServiceManager -->|管理| AvelineService
+        ServiceManager -->|管理| LifeSimulationService
+        ServiceManager -->|管理| ActiveCareService
+        ServiceManager -->|管理| CommandHandler
+        
+        AvelineService -->|使用| ChatAgent
+        AvelineService -->|监控资源| ResourceMonitor
+        
+        LifeSimulationService -->|监控资源| ResourceMonitor
+        ActiveCareService -->|监控资源| ResourceMonitor
+        
+        AvelineService -->|事件发布| EventBus[Event Bus]
+        LifeSimulationService -->|事件发布| EventBus
+        ActiveCareService -->|事件发布| EventBus
+        CommandHandler -->|事件发布| EventBus
+        
+        AvelineService -->|调用| ModuleManager[Module Manager]
+        LifeSimulationService -->|调用| ModuleManager
+        ActiveCareService -->|调用| ModuleManager
+    end
+
+    %% 服务交互
+    AvelineService -->|生成响应| ResponseGenerator[Response Generator]
+    AvelineService -->|管理记忆| MemoryManager[Memory Manager]
+    AvelineService -->|处理命令| CommandProcessor[Command Processor]
     
-    Aveline --> CoreEngine
-    Aveline --> LLM & Memory & Voice
+    LifeSimulationService -->|模拟生活| LifeSimulator[Life Simulator]
+    LifeSimulationService -->|生成事件| EventGenerator[Event Generator]
     
-    CoreEngine --> ModelMgr & ConfigMgr & EventBus
-    ModelMgr --> LLM & Image
+    ActiveCareService -->|主动关怀| CareGenerator[Care Generator]
+    ActiveCareService -->|用户分析| UserAnalyzer[User Analyzer]
     
-    Scheduler -->|HTTP Request| CPPSched
-    CPPSched -->|Resource Isolation| GPU & CPU
+    CommandHandler -->|处理指令| CommandExecutor[Command Executor]
+    CommandHandler -->|验证权限| PermissionChecker[Permission Checker]
+end
+```
+
+### 2.4 模块层详细图
+模块层包含系统的功能模块，负责处理特定类型的请求和实现特定功能。
+
+```mermaid
+graph TD
+    subgraph ModuleLayer [模块层]
+        %% 模块组件
+        ModuleManager[Module Manager]
+        LLMModule[LLM Module]
+        ImageModule[Image Module]
+        VisionModule[Vision Module]
+        VoiceModule[Voice Module]
+        MemoryModule[Memory Module]
+        ModelAdapter[Model Adapter]
+
+        %% 组件关系
+        ModuleManager -->|管理| LLMModule
+        ModuleManager -->|管理| ImageModule
+        ModuleManager -->|管理| VisionModule
+        ModuleManager -->|管理| VoiceModule
+        ModuleManager -->|管理| MemoryModule
+        
+        LLMModule -->|使用| ModelAdapter
+        ImageModule -->|使用| ModelAdapter
+        VisionModule -->|使用| ModelAdapter
+        
+        LLMModule -->|模型管理| ModelManager[Model Manager]
+        ImageModule -->|模型管理| ModelManager
+        VisionModule -->|模型管理| ModelManager
+        VoiceModule -->|模型管理| ModelManager
+        
+        MemoryModule -->|存储| LocalStorage[Local Storage]
+        MemoryModule -->|向量检索| VectorDB[Vector Database]
+    end
+
+    %% 模块内部结构
+    LLMModule -->|文本生成| TextGenerator[Text Generator]
+    LLMModule -->|对话管理| ChatManager[Chat Manager]
+    LLMModule -->|提示工程| PromptEngineer[Prompt Engineer]
+    
+    ImageModule -->|图像生成| ImageGenerator[Image Generator]
+    ImageModule -->|图像处理| ImageProcessor[Image Processor]
+    ImageModule -->|模型管理| SDModelManager[SD Model Manager]
+    
+    VisionModule -->|图像理解| ImageUnderstanding[Image Understanding]
+    VisionModule -->|OCR| OCR[OCR]
+    VisionModule -->|目标检测| ObjectDetection[Object Detection]
+    
+    VoiceModule -->|语音合成| TTS[Text-to-Speech]
+    VoiceModule -->|语音识别| ASR[Automatic Speech Recognition]
+    VoiceModule -->|声音处理| AudioProcessor[Audio Processor]
+    
+    MemoryModule -->|短期记忆| ShortTermMemory[Short-term Memory]
+    MemoryModule -->|长期记忆| LongTermMemory[Long-term Memory]
+    MemoryModule -->|记忆优化| MemoryOptimizer[Memory Optimizer]
+end
+```
+
+### 2.5 接口层详细图
+接口层包含系统的通信组件，负责处理外部请求和响应。
+
+```mermaid
+graph TD
+    subgraph InterfaceLayer [接口层]
+        %% 接口组件
+        InterfaceManager[Interface Manager]
+        APIRouter[API Router]
+        WebSocketRouter[WebSocket Router]
+        APIManager[API Manager]
+        WSManager[WebSocket Manager]
+        ConnectionManager[Connection Manager]
+        RateLimiter[Rate Limiter]
+        AuthManager[Authentication Manager]
+
+        %% 组件关系
+        InterfaceManager -->|管理| APIRouter
+        InterfaceManager -->|管理| WebSocketRouter
+        InterfaceManager -->|管理| RateLimiter
+        InterfaceManager -->|管理| AuthManager
+        
+        APIRouter -->|请求处理| APIManager
+        WebSocketRouter -->|连接管理| WSManager
+        WSManager -->|连接管理| ConnectionManager
+        
+        APIManager -->|速率限制| RateLimiter
+        WSManager -->|速率限制| RateLimiter
+        
+        APIManager -->|认证授权| AuthManager
+        WSManager -->|认证授权| AuthManager
+    end
+
+    %% 接口路由
+    APIRouter -->|API端点| Endpoints[API Endpoints]
+    Endpoints -->|消息处理| MessageEndpoint[/api/v1/message/]
+    Endpoints -->|图像生成| ImageEndpoint[/api/v1/image/generate/]
+    Endpoints -->|语音处理| VoiceEndpoint[/api/v1/voice/]
+    Endpoints -->|系统状态| StatusEndpoint[/api/v1/system/]
+    
+    WebSocketRouter -->|WebSocket端点| WSEndpoints[WebSocket Endpoints]
+    WSEndpoints -->|消息通信| MessageWSEndpoint[/ws/message/]
+    WSEndpoints -->|语音流| VoiceWSEndpoint[/ws/voice/]
+    WSEndpoints -->|图像流| ImageWSEndpoint[/ws/image/]
+    
+    %% 请求处理流程
+    APIManager -->|请求验证| RequestValidator[Request Validator]
+    APIManager -->|请求解析| RequestParser[Request Parser]
+    APIManager -->|响应生成| ResponseGenerator[Response Generator]
+    
+    WSManager -->|消息解析| MessageParser[Message Parser]
+    WSManager -->|心跳处理| HeartbeatHandler[Heartbeat Handler]
+    WSManager -->|连接监控| ConnectionMonitor[Connection Monitor]
+    WSManager -->|消息路由| MessageRouter[Message Router]
+end
+```
+
+### 2.6 数据流图
+数据流图展示了请求和响应的处理流程，从客户端发起请求到系统返回响应的完整过程。
+
+```mermaid
+graph TD
+    %% 客户端
+    Client[客户端] -->|1. 发送请求| InterfaceLayer[接口层]
+    
+    %% 接口层处理
+    InterfaceLayer -->|2. 验证请求| RequestValidator[请求验证]
+    RequestValidator -->|3. 解析请求| RequestParser[请求解析]
+    RequestParser -->|4. 路由请求| RequestRouter[请求路由]
+    
+    %% 服务层处理
+    RequestRouter -->|5. 调用服务| ServiceLayer[服务层]
+    ServiceLayer -->|6. 业务处理| BusinessLogic[业务逻辑处理]
+    BusinessLogic -->|7. 调用模块| ModuleLayer[模块层]
+    
+    %% 模块层处理
+    ModuleLayer -->|8. 功能实现| FeatureImplementation[功能实现]
+    FeatureImplementation -->|9. 模型调用| ModelManager[模型管理]
+    ModelManager -->|10. 模型推理| ModelInference[模型推理]
+    ModelInference -->|11. 返回结果| FeatureImplementation
+    
+    %% 响应处理
+    FeatureImplementation -->|12. 处理结果| BusinessLogic
+    BusinessLogic -->|13. 生成响应| ResponseGenerator[响应生成]
+    ResponseGenerator -->|14. 格式化响应| ResponseFormatter[响应格式化]
+    ResponseFormatter -->|15. 返回响应| InterfaceLayer
+    InterfaceLayer -->|16. 返回客户端| Client
+    
+    %% 内部事件处理
+    ServiceLayer -->|17. 发布事件| EventBus[事件总线]
+    EventBus -->|18. 事件处理| EventHandlers[事件处理器]
+    EventHandlers -->|19. 更新状态| ServiceLayer
+    
+    %% 记忆管理
+    ServiceLayer -->|20. 保存记忆| MemoryModule[记忆模块]
+    MemoryModule -->|21. 检索记忆| ServiceLayer
+    
+    %% 资源监控
+    ServiceLayer -->|22. 资源监控| ResourceMonitor[资源监控]
+    ResourceMonitor -->|23. 资源告警| EventBus
+end
+```
+
+### 2.7 服务初始化流程图
+服务初始化流程图展示了系统启动时服务的初始化流程，从系统启动到所有服务初始化完成的完整过程。
+
+```mermaid
+graph TD
+    %% 系统启动
+    Start[系统启动] -->|1. 加载配置| ConfigLoader[配置加载]
+    ConfigLoader -->|2. 初始化日志| LogInitializer[日志初始化]
+    LogInitializer -->|3. 创建FastAPI应用| AppCreator[FastAPI应用创建]
+    
+    %% 核心引擎初始化
+    AppCreator -->|4. 初始化核心引擎| CoreEngineInit[核心引擎初始化]
+    CoreEngineInit -->|5. 初始化配置管理器| ConfigManagerInit[配置管理器初始化]
+    ConfigManagerInit -->|6. 初始化事件总线| EventBusInit[事件总线初始化]
+    EventBusInit -->|7. 初始化生命周期管理器| LifecycleManagerInit[生命周期管理器初始化]
+    LifecycleManagerInit -->|8. 初始化模型管理器| ModelManagerInit[模型管理器初始化]
+    ModelManagerInit -->|9. 初始化资源监控| ResourceMonitorInit[资源监控初始化]
+    
+    %% 服务注册和初始化
+    ResourceMonitorInit -->|10. 注册默认服务| ServiceRegistrar[服务注册器]
+    ServiceRegistrar -->|11. 初始化服务| ServiceInitializer[服务初始化器]
+    ServiceInitializer -->|12. 初始化Aveline服务| AvelineInit[Aveline服务初始化]
+    AvelineInit -->|13. 初始化生活模拟服务| LifeSimInit[生活模拟服务初始化]
+    LifeSimInit -->|14. 初始化主动关怀服务| ActiveCareInit[主动关怀服务初始化]
+    ActiveCareInit -->|15. 初始化命令处理器| CommandHandlerInit[命令处理器初始化]
+    
+    %% 模块初始化
+    CommandHandlerInit -->|16. 初始化模块| ModuleInitializer[模块初始化器]
+    ModuleInitializer -->|17. 初始化LLM模块| LLMModuleInit[LLM模块初始化]
+    LLMModuleInit -->|18. 初始化图像模块| ImageModuleInit[图像模块初始化]
+    ImageModuleInit -->|19. 初始化视觉模块| VisionModuleInit[视觉模块初始化]
+    VisionModuleInit -->|20. 初始化语音模块| VoiceModuleInit[语音模块初始化]
+    VoiceModuleInit -->|21. 初始化记忆模块| MemoryModuleInit[记忆模块初始化]
+    
+    %% 接口初始化
+    MemoryModuleInit -->|22. 初始化接口| InterfaceInitializer[接口初始化器]
+    InterfaceInitializer -->|23. 初始化API路由| APIRouterInit[API路由初始化]
+    APIRouterInit -->|24. 初始化WebSocket路由| WebSocketRouterInit[WebSocket路由初始化]
+    WebSocketRouterInit -->|25. 初始化中间件| MiddlewareInit[中间件初始化]
+    
+    %% 系统就绪
+    MiddlewareInit -->|26. 系统就绪| SystemReady[系统就绪]
+    SystemReady -->|27. 启动服务器| ServerStart[服务器启动]
+    ServerStart -->|28. 监听请求| ListenRequests[监听请求]
+end
 ```
 
 ### 2.2 混合通信机制
