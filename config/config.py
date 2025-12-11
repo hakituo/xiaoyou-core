@@ -1,4 +1,9 @@
 # 项目配置文件
+import os
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
 
 class Config:
     # 基础配置
@@ -41,7 +46,7 @@ class Config:
     CACHE_TTL = 3600  # 缓存过期时间（秒）
     
     # API Keys
-    QIANWEN_API_KEY = "sk-315b05704dc4420591c9b8afe29bd0b0"  # 通义千问API密钥
+    QIANWEN_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")  # 通义千问API密钥
     
     # Model Configuration
     DEFAULT_MODEL = "qwen3-max-2025-09-23"
