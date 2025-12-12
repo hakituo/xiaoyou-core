@@ -156,23 +156,24 @@ class ChatAgent:
             self.llm_module = get_llm_module()
             await self.llm_module.initialize()
             
-            # 初始化摘要LLM (CPU Offload)
-            try:
-                settings = get_settings()
-                if settings.model.summary_model_path:
-                    logger.info(f"正在初始化摘要模型 (CPU): {settings.model.summary_model_path}")
-                    self.summary_llm = LocalLLMModule(config={
-                        "text_model_path": settings.model.summary_model_path,
-                        "device": "cpu"
-                    })
-                    if await self.summary_llm._load_model():
-                        logger.info("摘要模型加载成功")
-                    else:
-                        logger.warning("摘要模型加载失败，将使用主模型进行摘要")
-                        self.summary_llm = None
-            except Exception as e:
-                logger.error(f"初始化摘要模型出错: {e}")
-                self.summary_llm = None
+            # 初始化摘要LLM (CPU Offload) - 禁用以节省资源，直接使用主模型
+            self.summary_llm = None
+            # try:
+            #     settings = get_settings()
+            #     if settings.model.summary_model_path:
+            #         logger.info(f"正在初始化摘要模型 (CPU): {settings.model.summary_model_path}")
+            #         self.summary_llm = LocalLLMModule(config={
+            #             "text_model_path": settings.model.summary_model_path,
+            #             "device": "cpu"
+            #         })
+            #         if await self.summary_llm._load_model():
+            #             logger.info("摘要模型加载成功")
+            #         else:
+            #             logger.warning("摘要模型加载失败，将使用主模型进行摘要")
+            #             self.summary_llm = None
+            # except Exception as e:
+            #     logger.error(f"初始化摘要模型出错: {e}")
+            #     self.summary_llm = None
             
             # 从Aveline角色管理器获取角色配置，更新系统提示词
             try:
@@ -628,6 +629,54 @@ class ChatAgent:
             # logger.warning(f"格式化系统提示词失败: {e}")
             return template
 
+    async def _check_daily_routine(self, user_id: str) -> Optional[str]:
+        """Check if we need to push daily study summary"""
+        try:
+            # Check last interaction time via memory
+            mm = self._get_memory_manager(user_id)
+            today = datetime.now().strftime("%Y-%m-%d")
+            
+            # Check if we already did the summary today
+            already_done = False
+            if hasattr(mm, "get_memories_by_topic"):
+                summaries = mm.get_memories_by_topic("daily_summary", limit=1)
+                if summaries:
+                    last_date = datetime.fromtimestamp(summaries[0].get("timestamp", 0)).strftime("%Y-%m-%d")
+                    if last_date == today:
+                        already_done = True
+            
+            if not already_done:
+                from core.services.study_service import get_study_service
+                service = get_study_service()
+                summary_data = service.get_daily_study_summary_data()
+                
+                if not summary_data:
+                    return None
+                
+                # Mark as done by adding a system memory (silent)
+                if hasattr(mm, "add_memory"):
+                    mm.add_memory(
+                        content=f"Daily summary generated for {today}",
+                        source="system",
+                        topics=["daily_summary"],
+                        importance=1
+                    )
+                
+                summary_text = (
+                    f"【系统通知：每日学习任务更新】\n"
+                    f"日期: {summary_data.get('date')}\n"
+                    f"单词进度: 已学 {summary_data['vocab']['total_learned']}, 待复习 {summary_data['vocab']['to_review']}\n"
+                    f"今日目标: {summary_data['vocab']['target']}\n"
+                    f"建议: {summary_data.get('suggestion')}\n"
+                    f"(指令：请将以上内容总结并作为当前对话的主要话题，引导用户开始学习。)"
+                )
+                return summary_text
+            
+            return None
+        except Exception as e:
+            logger.warning(f"Check daily routine failed: {e}")
+            return None
+
     async def stream_chat(self, user_id: str, message: str, message_id: str = None, save_history: bool = True, model_hint: str = None) -> AsyncGenerator[Dict[str, Any], None]:
         """
         流式处理用户消息
@@ -729,40 +778,122 @@ class ChatAgent:
     
             messages = await self._build_conversation_history(user_id, message, model_hint)
             
-            full_response_content = ""
+            # 5. Check Daily Routine (Inject if needed)
+            daily_summary = await self._check_daily_routine(user_id)
+            if daily_summary:
+                messages.insert(-1, {"role": "system", "content": daily_summary})
+                logger.info(f"Injected daily summary for {user_id}")
+
+            # 6. Main Chat Loop (Handle Tools)
+            max_turns = 3
+            current_turn = 0
+            collected_image_prompts = []
             
-            try:
-                # 使用真正的流式调用
-                async for response_chunk in self.llm_module.stream_chat(messages, temperature=self.config.temperature):
-                    # 兼容 LLMResponse 对象和普通字符串/字典
-                    content = ""
-                    if hasattr(response_chunk, 'content'):
-                        content = response_chunk.content
-                    elif isinstance(response_chunk, dict):
-                        content = response_chunk.get('content', '')
-                    else:
-                        content = str(response_chunk)
-                    
-                    full_response_content += content
-                    yield {
-                        "content": content,
-                        "done": False
-                    }
-    
-                # 保存完整对话到历史记录
+            while current_turn < max_turns:
+                current_response_content = ""
+                
+                # Stream Generation
+                try:
+                    async for response_chunk in self.llm_module.stream_chat(messages, temperature=self.config.temperature):
+                        content = ""
+                        if hasattr(response_chunk, 'content'):
+                            content = response_chunk.content
+                        elif isinstance(response_chunk, dict):
+                            content = response_chunk.get('content', '')
+                        else:
+                            content = str(response_chunk)
+                        
+                        current_response_content += content
+                        
+                        yield {
+                            "type": "token",
+                            "data": content,
+                            "content": content,
+                            "done": False
+                        }
+                except Exception as e:
+                    logger.error(f"Stream generation failed: {e}")
+                    yield {"error": str(e), "done": True}
+                    return
+
+                # Check for Tool Use in this turn's response
+                tool_match = re.search(r'\[TOOL_USE:\s*({.*?})\]', current_response_content, re.DOTALL)
+                
+                if tool_match:
+                    json_str = tool_match.group(1)
+                    try:
+                        tool_call = json.loads(json_str)
+                        tool_name = tool_call.get("name")
+                        tool_args = tool_call.get("arguments", {})
+                        
+                        tool = self.tool_registry.get_tool(tool_name)
+                        if tool:
+                            logger.info(f"Executing tool {tool_name} with args {tool_args}")
+                            yield {"type": "system", "content": f"\n(Executing {tool_name}...)\n", "done": False}
+                            
+                            tool_result = await tool.run(**tool_args)
+                            
+                            # Capture image prompt
+                            if tool_name == "generate_image":
+                                img_match_tool = re.search(r'\[GEN_IMG:\s*(.*?)\]', str(tool_result))
+                                if img_match_tool:
+                                    collected_image_prompts.append(img_match_tool.group(1))
+
+                            # Update history for next turn
+                            messages.append({"role": "assistant", "content": current_response_content})
+                            messages.append({"role": "system", "content": f"Tool '{tool_name}' output:\n{tool_result}\n\nPlease continue based on this."})
+                            
+                            current_turn += 1
+                            continue # Loop again
+                        else:
+                            messages.append({"role": "system", "content": f"Error: Tool '{tool_name}' not found."})
+                            current_turn += 1
+                            continue
+                    except Exception as e:
+                         messages.append({"role": "system", "content": f"Error parsing tool call: {e}"})
+                         current_turn += 1
+                         continue
+                
+                # If no tool use, check for media triggers in the final content
+                # Voice
+                voice_match = re.search(r'\[VOICE:\s*(.*?)\]', current_response_content)
+                if voice_match:
+                    yield {"type": "voice_trigger", "data": voice_match.group(1), "done": False}
+                
+                # Image
+                img_match = re.search(r'\[GEN_IMG:\s*(.*?)\]', current_response_content)
+                if img_match:
+                    yield {"type": "image_trigger", "data": img_match.group(1), "done": False}
+                elif collected_image_prompts:
+                    # If image was generated by tool but not explicitly in text tag, trigger it anyway
+                    yield {"type": "image_trigger", "data": collected_image_prompts[-1], "done": False}
+
+                # Save history (Final turn)
                 if save_history:
-                    await self._save_conversation_history(user_id, message, full_response_content, message_id)
+                    await self._save_conversation_history(user_id, message, current_response_content, message_id)
+                
+                # [NEW] Extract and Yield Emotion Update
+                try:
+                    emo_state = self.emotion_manager.process_text(user_id, current_response_content)
+                    if emo_state:
+                        yield {
+                            "type": "emotion_update",
+                            "data": {
+                                "primary_emotion": emo_state.primary_emotion.value,
+                                "intensity": emo_state.intensity,
+                                "confidence": emo_state.confidence,
+                                "sub_emotions": emo_state.sub_emotions
+                            },
+                            "done": False
+                        }
+                except Exception as e:
+                    logger.warning(f"Failed to process emotion in stream: {e}")
+
                 yield {
                     "content": "",
                     "done": True
                 }
-    
-            except Exception as e:
-                logger.error(f"流式处理消息时出错: {e}")
-                yield {
-                    "error": str(e),
-                    "done": True
-                }
+                break
 
     def extract_and_strip_emotion(self, content: str) -> Tuple[str, Optional[str]]:
         """
@@ -926,10 +1057,35 @@ class ChatAgent:
         if message:
             msg_lower = message.lower()
             
-            # Study Tools
-            if any(k in msg_lower for k in ["单词", "英语", "背诵", "复习", "word", "vocabulary", "study", "exam", "grade"]):
-                active_tools.append("update_word_progress")
-            
+            # Study Tools & Context
+            due_words_prompt = ""
+            if self.vocab_manager:
+                try:
+                    # Check for due words
+                    stats = self.vocab_manager.get_stats()
+                    due_count = stats.get("due_words", 0)
+                    
+                    # Activate tool if needed
+                    if due_count > 0 or any(k in msg_lower for k in ["单词", "英语", "背诵", "复习", "word", "vocabulary", "study", "exam", "grade"]):
+                        if "update_word_progress" not in active_tools:
+                            active_tools.append("update_word_progress")
+                    
+                    # Generate prompt for immediate reviews
+                    if due_count > 0:
+                        # Get pending reviews (prioritize by due time)
+                        daily_batch = self.vocab_manager.get_daily_words(limit=3)
+                        # Filter for actual reviews
+                        reviews = [w['word'] for w in daily_batch if w.get('status') == 'review']
+                        
+                        if reviews:
+                            due_words_prompt = (
+                                f"\n\n[SYSTEM: STUDY PRIORITY]\n"
+                                f"Words due for review: {', '.join(reviews)}.\n"
+                                f"Please integrate these into the conversation or quiz the user (use 'Look at Chinese, Say English' method)."
+                            )
+                except Exception as e:
+                    logger.warning(f"Failed to check vocab status: {e}")
+
             # Math Plot
             if any(k in msg_lower for k in ["画图", "函数", "曲线", "plot", "graph", "math", "equation"]):
                 active_tools.append("generate_math_plot")
@@ -1034,6 +1190,10 @@ class ChatAgent:
                         
             except Exception as e:
                 logger.warning(f"知识库检索失败: {e}")
+
+        # 2.5 Priority Due Words Injection
+        if due_words_prompt:
+            messages.append({"role": "system", "content": due_words_prompt})
 
         # 3. English Word Injection (Daily Vocabulary)
         # Strategy: 

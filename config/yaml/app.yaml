@@ -41,6 +41,7 @@ model:
   default: "local"
   path: "D:\\AI\\xiaoyou-core\\models\\llm\\Qwen2___5-7B-Instruct-Q4_K_M.gguf"
   n_ctx: 8192  # 增加上下文窗口大小 (默认 4096 -> 8192)
+  n_gpu_layers: -1 # -1 表示尽可能多的层加载到 GPU
   summary_model_path: null # CPU Offload 模型路径 (例如: "./models/Qwen-7B-Chat-Int4")
   # 生成参数 (针对 Qwen2.5 优化 / L3 Stheno 调优)
   generation:

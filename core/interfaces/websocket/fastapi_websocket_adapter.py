@@ -120,10 +120,10 @@ class FastAPIWebSocketAdapter:
                         model_hint=model
                     ):
                         # Check for special event types
-                        if "type" in chunk and chunk["type"] in ("sensory_trigger", "behavior_chain"):
+                        if "type" in chunk and chunk["type"] in ("sensory_trigger", "behavior_chain", "emotion_update", "notification", "ui_interaction", "voice_trigger", "image_trigger"):
                              await websocket.send_json({
                                 "type": chunk["type"],
-                                "data": chunk["data"],
+                                "data": chunk.get("data", {}),
                                 "timestamp": time.time(),
                                 "message_id": msg_id
                             })

@@ -196,22 +196,32 @@ class VocabularyManager:
             "quality": quality
         })
         
-        # SM-2 Algorithm
+        # SM-2 Algorithm Modified for Intensive Study (3+ reviews/day for new/failed)
         if quality >= 3:
             if data["reps"] == 0:
-                data["interval"] = 1
+                # First success after new/fail: review in 3 hours
+                data["interval"] = 0.125 
             elif data["reps"] == 1:
-                data["interval"] = 6
+                # Second success: review in 8 hours
+                data["interval"] = 0.33
+            elif data["reps"] == 2:
+                # Third success: review tomorrow
+                data["interval"] = 1.0
+            elif data["reps"] == 3:
+                # Fourth success: 3 days
+                data["interval"] = 3.0
             else:
-                data["interval"] = round(data["interval"] * data["easiness"])
+                # Exponential growth
+                data["interval"] = data["interval"] * data["easiness"]
             
             data["reps"] += 1
             data["easiness"] += (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02))
             if data["easiness"] < 1.3:
                 data["easiness"] = 1.3
         else:
+            # Failed: Reset reps, review in 15 minutes
             data["reps"] = 0
-            data["interval"] = 1
+            data["interval"] = 0.01 
             
         data["next_review"] = time.time() + data["interval"] * 86400
         self._save_progress()

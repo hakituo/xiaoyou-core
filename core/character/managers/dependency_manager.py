@@ -169,3 +169,12 @@ class DependencyManager:
             injection.append("已解锁[耳语模式]：在深夜或亲密时刻使用*(耳语)*前缀。")
             
         return "\n".join(injection)
+
+# Global Instance
+_dependency_manager_instance = None
+
+def get_dependency_manager() -> DependencyManager:
+    global _dependency_manager_instance
+    if _dependency_manager_instance is None:
+        _dependency_manager_instance = DependencyManager()
+    return _dependency_manager_instance

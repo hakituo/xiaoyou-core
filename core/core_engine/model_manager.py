@@ -150,29 +150,10 @@ class ModelManager:
                                     logger.info(f"发现本地 LORA 模型: {model_name}")
                                     self.register_model(model_name, "lora", path)
 
-                    # 扫描 SDXL/Forge 目录 (已更新路径到 sdxl 文件夹内)
-                    forge_dir = os.path.join(img_dir, "sdxl", "stable-diffusion-webui-forge-main", "models", "Stable-diffusion")
-                    if os.path.exists(forge_dir):
-                        logger.info(f"正在扫描 Forge 模型目录: {forge_dir}")
-                        for name in os.listdir(forge_dir):
-                            path = os.path.join(forge_dir, name)
-                            if os.path.isfile(path) and (name.endswith(".safetensors") or name.endswith(".ckpt")):
-                                model_name = os.path.splitext(name)[0]
-                                if model_name not in self._models:
-                                    logger.info(f"发现本地 SDXL/Forge 模型: {model_name}")
-                                    self.register_model(model_name, "image_gen", path)
-                    
-                    # 扫描 Forge Lora 目录
-                    forge_lora_dir = os.path.join(img_dir, "sdxl", "stable-diffusion-webui-forge-main", "models", "Lora")
-                    if os.path.exists(forge_lora_dir):
-                         logger.info(f"正在扫描 Forge Lora 目录: {forge_lora_dir}")
-                         for name in os.listdir(forge_lora_dir):
-                            path = os.path.join(forge_lora_dir, name)
-                            if os.path.isfile(path) and name.endswith(".safetensors"):
-                                model_name = os.path.splitext(name)[0]
-                                if model_name not in self._models:
-                                    logger.info(f"发现本地 Forge Lora 模型: {model_name}")
-                                    self.register_model(model_name, "lora", path)
+                # 扫描 SDXL/Forge 目录 (已移除，改为通过 Forge API 管理)
+                # 之前的代码直接扫描 stable-diffusion-webui-forge-main 目录
+                # 现在由 SDAdapter 通过 http://127.0.0.1:7860 动态获取
+
 
             # 4. 注册云端模型 (如果配置了 API Key)
             if Config and hasattr(Config, 'QIANWEN_API_KEY') and Config.QIANWEN_API_KEY and Config.QIANWEN_API_KEY != "your_api_key_here":
@@ -401,8 +382,8 @@ class ModelManager:
         # Check if it's a single file checkpoint
         if os.path.isfile(model_path):
              # Define local config paths (borrowed from model_loader.py)
-             SD15_LOCAL_PATH = "d:\\AI\\xiaoyou-core\\models\\img\\stable-diffusion-webui-forge-main\\backend\\huggingface\\runwayml\\stable-diffusion-v1-5"
-             SDXL_LOCAL_PATH = "d:\\AI\\xiaoyou-core\\models\\img\\stable-diffusion-webui-forge-main\\backend\\huggingface\\stabilityai\\stable-diffusion-xl-base-1.0"
+             SD15_LOCAL_PATH = "d:\\AI\\xiaoyou-core\\models\\stable-diffusion-webui-forge-main\\backend\\huggingface\\runwayml\\stable-diffusion-v1-5"
+             SDXL_LOCAL_PATH = "d:\\AI\\xiaoyou-core\\models\\stable-diffusion-webui-forge-main\\backend\\huggingface\\stabilityai\\stable-diffusion-xl-base-1.0"
              
              # Use from_single_file for .safetensors/.ckpt
              if hasattr(StableDiffusionPipeline, 'from_single_file'):

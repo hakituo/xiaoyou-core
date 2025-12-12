@@ -175,18 +175,31 @@ class WebSocketHandler:
             # Use ChatAgent for Aveline logic (Streaming)
             detected_emotion = None
             async for chunk in self.chat_agent.stream_chat(prompt, user_id=user_id):
-                if chunk["type"] == "token":
-                    response_text += chunk["data"]
-                    # Optional: Send stream token if client supports it
-                    # await websocket.send(json.dumps({"type": "stream_token", "content": chunk["data"]}))
-                elif chunk["type"] in ["sensory_trigger", "behavior_chain", "ui_interaction"]:
+                msg_type = chunk.get("type")
+                
+                if chunk.get("done"):
+                    break
+                
+                if msg_type == "token":
+                    content = chunk.get("data", "")
+                    response_text += content
+                    # Send stream token to improve perceived speed
+                    await websocket.send(json.dumps({"type": "stream_token", "content": content}))
+                    
+                elif msg_type in ["sensory_trigger", "behavior_chain", "ui_interaction", "voice_trigger", "image_trigger", "notification", "system"]:
                     # Capture emotion data if available
-                    if chunk["type"] == "sensory_trigger":
+                    if msg_type == "sensory_trigger":
                         if "visual_emotion_weights" in chunk.get("data", {}):
                              detected_emotion = chunk["data"]["visual_emotion_weights"]
                     
                     # Forward Aveline events
                     await websocket.send(json.dumps(chunk))
+                
+                elif "content" in chunk and chunk["content"]:
+                    # Legacy fallback
+                    c = chunk["content"]
+                    response_text += c
+                    await websocket.send(json.dumps({"type": "stream_token", "content": c}))
                     
             # Update local memory for fallback consistency (ChatAgent handles its own memory)
             # user_memory.add_message("user", prompt)

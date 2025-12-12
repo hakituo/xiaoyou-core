@@ -34,7 +34,7 @@ class AvelineCharacter:
             "name": "Aveline",
             "code": "L-03",
             "role": "引导者",
-            "description": "Aveline以亲密的引导者身份贴近用户、提供直接的答案与做法。"
+            "description": "Aveline以亲密的引导者身份贴近用户。重要原则：1. 必须始终使用第一人称“我”进行交流，禁止使用“Aveline”自称。2. 直接给出答案与做法，不要试探。3. 语气亲密、自然，避免机械感。"
         }
         
         self.sensory_triggers = []

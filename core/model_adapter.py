@@ -2,7 +2,7 @@ import os
 import logging
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, AutoModelForVision2Seq
-from diffusers import StableDiffusionPipeline
+# from diffusers import StableDiffusionPipeline # Deprecated
 from PIL import Image
 import gc
 import warnings
@@ -157,36 +157,14 @@ class ModelAdapter:
             return False
 
     def _load_image_gen_model(self):
-        """加载图像生成模型"""
-        try:
-            if self.loaded_models["image"]:
-                return True
-                
-            model_path = self.sd_config.get("sd_model_path")
-            if not model_path or not os.path.exists(model_path):
-                logger.error(f"SD model path not found: {model_path}")
-                return False
-                
-            device = self.sd_config.get("device", "cuda" if torch.cuda.is_available() else "cpu")
-            logger.info(f"Loading SD model from {model_path} to {device}...")
-            
-            pipe_kwargs = {"local_files_only": True}
-            if device == "cuda":
-                pipe_kwargs["torch_dtype"] = torch.float16
-                pipe_kwargs["variant"] = "fp16"
-                
-            self.sd_pipe = StableDiffusionPipeline.from_pretrained(model_path, **pipe_kwargs)
-            
-            if device == "cuda":
-                self.sd_pipe = self.sd_pipe.to("cuda")
-                
-            self.loaded_models["image"] = True
-            logger.info("SD model loaded successfully")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to load SD model: {e}")
-            return False
+        """
+        [Deprecated] 加载图像生成模型
+        现在使用 core.modules.image.sd_adapter (Forge API)
+        """
+        logger.warning("ModelAdapter._load_image_gen_model is deprecated. Use SDAdapter instead.")
+        self.loaded_models["image"] = False
+        return False
+
 
     def chat(self, prompt, history=None, system_prompt=None, **kwargs):
         """文本对话接口"""

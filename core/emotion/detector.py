@@ -21,7 +21,7 @@ class EmotionDetector:
         if not text:
             return self._create_neutral_state()
 
-        # 1. 尝试从 LLM 标记中提取 [EMO: xxx]
+        # 1. 尝试从 LLM 标记中提取 [EMO: xxx] 或 [xxx]
         llm_emotion = self._extract_llm_tag(text)
         if llm_emotion:
             return EmotionState(
@@ -31,8 +31,9 @@ class EmotionDetector:
                 intensity=0.8
             )
 
-        # 2. 关键词/规则匹配
-        return self._detect_by_keywords(text)
+        # 2. 关键词/规则匹配 (User requested to disable keyword recognition fallback)
+        # return self._detect_by_keywords(text)
+        return self._create_neutral_state()
 
     def _create_neutral_state(self) -> EmotionState:
         return EmotionState(
@@ -43,11 +44,22 @@ class EmotionDetector:
 
     def _extract_llm_tag(self, text: str) -> EmotionType:
         """
-        提取 [EMO: happy] 格式的标签
+        提取 [EMO: happy] 或 [happy] 格式的标签
         """
-        match = re.search(r'\[EMO:\s*([a-zA-Z0-9_]+)\]', text, re.IGNORECASE)
+        # Pattern 1: [EMO: happy]
+        match = re.search(r'\[EMO:\s*([a-zA-Z0-9_\u4e00-\u9fa5]+)\]', text, re.IGNORECASE)
+        if not match:
+            # Pattern 2: [happy] - exclude [TOOL_USE: ...] or [GEN_IMG: ...]
+            # We look for simple tags that match emotion names
+            match = re.search(r'\[([a-zA-Z0-9_\u4e00-\u9fa5]+)\]', text, re.IGNORECASE)
+            
         if match:
             label = match.group(1).lower()
+            
+            # Skip known system tags
+            if label in ["tool_use", "gen_img", "voice", "system", "user"]:
+                return None
+                
             # 尝试映射
             if label in CN_TO_EN_MAP:
                 label = CN_TO_EN_MAP[label]

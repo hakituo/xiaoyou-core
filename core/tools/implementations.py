@@ -1,4 +1,4 @@
-from typing import Type
+from typing import Type, Optional
 from pydantic import BaseModel, Field
 from .base import BaseTool
 import aiohttp
@@ -50,15 +50,23 @@ class WebSearchTool(BaseTool):
 
 class ImageGenInput(BaseModel):
     prompt: str = Field(description="Description of the image to generate")
+    model_name: Optional[str] = Field(None, description="Specific model to use (e.g., 'chilloutmix', 'ghostmix', 'nsfw', 'pony', 'sdxl'). If not specified, uses default.")
+    vae_name: Optional[str] = Field(None, description="Specific VAE to use (e.g., 'vaeKlF8Anime2'). If not specified, uses default.")
 
 class ImageGenerationTool(BaseTool):
     name = "generate_image"
-    description = "Generate an image based on a text prompt. Use this when the user asks to draw something."
+    description = "Generate an image based on a text prompt. Available models: chilloutmix (realistic), ghostmix (anime/2.5D), nsfw (adult), pony (SDXL anime), sdxl (SDXL realistic). VAE: vaeKlF8Anime2."
     args_schema = ImageGenInput
 
-    async def _run(self, prompt: str) -> str:
+    async def _run(self, prompt: str, model_name: Optional[str] = None, vae_name: Optional[str] = None) -> str:
         # Return the tag that the system recognizes
-        return f"[GEN_IMG: {prompt}]"
+        # Format: [GEN_IMG: prompt | model=xxx | vae=xxx]
+        content = prompt
+        if model_name:
+            content += f" | model={model_name}"
+        if vae_name:
+            content += f" | vae={vae_name}"
+        return f"[GEN_IMG: {content}]"
 
 class TimeInput(BaseModel):
     pass

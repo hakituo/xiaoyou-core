@@ -80,7 +80,10 @@ class LLMModule:
                 self.is_gguf = True
                 
                 # Configure Llama
-                n_gpu_layers = self.config.get('n_gpu_layers', -1) # Default to all layers on GPU if available
+                n_gpu_layers = self.config.get('n_gpu_layers')
+                if n_gpu_layers is None:
+                     n_gpu_layers = getattr(self.settings.model, 'n_gpu_layers', -1)
+                
                 # 优先使用配置的 n_ctx，如果没有则尝试从 settings 获取，最后默认为 4096
                 n_ctx = self.config.get('n_ctx') or getattr(self.settings.model, 'n_ctx', None) or 4096
                 # n_batch 应该是 n_ctx 的一部分，或者是独立配置。增加默认值以提高性能

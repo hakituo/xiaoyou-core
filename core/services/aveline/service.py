@@ -290,7 +290,7 @@ class AvelineService:
             logger.error(f"stream_generate_response error: {e}")
             yield {"error": str(e), "done": True}
 
-    async def _generate_image_task(self, prompt: str) -> Dict[str, Any]:
+    async def _generate_image_task(self, prompt: str, model_name: Optional[str] = None, vae_name: Optional[str] = None) -> Dict[str, Any]:
         """Async wrapper for image generation"""
         def _task():
             try:
@@ -298,8 +298,7 @@ class AvelineService:
                 # Initialize adapter with default config
                 adapter = create_sd_adapter()
                 
-                # Check/Load model
-                # Note: SDAdapter.load_model uses ModelManager which caches the actual model
+                # Check/Load model (ensure at least something is loaded)
                 if not adapter.load_model():
                      return {"status": "error", "error": "Failed to load SD model"}
                 
@@ -307,6 +306,8 @@ class AvelineService:
                 # Use portrait aspect ratio (512x768) for character images
                 result = adapter.generate_image(
                     prompt=prompt,
+                    model_name=model_name,
+                    vae_name=vae_name,
                     width=512,
                     height=768,
                     num_inference_steps=20
@@ -373,20 +374,36 @@ class AvelineService:
                 metadata["emotion"] = emotion_label
                 
             # Parse proactive actions
-            # 1. Image Generation: [GEN_IMG: prompt]
+            # 1. Image Generation: [GEN_IMG: prompt | model=... | vae=...]
             img_match = re.search(r'\[GEN_IMG:\s*(.*?)\]', final_content)
             if img_match:
-                image_prompt = img_match.group(1)
-                metadata["image_prompt"] = image_prompt
+                tag_content = img_match.group(1)
                 final_content = final_content.replace(img_match.group(0), "")
+                
+                # Parse tag content
+                parts = tag_content.split('|')
+                image_prompt = parts[0].strip()
+                model_name = None
+                vae_name = None
+                
+                for part in parts[1:]:
+                    part = part.strip()
+                    if part.startswith('model='):
+                        model_name = part.split('=', 1)[1].strip()
+                    elif part.startswith('vae='):
+                        vae_name = part.split('=', 1)[1].strip()
+                
+                metadata["image_prompt"] = image_prompt
+                if model_name: metadata["model_name"] = model_name
+                if vae_name: metadata["vae_name"] = vae_name
                 
                 # Trigger actual image generation
                 try:
-                    logger.info(f"Triggering image generation for prompt: {image_prompt}")
+                    logger.info(f"Triggering image generation for prompt: {image_prompt}, model: {model_name}, vae: {vae_name}")
                     # Run in background or await? 
                     # Awaiting ensures the user gets the image immediately with the response.
                     # Given the user wants to see the image, we should await.
-                    img_result = await self._generate_image_task(image_prompt)
+                    img_result = await self._generate_image_task(image_prompt, model_name, vae_name)
                     
                     if img_result.get("status") == "success":
                         images = img_result.get("images", [])

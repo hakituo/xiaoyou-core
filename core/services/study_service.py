@@ -156,6 +156,33 @@ class StudyService:
         """Get a mix of new words and review words"""
         return self.vocab_manager.get_daily_words(count)
 
+    def get_daily_study_summary_data(self) -> Dict[str, Any]:
+        """Get summary data for daily study tasks"""
+        try:
+            # 1. Vocabulary Stats
+            vocab_stats = self.get_dictionary_stats()
+            
+            # 2. Daily Words Preview (just counts)
+            # We don't pop them here, just peek or estimate
+            daily_quota = 20
+            
+            # 3. Pending Reviews
+            to_review = vocab_stats.get("to_review", 0)
+            
+            return {
+                "date": time.strftime("%Y-%m-%d"),
+                "vocab": {
+                    "total_learned": vocab_stats.get("learned_words", 0),
+                    "to_review": to_review,
+                    "daily_quota": daily_quota,
+                    "target": f"Review {to_review} words + Learn new words"
+                },
+                "suggestion": "Focus on vocabulary review first." if to_review > 10 else "Good time to learn new concepts."
+            }
+        except Exception as e:
+            logger.error(f"Failed to get daily summary: {e}")
+            return {}
+
     def get_dictionary_stats(self) -> Dict[str, Any]:
         """Get statistics about the dictionary"""
         total = len(self.vocab_manager.dictionary)
