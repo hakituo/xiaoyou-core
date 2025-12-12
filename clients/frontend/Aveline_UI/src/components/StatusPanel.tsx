@@ -11,6 +11,14 @@ interface StatusPanelProps {
   lifeStatus: any; // Raw data from backend if available
 }
 
+const getHash = (str: string) => {
+    let hash = 5381;
+    for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) + hash) + str.charCodeAt(i);
+    }
+    return (hash >>> 0).toString(16).substring(0, 8).toUpperCase();
+};
+
 const StatusCard = ({ title, children, className = "" }: { title: string, children: React.ReactNode, className?: string }) => (
   <div className={`bg-white/5 border border-white/10 rounded-2xl p-6 ${className}`}>
     <h3 className="text-xs font-bold text-white/40 uppercase tracking-widest mb-4 flex items-center gap-2">
@@ -356,7 +364,7 @@ const StatusPanel = ({ stats, emotion, lifeStatus }: StatusPanelProps) => {
                                 backgroundColor: log.type === 'success' ? '#34D399' : log.type === 'info' ? '#60A5FA' : '#9CA3AF' 
                             }} />
                             <div className="text-white/70 flex-1">{log.event}</div>
-                            <div className="text-white/20 text-[10px]">HASH: {Math.random().toString(36).substring(7).toUpperCase()}</div>
+                            <div className="text-white/20 text-[10px]">HASH: {getHash(log.event + log.time)}</div>
                         </div>
                         ))}
                     </div>

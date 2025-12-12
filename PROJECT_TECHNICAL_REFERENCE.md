@@ -1,7 +1,7 @@
 # 小友核心 (Xiaoyou Core) 技术架构与开发参考手册
 
-**版本**: 1.6.0
-**最后更新**: 2025-12-11
+**版本**: 1.6.1
+**最后更新**: 2025-12-12
 **状态**: 维护中
 
 ---
@@ -443,16 +443,22 @@ end
 *   **语音消息能力 (Voice Message Capability)**:
     *   **机制**: 支持 AI 主动决定发送语音消息（通过 `[VOICE: style]` 标签）。
     *   **展现**: 语音消息文本内容在前端默认隐藏，仅显示“Voice Message”，点击播放后通过听觉获取信息，增强私密感与沉浸感。
+*   **工具使用优化 (Tool Optimization)**:
+    *   **计算器守卫**: 在 System Prompt 中明确禁止针对简单计算（如 "2+2"）调用计算器工具，强制要求 LLM 进行心算，仅允许复杂运算调用工具，减少不必要的工具调用开销。
 *   **文件路径**: `core/agents/chat_agent.py`
 
 ### 3.3 图像生成与视觉 (Image & Vision)
 *   **图像生成 (Generation)**:
     *   **入口**: POST `/api/v1/image/generate` 或 聊天指令 "画一个..."。
     *   **管理器**: `core.image.image_manager.ImageManager`。
-    *   **模型架构**: 
-        *   **Stable Diffusion 1.5**: 支持 Checkpoint + LoRA (动态加载，目录 `models/img/sd1.5/check_point` 及 `models/img/sd1.5/lora`)。
-        *   **SDXL**: 支持 Checkpoint (目录 `models/img/sdxl/checkpoints`)。虽已预留 `models/img/sdxl/lora` 目录，但在前端暂未启用 LoRA 加载以防冲突。
-    *   **安全机制**: 严格隔离 SD1.5 与 SDXL 的 LoRA 加载，防止后端因模型架构不匹配而崩溃。
+    *   **核心架构**: 全面重构为 **Stable Diffusion WebUI Forge** 客户端模式。
+        *   **ForgeClient**: `core.modules.forge_client.ForgeClient` 负责与本地运行的 Forge API (`127.0.0.1:7860`) 通信。
+        *   **模型映射**:
+            *   **SD1.5**: 用于 "二次元/快/普通画质" 模式，对应 Forge 中的 `nsfw_v10.safetensors`。
+            *   **SDXL**: 用于 "写实/慢/超清画质" 模式，对应 Forge 中的 `sd_xl_base_1.0.safetensors`。
+            *   **Pony**: 用于特定动漫风格，对应 `ponyDiffusionV6XL_v6StartWithThisOne.safetensors`。
+        *   **LoRA 集成**: 通过 Prompt 注入 (`<lora:name:weight>`) 直接由 Forge 处理，无需后端复杂的模型加载逻辑。
+        *   **优势**: 极大简化了后端代码，利用 Forge 的优化实现更快的生成速度和更低的显存占用，支持动态模型切换。
 *   **视觉感知 (Vision)**:
     *   **模块**: `core.modules.vision.module.VisionModule`。
     *   **模型**: Qwen2-VL-2B (支持图像理解与描述)。
@@ -485,6 +491,12 @@ end
     *   **Core Logic**: `memory/core/`
         *   **权重计算 (Weights)**: `memory/core/weights.py`。负责计算基础权重、时间衰减、重要性加成与情绪奖励。
         *   **工具集 (Utils)**: `memory/core/utils.py`。提供无状态的 NLP 工具，如关键词提取、话题自动检测、用户偏好分析。
+*   **三层记忆架构 (3-Layer Memory Hierarchy)**:
+    *   **Layer 1 (普通聊天记录)**: 基础对话历史，用于保持短时上下文连贯性。
+    *   **Layer 2 (加权聊天记录)**: 经过权重算法筛选的高价值对话。通过混合检索（关键词+向量）召回，支持话题聚类与情感共鸣。
+    *   **Layer 3 (重要Prompt层)**: **[新增]** 核心指令与长期事实层。
+        *   **晋升机制**: 当记忆权重超过阈值 (>= 4.0) 或被标记为重要用户指令 ("user_instruction") 时，自动晋升至此层。
+        *   **持久化**: 独立存储于 `important_prompts.json`，在 System Prompt 构建时具有最高优先级注入，确保核心设定不被遗忘。
 *   **核心机制**:
     *   **混合检索与智能过滤**: 结合关键词匹配与向量相似度。引入智能过滤机制（Length Check, Distance Threshold），避免短文本（如“你好”）触发大规模 RAG 检索导致 Token 爆炸。
     *   **CPU Offload Summary**: 使用 Qwen 模型在 CPU 端异步执行长对话总结，避免阻塞主对话流 (GPU)。
@@ -576,6 +588,19 @@ end
         *   **FileCreationTool**: 支持生成结构化文件。
         *   **UpdateWordProgressTool**: 允许 LLM 根据用户反馈更新单词记忆状态。
     *   **集成方式**: 通过 `ChatAgent` 的 `ToolRegistry` 注册。
+
+### 3.14 主动关怀与前端模块 (Active Care & Frontend Modules)
+*   **Active Care Service**:
+    *   **定位**: `core/services/active_care/service.py`。
+    *   **功能**: 负责基于时间或用户沉默状态的主动交互。
+    *   **每日单词推送**: 每日固定时间（或首次启动）向用户推送20个英语单词。
+        *   **一致性**: 使用 `VocabularyManager` 获取单词，确保推送内容与前端展示内容一致。
+        *   **调度**: 使用 `APScheduler`，检查间隔已优化为2分钟以减少日志噪音。
+*   **前端词汇模块 (Frontend Vocabulary Module)**:
+    *   **集成**: 集成至 `Aveline_UI` 侧边栏 "Study" 模块。
+    *   **组件**: `clients/frontend/Aveline_UI/src/components/StudyPanel.tsx`。
+    *   **功能**: 调用后端 API 获取每日单词，支持新词/复习状态显示，UI 风格与主界面一致 (TailwindCSS + Framer Motion)。
+    *   **API**: `/study/vocabulary/daily` (GET)，返回 JSON 格式的单词列表及复习状态。
 
 ---
 

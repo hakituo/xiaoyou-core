@@ -290,6 +290,34 @@ class AvelineService:
             logger.error(f"stream_generate_response error: {e}")
             yield {"error": str(e), "done": True}
 
+    async def _generate_image_task(self, prompt: str) -> Dict[str, Any]:
+        """Async wrapper for image generation"""
+        def _task():
+            try:
+                from core.modules.image.sd_adapter import create_sd_adapter
+                # Initialize adapter with default config
+                adapter = create_sd_adapter()
+                
+                # Check/Load model
+                # Note: SDAdapter.load_model uses ModelManager which caches the actual model
+                if not adapter.load_model():
+                     return {"status": "error", "error": "Failed to load SD model"}
+                
+                # Generate
+                # Use portrait aspect ratio (512x768) for character images
+                result = adapter.generate_image(
+                    prompt=prompt,
+                    width=512,
+                    height=768,
+                    num_inference_steps=20
+                )
+                return result
+            except Exception as e:
+                logger.error(f"Image generation failed: {e}")
+                return {"status": "error", "error": str(e)}
+
+        return await asyncio.to_thread(_task)
+
     async def generate_response(
         self,
         user_input: str,
@@ -348,8 +376,29 @@ class AvelineService:
             # 1. Image Generation: [GEN_IMG: prompt]
             img_match = re.search(r'\[GEN_IMG:\s*(.*?)\]', final_content)
             if img_match:
-                metadata["image_prompt"] = img_match.group(1)
+                image_prompt = img_match.group(1)
+                metadata["image_prompt"] = image_prompt
                 final_content = final_content.replace(img_match.group(0), "")
+                
+                # Trigger actual image generation
+                try:
+                    logger.info(f"Triggering image generation for prompt: {image_prompt}")
+                    # Run in background or await? 
+                    # Awaiting ensures the user gets the image immediately with the response.
+                    # Given the user wants to see the image, we should await.
+                    img_result = await self._generate_image_task(image_prompt)
+                    
+                    if img_result.get("status") == "success":
+                        images = img_result.get("images", [])
+                        if images:
+                            pil_img = images[0]
+                            buffered = io.BytesIO()
+                            pil_img.save(buffered, format="PNG")
+                            img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                            metadata["image_base64"] = img_str
+                            logger.info("Image generated and attached to response")
+                except Exception as e:
+                    logger.error(f"Failed to process image generation: {e}")
                 
             # 2. Voice Selection: [VOICE: style]
             voice_match = re.search(r'\[VOICE:\s*(.*?)\]', final_content)

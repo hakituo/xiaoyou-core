@@ -80,6 +80,11 @@ class GPTSoVITSEngine(TTSEngine):
             await self.set_sovits_weights(settings.voice.sovits_model_path)
 
     async def set_gpt_weights(self, weights_path: str):
+        # 增加防御性检查：如果是 "default" 或空，直接忽略
+        if not weights_path or weights_path.lower() == "default":
+            logger.debug(f"Ignoring set_gpt_weights for value: {weights_path}")
+            return
+            
         try:
             url = self.api_url.replace("/tts", "/set_gpt_weights")
             params = {"weights_path": weights_path}
@@ -93,6 +98,11 @@ class GPTSoVITSEngine(TTSEngine):
             logger.error(f"Error setting GPT weights: {e}")
 
     async def set_sovits_weights(self, weights_path: str):
+        # 增加防御性检查
+        if not weights_path or weights_path.lower() == "default":
+            logger.debug(f"Ignoring set_sovits_weights for value: {weights_path}")
+            return
+
         try:
             url = self.api_url.replace("/tts", "/set_sovits_weights")
             params = {"weights_path": weights_path}
@@ -123,10 +133,25 @@ class GPTSoVITSEngine(TTSEngine):
              # Ensure relative paths are resolved relative to CWD
              default_ref_audio = os.path.join(os.getcwd(), default_ref_audio)
         
+        # 确定最终使用的参考音频路径
+        ref_audio_path = kwargs.get("ref_audio_path") or kwargs.get("reference_audio") or default_ref_audio
+        
+        # 确保 ref_audio_path 是绝对路径
+        if ref_audio_path and not os.path.isabs(ref_audio_path):
+            # 如果是相对路径，尝试拼接当前工作目录
+            # 注意：如果 ref_audio_path 已经包含了 ref_audio/female/ 前缀，直接拼接即可
+            ref_audio_path = os.path.abspath(os.path.join(os.getcwd(), ref_audio_path))
+            
+        # 再次检查文件是否存在
+        if ref_audio_path and not os.path.exists(ref_audio_path):
+             logger.warning(f"Reference audio path does not exist locally: {ref_audio_path}")
+             # 如果本地不存在，可能 GPT-SoVITS 服务端也访问不到（假设在同一机器）
+             # 但也有可能服务端能访问，所以还是传过去，只是记录警告
+        
         params = {
             "text": text,
             "text_lang": lang,
-            "ref_audio_path": kwargs.get("ref_audio_path") or kwargs.get("reference_audio") or default_ref_audio,
+            "ref_audio_path": ref_audio_path,
             "prompt_text": kwargs.get("prompt_text", "这是中文纯语音测试，不包含英文内容"),
             "prompt_lang": kwargs.get("prompt_lang", "zh"),
             "top_k": kwargs.get("top_k", 5),

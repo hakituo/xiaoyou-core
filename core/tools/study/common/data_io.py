@@ -109,6 +109,8 @@ class DataIO:
         
         if ext == '.txt':
             return DataIO.import_from_txt(file_path, **kwargs)
+        elif ext == '.json':
+            return DataIO.load_from_json(file_path, **kwargs)
         elif ext in ['.xlsx', '.xls']:
             return DataIO.import_from_excel(file_path, **kwargs)
         else:
@@ -260,6 +262,8 @@ class DataIO:
         
         if ext == '.txt':
             DataIO.export_to_txt(data, file_path, **kwargs)
+        elif ext == '.json':
+            DataIO.save_to_json(data, file_path, **kwargs)
         elif ext in ['.xlsx', '.xls']:
             DataIO.export_to_excel(data, file_path, **kwargs)
         elif ext == '.docx':

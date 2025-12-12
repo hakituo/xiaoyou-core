@@ -85,6 +85,54 @@ class MainActivity : AppCompatActivity() {
         // if (Settings.canDrawOverlays(this)) {
         //    AvelineOverlay.ensure(this)
         // }
+        
+        startPolling()
+    }
+
+    private fun startPolling() {
+        scope.launch {
+            while (true) {
+                try {
+                    val notifications = HttpClient.getNotifications()
+                    for (n in notifications) {
+                        handleNotification(n)
+                    }
+                } catch (e: Exception) {
+                    // Ignore errors during poll
+                }
+                kotlinx.coroutines.delay(5000)
+            }
+        }
+    }
+
+    private fun handleNotification(n: Map<String, Any?>) {
+        val type = n["type"] as? String
+        val title = n["title"] as? String ?: "Notification"
+        val content = n["content"] as? String ?: ""
+        val payload = n["payload"] as? Map<String, Any?>
+
+        runOnUiThread {
+            when (type) {
+                "vocabulary" -> {
+                    val fullText = payload?.get("full_text") as? String ?: content
+                    val msg = ChatMessage("【$title】\n$fullText", false)
+                    adapter.addMessage(msg)
+                    scrollToBottom()
+                }
+                "voice" -> {
+                    val text = payload?.get("text") as? String ?: content
+                    // TODO: Fetch audio if needed
+                    val msg = ChatMessage(text, false)
+                    adapter.addMessage(msg)
+                    scrollToBottom()
+                }
+                else -> {
+                    val msg = ChatMessage("[$title] $content", false)
+                    adapter.addMessage(msg)
+                    scrollToBottom()
+                }
+            }
+        }
     }
 
     private fun sendMessage(text: String) {

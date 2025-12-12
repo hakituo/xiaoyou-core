@@ -41,14 +41,32 @@ start "GPT-SoVITS Server" cmd /k "cd /d "%TTS_DIR%" && "%PYTHON_EXE%" api_v2.py 
 echo Waiting for TTS service initialization (5 seconds)...
 timeout /t 5 /nobreak > nul
 
-:: 2. Start Main Application
+:: 2. Start Stable Diffusion WebUI Forge (Image Generation)
 echo.
-echo [2/3] Starting Xiaoyou Main Application...
+echo [2/4] Starting Stable Diffusion WebUI Forge...
+set "FORGE_DIR=%BASE_DIR%\models\stable-diffusion-webui-forge-main"
+
+if not exist "%FORGE_DIR%\webui-user.bat" goto SKIP_FORGE
+
+echo [INFO] Launching Forge WebUI...
+start "Forge WebUI" cmd /k "cd /d "%FORGE_DIR%" && webui-user.bat"
+echo Waiting for Forge to initialize (10 seconds)...
+timeout /t 10 /nobreak > nul
+goto START_MAIN
+
+:SKIP_FORGE
+echo [WARNING] Forge WebUI not found at: %FORGE_DIR%
+echo Image generation service will not be available locally.
+
+:START_MAIN
+:: 3. Start Main Application
+echo.
+echo [3/4] Starting Xiaoyou Main Application...
 start "Xiaoyou Core Main" cmd /k "cd /d "%BASE_DIR%" && "%PYTHON_EXE%" main.py"
 
-:: 3. Start Frontend
+:: 4. Start Frontend
 echo.
-echo [3/3] Starting Frontend UI...
+echo [4/4] Starting Frontend UI...
 set "FRONTEND_DIR=%BASE_DIR%\clients\frontend\Aveline_UI"
 
 if not exist "%FRONTEND_DIR%" (

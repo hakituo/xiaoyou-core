@@ -71,9 +71,10 @@ class EmbeddingGenerator:
                         # 如果本地没有，SentenceTransformer会尝试下载
                         # 我们使用hf-mirror镜像源来加速下载
                         logger.info("尝试加载 SentenceTransformer 模型...")
-                        self._model = SentenceTransformer(self._model_name)
+                        # 强制使用CPU加载模型，避免占用显存导致LLM OOM
+                        self._model = SentenceTransformer(self._model_name, device="cpu")
                         self._use_hash_fallback = False
-                        logger.info("成功加载 sentence_transformers 模型")
+                        logger.info("成功加载 sentence_transformers 模型 (CPU Mode)")
                         
                     except Exception as e:
                         logger.warning(f"无法加载 sentence_transformers 模型 ({e})，将使用哈希嵌入作为后备")

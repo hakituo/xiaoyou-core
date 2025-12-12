@@ -10,6 +10,7 @@ from .health_router import router as health_router
 from .api_router import router as api_router
 from .session_router import router as session_router
 from .memory_router import router as memory_router
+from .study_router import router as study_router
 
 # 创建主路由
 api_v1_router = APIRouter()
@@ -20,6 +21,7 @@ api_v1_router.include_router(health_router)
 api_v1_router.include_router(api_router)
 api_v1_router.include_router(session_router)
 api_v1_router.include_router(memory_router)
+api_v1_router.include_router(study_router)
 
 __all__ = [
     "api_v1_router",
@@ -27,5 +29,6 @@ __all__ = [
     "health_router",
     "api_router",
     "session_router",
-    "memory_router"
+    "memory_router",
+    "study_router"
 ]

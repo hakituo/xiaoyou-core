@@ -22,6 +22,7 @@ import { useBreathingColors, BreathingBackground } from './components/BreathingS
 import EmotionWidget from './components/EmotionWidget';
 import StatusPanel from './components/StatusPanel';
 import PersonaPanel from './components/PersonaPanel';
+import StudyPanel from './components/StudyPanel';
 import { SessionList } from './components/SessionList';
 
 const STORAGE_KEY = 'aveline_chat_history_v2';
@@ -233,17 +234,18 @@ export default function Aveline() {
       const fullReply = res?.reply || "Connection Error";
       
       // Handle proactive actions
+      // Note: Backend now handles auto-generation if [GEN_IMG] is present.
+      // We rely on res.image_url / res.image_base64 being returned.
+      /* 
       if (res?.image_prompt) {
           try {
               const { modelPath, loraPath, loraWeight } = imageModel.getGenerationParams();
               api.generateImage(res.image_prompt, modelPath, loraPath, loraWeight);
-              // We don't wait for it here, let it generate in background and appear in feed/sidebar if implemented
-              // Or better, inject a system message saying "Generating image..."
-              setMessages(prev => [...prev, { id: Date.now() + 2, isUser: false, text: "Thinking of an image..." }]);
           } catch (e) {
               console.error("Failed to trigger image generation", e);
           }
       }
+      */
 
       if (res?.voice_id) {
           // Check if this is a voice MESSAGE or just a voice switch
@@ -287,13 +289,15 @@ export default function Aveline() {
 
       // Smart splitting for "Daily Mode" feel
       // Don't split code blocks or very short text
-      if (cleanText.includes('```') || cleanText.length < 10 || isVoiceMsg) {
+      if (cleanText.includes('```') || cleanText.length < 10 || isVoiceMsg || res?.image_url || res?.image_base64) {
          setMessages(prev => [...prev, { 
              id: Date.now() + 1, 
              isUser: false, 
              text: cleanText,
              messageType: isVoiceMsg ? 'voice' : 'text',
-             voiceId: res?.voice_id
+             voiceId: res?.voice_id,
+             imageUrl: res?.image_url,
+             imageBase64: res?.image_base64
          }]);
       } else {
          // Split by sentence terminators
@@ -670,6 +674,10 @@ export default function Aveline() {
             <PersonaPanel 
               persona={persona}
             />
+          )}
+
+          {activeTab === 'Study' && (
+            <StudyPanel />
           )}
 
           {activeTab === 'Plugins' && (

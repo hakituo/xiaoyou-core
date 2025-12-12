@@ -320,6 +320,37 @@ export const api = {
     return res;
   },
 
+  // 学习模块
+  getDailyVocabulary: async (limit: number = 20) => {
+    const res = await get(`/api/v1/study/daily?count=${limit}`);
+    return res;
+  },
+  
+  getStudyTools: async () => {
+    const res = await get('/api/v1/study/tools');
+    return res;
+  },
+
+  runStudyTool: async (category: string, toolId: string, params: any) => {
+    const res = await post(`/api/v1/study/tools/${category}/${toolId}/run`, params);
+    return res;
+  },
+
+  getDictStats: async () => {
+    const res = await get('/api/v1/study/dictionary/stats');
+    return res;
+  },
+
+  getMemoryCurve: async () => {
+    const res = await get('/api/v1/study/curve');
+    return res;
+  },
+
+  getMistakes: async () => {
+    const res = await get('/api/v1/study/mistakes');
+    return res;
+  },
+
   // 聊天消息 - 优化实现，添加请求标识避免重复处理，增强错误处理和重试机制
   sendMessage: async (message: string, options?: {
     retryCount?: number;
@@ -432,7 +463,12 @@ export const api = {
       emotion_internal: processedResponse.emotion_internal,
       emotion_confidence: processedResponse.emotion_confidence,
       tts_suggest: processedResponse.tts_suggest,
-      ref_audio_path: refAudioPath // Pass it back to UI components to use
+      ref_audio_path: refAudioPath, // Pass it back to UI components to use
+      voice_id: processedResponse.voice_id,
+      image_base64: processedResponse.image_base64,
+      image_url: processedResponse.image_url,
+      audio_base64: processedResponse.audio_base64,
+      audio_path: processedResponse.audio_path
     };
       };
       

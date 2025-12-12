@@ -206,7 +206,7 @@ class UpdateWordProgressTool(BaseTool):
     
     def _run(self, word: str, quality: int) -> str:
         try:
-            from core.services.study.vocabulary_manager import VocabularyManager
+            from core.tools.study.english.vocabulary_manager import VocabularyManager
             vm = VocabularyManager()
             vm.update_word_progress(word, quality)
             
@@ -218,6 +218,127 @@ class UpdateWordProgressTool(BaseTool):
         except Exception as e:
             return f"Error updating word progress: {str(e)}"
 
+# --- Additional Study Service Wrapper Tools ---
+
+class GeneticsInput(BaseModel):
+    parent1: str = Field(description="Genotype of parent 1 (e.g., 'AaBb')")
+    parent2: str = Field(description="Genotype of parent 2 (e.g., 'aaBb')")
+    gene_count: int = Field(default=2, description="Number of gene pairs (1-3)")
+
+class BiologyGeneticsTool(BaseTool):
+    name = "biology_genetics_calculator"
+    description = "Calculate genetic offspring probabilities (genotypes and phenotypes) for Mendelian inheritance."
+    args_schema = GeneticsInput
+    
+    def _run(self, parent1: str, parent2: str, gene_count: int = 2) -> str:
+        from core.services.study_service import get_study_service
+        try:
+            res = get_study_service().run_tool("biology", "genetics_calc", {"parent1": parent1, "parent2": parent2, "gene_count": gene_count})
+            if res.get("status") == "success":
+                return f"Genetics Calculation Results:\n{json.dumps(res['data'], ensure_ascii=False, indent=2)}"
+            else:
+                return f"Error: {res.get('message')}"
+        except Exception as e:
+            return f"Error running tool: {e}"
+
+class ConceptQuizInput(BaseModel):
+    count: int = Field(default=3, description="Number of concepts to compare/quiz")
+
+class BiologyConceptQuizTool(BaseTool):
+    name = "biology_concept_quiz"
+    description = "Generate a quiz comparing easily confused biological concepts."
+    args_schema = ConceptQuizInput
+    
+    def _run(self, count: int = 3) -> str:
+        from core.services.study_service import get_study_service
+        try:
+            res = get_study_service().run_tool("biology", "concept_quiz", {"count": count})
+            if res.get("status") == "success":
+                return f"Concept Quiz Generated:\n{json.dumps(res['data'], ensure_ascii=False, indent=2)}"
+            else:
+                return f"Error: {res.get('message')}"
+        except Exception as e:
+            return f"Error running tool: {e}"
+
+class PoetryQuizInput(BaseModel):
+    count: int = Field(default=5, description="Number of questions")
+
+class ChinesePoetryQuizTool(BaseTool):
+    name = "chinese_poetry_quiz"
+    description = "Generate a quiz for Chinese ancient poetry dictation."
+    args_schema = PoetryQuizInput
+    
+    def _run(self, count: int = 5) -> str:
+        from core.services.study_service import get_study_service
+        try:
+            res = get_study_service().run_tool("chinese", "poetry_quiz", {"count": count})
+            if res.get("status") == "success":
+                return f"Poetry Quiz:\n{json.dumps(res['data'], ensure_ascii=False, indent=2)}"
+            else:
+                return f"Error: {res.get('message')}"
+        except Exception as e:
+            return f"Error running tool: {e}"
+
+class ClimateInput(BaseModel):
+    temps: str = Field(description="12 monthly average temperatures in Celsius, comma-separated (e.g. '10,12,15...')")
+    precips: str = Field(description="12 monthly precipitation values in mm, comma-separated")
+
+class GeographyClimateTool(BaseTool):
+    name = "geography_climate_judge"
+    description = "Determine climate type based on temperature and precipitation data."
+    args_schema = ClimateInput
+    
+    def _run(self, temps: str, precips: str) -> str:
+        from core.services.study_service import get_study_service
+        try:
+            res = get_study_service().run_tool("geography", "climate_judger", {"temps": temps, "precips": precips})
+            if res.get("status") == "success":
+                return f"Climate Judgment:\n{json.dumps(res['data'], ensure_ascii=False, indent=2)}"
+            else:
+                return f"Error: {res.get('message')}"
+        except Exception as e:
+            return f"Error running tool: {e}"
+
+class MathProblemInput(BaseModel):
+    module: str = Field(description="Math module (e.g., '三角函数', '立体几何', '导数')")
+    difficulty: str = Field(default="基础", description="Difficulty level (基础, 中档, 难题)")
+    count: int = Field(default=3, description="Number of problems")
+
+class MathProblemGenTool(BaseTool):
+    name = "math_problem_generator"
+    description = "Generate high school math problems for practice."
+    args_schema = MathProblemInput
+    
+    def _run(self, module: str, difficulty: str = "基础", count: int = 3) -> str:
+        from core.services.study_service import get_study_service
+        try:
+            res = get_study_service().run_tool("math", "problem_gen", {"module": module, "difficulty": difficulty, "count": count})
+            if res.get("status") == "success":
+                return f"Generated Problems:\n{json.dumps(res['data'], ensure_ascii=False, indent=2)}"
+            else:
+                return f"Error: {res.get('message')}"
+        except Exception as e:
+            return f"Error running tool: {e}"
+
+class GrammarCheckInput(BaseModel):
+    text: str = Field(description="English text to check")
+
+class EnglishGrammarTool(BaseTool):
+    name = "english_grammar_check"
+    description = "Check English text for grammar and spelling errors."
+    args_schema = GrammarCheckInput
+    
+    def _run(self, text: str) -> str:
+        from core.services.study_service import get_study_service
+        try:
+            res = get_study_service().run_tool("english", "grammar_check", {"text": text})
+            if res.get("status") == "success":
+                return f"Grammar Check Result:\n{json.dumps(res['data'], ensure_ascii=False, indent=2)}"
+            else:
+                return f"Error: {res.get('message')}"
+        except Exception as e:
+            return f"Error running tool: {e}"
+
 def register_study_tools(registry):
     """Register all Study tools to the provided registry."""
     registry.register(MathPlotTool())
@@ -225,3 +346,11 @@ def register_study_tools(registry):
     registry.register(TextToSpeechTool())
     registry.register(KnowledgeRetrievalTool())
     registry.register(UpdateWordProgressTool())
+    
+    # New Tools
+    registry.register(BiologyGeneticsTool())
+    registry.register(BiologyConceptQuizTool())
+    registry.register(ChinesePoetryQuizTool())
+    registry.register(GeographyClimateTool())
+    registry.register(MathProblemGenTool())
+    registry.register(EnglishGrammarTool())

@@ -40,6 +40,59 @@ object HttpClient {
         return post("/api/v1/message", json)
     }
 
+    suspend fun getNotifications(): List<Map<String, Any?>> {
+        val res = get("/api/v1/notifications")
+        // "data" should be a JSONArray
+        // But my Map conversion in `get` helper makes it generic object if using JSONObject,
+        // Wait, if "data" is a JSONArray, `opt("data")` returns JSONArray.
+        
+        val list = mutableListOf<Map<String, Any?>>()
+        try {
+            val dataArr = res["data"]
+            if (dataArr is org.json.JSONArray) {
+                for (i in 0 until dataArr.length()) {
+                    val item = dataArr.getJSONObject(i)
+                    val map = mutableMapOf<String, Any?>()
+                    val keys = item.keys()
+                    while (keys.hasNext()) {
+                        val k = keys.next()
+                        map[k] = item.opt(k)
+                    }
+                    list.add(map)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing notifications: ${e.message}")
+        }
+        return list
+    }
+
+    private suspend fun get(endpoint: String): Map<String, Any?> = withContext(Dispatchers.IO) {
+        val req = Request.Builder().url("$baseUrl$endpoint").get().build()
+        Log.d(TAG, "GET $endpoint")
+        try {
+            client.newCall(req).execute().use { response ->
+                val responseBody = response.body?.string() ?: "{}"
+                if (!response.isSuccessful) return@withContext mapOf("status" to "error")
+                
+                try {
+                    val o = JSONObject(responseBody)
+                    val map = mutableMapOf<String, Any?>()
+                    val keys = o.keys()
+                    while (keys.hasNext()) {
+                        val k = keys.next()
+                        map[k] = o.opt(k)
+                    }
+                    return@withContext map
+                } catch (e: Exception) {
+                    return@withContext mapOf("status" to "error")
+                }
+            }
+        } catch (e: Exception) {
+            return@withContext mapOf("status" to "error")
+        }
+    }
+
     private suspend fun post(endpoint: String, json: JSONObject): Map<String, Any?> = withContext(Dispatchers.IO) {
         val body = json.toString().toRequestBody("application/json".toMediaType())
         val req = Request.Builder().url("$baseUrl$endpoint").post(body).build()

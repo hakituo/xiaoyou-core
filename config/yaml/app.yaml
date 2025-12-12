@@ -40,14 +40,14 @@ memory:
 model:
   default: "local"
   path: "D:\\AI\\xiaoyou-core\\models\\llm\\Qwen2___5-7B-Instruct-Q4_K_M.gguf"
-  n_ctx: 16384  # 增加上下文窗口大小 (默认 4096 -> 16384)
+  n_ctx: 8192  # 增加上下文窗口大小 (默认 4096 -> 8192)
   summary_model_path: null # CPU Offload 模型路径 (例如: "./models/Qwen-7B-Chat-Int4")
-  # 生成参数 (针对 Qwen2.5 优化)
+  # 生成参数 (针对 Qwen2.5 优化 / L3 Stheno 调优)
   generation:
-    temperature: 0.7
-    min_p: 0.1
+    temperature: 1.1  # 调高温度以释放 Stheno 的创造力 (1.0-1.2)
+    min_p: 0.05       # 稍微放开 Min P (0.1 -> 0.05)
     repetition_penalty: 1.1
-    top_p: 0.9
+    top_p: 0.95       # 稍微放开 Top P (0.9 -> 0.95)
     top_k: 40
     max_new_tokens: 1024
   # 模型加载选项
@@ -95,7 +95,7 @@ api:
 limits:
   max_text_length: 4096
   # 消息处理超时时间（秒）
-  message_timeout: 300
+  message_timeout: 600
 
 # 静态文件路径
 paths:

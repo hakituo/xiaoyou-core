@@ -96,7 +96,11 @@ const MessageBubble = React.memo(({
         ) : (
             displayedText
         )}
-        {message.imageBase64 && (<img src={message.imageBase64} alt="generated" className="mt-3 rounded-lg max-w-full" />)}
+        {message.imageUrl ? (
+             <img src={message.imageUrl} alt="generated" className="mt-3 rounded-lg max-w-full shadow-md" />
+        ) : message.imageBase64 ? (
+             <img src={message.imageBase64} alt="generated" className="mt-3 rounded-lg max-w-full shadow-md" />
+        ) : null}
       </div>
 
       {message.isUser && onDelete && (

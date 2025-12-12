@@ -99,6 +99,35 @@ def generate_image(prompt, negative_prompt=None, width=512, height=512, guidance
     if negative_prompt is None:
         negative_prompt = "low quality, blurry, distorted, ugly, bad anatomy, extra limbs"
     
+    # Check for Anime/Pony requirement
+    if "二次元" in prompt or "anime" in prompt.lower() or "manga" in prompt.lower():
+        print("Detected Anime/2D style request. Checking for Pony model...")
+        # Try to find Pony model
+        pony_paths = [
+            "models/sdxl/pony",
+            "models/Pony_Diffusion_V6_XL",
+            "models/pony"
+        ]
+        target_model = None
+        for p in pony_paths:
+            if os.path.exists(p):
+                target_model = p
+                break
+        
+        if target_model:
+            # Check if we need to reload
+            if pipe is None or getattr(pipe, "_model_path", "") != target_model:
+                print(f"Switching to Pony model: {target_model}")
+                try:
+                    # Unload current pipe if needed (simple reassignment handles GC usually)
+                    load_image_model(target_model)
+                    # Tag pipe with path for future checks
+                    pipe._model_path = target_model
+                except Exception as e:
+                    print(f"Failed to switch to Pony model: {e}")
+        else:
+            print("Pony model not found in common paths. Using current model.")
+
     try:
         print(f"Generating image with prompt: {prompt}")
         start_time = time.time()

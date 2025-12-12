@@ -27,9 +27,23 @@ def mount_static_files(app: FastAPI):
             async def read_root():
                 return FileResponse(os.path.join(frontend_dir, "index.html"))
 
-            # 静态文件挂载
-            app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="static")
+            # 静态文件挂载 (Frontend)
+            app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
         else:
             logger.warning(f"前端静态文件目录不存在: {frontend_dir}")
+            
+        # 挂载后端静态资源 (Generated Images, etc.)
+        static_dir = os.path.join(project_root, "static")
+        if not os.path.exists(static_dir):
+            os.makedirs(static_dir)
+        
+        # Ensure images/generated exists
+        img_gen_dir = os.path.join(static_dir, "images", "generated")
+        if not os.path.exists(img_gen_dir):
+            os.makedirs(img_gen_dir)
+            
+        logger.info(f"挂载后端静态资源: {static_dir} -> /static")
+        app.mount("/static", StaticFiles(directory=static_dir), name="backend_static")
+        
     except Exception as e:
-        logger.error(f"挂载前端静态文件失败: {e}")
+        logger.error(f"挂载静态文件失败: {e}")

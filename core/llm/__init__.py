@@ -89,8 +89,10 @@ def get_llm_module() -> LLMModule:
                             return f"Error: {result.get('error')}"
                             
                     async def stream_chat(self, messages: list, **kwargs):
-                        content = await self.chat(messages, **kwargs)
-                        yield {"content": content}
+                        logger.info("LocalLLMAdapter.stream_chat called.")
+                        async for chunk in self.local_module.stream_chat(messages, **kwargs):
+                            yield chunk
+                        logger.info("LocalLLMAdapter.stream_chat finished.")
                         
                     def get_status(self) -> Dict[str, Any]:
                         return {

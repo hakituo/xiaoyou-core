@@ -10,6 +10,7 @@ export interface Message {
   fileType?: string;
   fileSize?: number;
   imageBase64?: string;
+  imageUrl?: string;
   audioBase64?: string;
   voiceId?: string;
 }

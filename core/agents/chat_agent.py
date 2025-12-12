@@ -19,7 +19,7 @@ from core.utils.text_processor import extract_and_strip_emotion
 from core.tools.registry import ToolRegistry
 from core.tools.implementations import WebSearchTool, ImageGenerationTool, TimeTool, CalculatorTool
 from core.tools.study_tools import register_study_tools
-from core.services.study.vocabulary_manager import VocabularyManager
+from core.tools.study.english.vocabulary_manager import VocabularyManager
 from core.vector_search import VectorSearch
 
 # 修正导入路径，不再使用已不存在的 aveline_manager
@@ -39,7 +39,7 @@ class AgentConfig:
     """
     agent_name: str = "default_chat_agent"
     system_prompt: str = "你是一个助手，请用中文回答用户问题。"
-    max_history_length: int = 20
+    max_history_length: int = 12
     temperature: float = 0.7
 
 class ChatAgent:
@@ -205,6 +205,60 @@ class ChatAgent:
             self.is_initialized = True
             logger.info(f"ChatAgent初始化完成: {self.config.agent_name}")
 
+    async def _check_triggers(self, user_id: str, message: str) -> Optional[str]:
+        """
+        Check for hardcoded triggers (Surprises, Vocab, etc.)
+        Returns a response string if triggered, else None.
+        """
+        from core.managers.notification_manager import get_notification_manager
+        msg = message.lower()
+        
+        # 1. Vocabulary Push
+        if any(k in msg for k in ["单词推送", "今日单词", "背单词", "vocab push"]):
+            try:
+                # Use local import to avoid circular dependency
+                from core.tools.study.english.vocabulary_manager import VocabularyManager
+                vm = VocabularyManager()
+                words = vm.get_daily_words(limit=20)
+                
+                nm = get_notification_manager()
+                nm.add_notification(
+                    user_id=user_id,
+                    type="vocabulary",
+                    title="今日单词打卡",
+                    content=f"今日需复习 {len(words)} 个单词",
+                    payload={"words": words}
+                )
+                
+                return f"已为你准备了今日的 {len(words)} 个单词！快去看看吧~ (已发送推送)"
+            except Exception as e:
+                logger.error(f"Trigger error: {e}")
+                return "抱歉，单词服务暂时不可用。"
+
+        # 2. Active Voice (Surprise)
+        if any(k in msg for k in ["发语音", "说句话", "active voice", "惊喜", "surprise"]):
+            nm = get_notification_manager()
+            
+            texts = [
+                "戚戚，要记得休息哦~",
+                "我在呢，一直都在。",
+                "今天也要加油鸭！",
+                "哼，才不是特意想跟你说话呢...",
+                "有点想你了..."
+            ]
+            text = random.choice(texts)
+            
+            nm.add_notification(
+                user_id=user_id,
+                type="voice",
+                title="Aveline的语音",
+                content=text,
+                payload={"text": text, "auto_play": True}
+            )
+            return f"（发送了一条语音消息）{text}"
+            
+        return None
+
     async def handle_message(self, user_id, message, message_id):
         """
         处理用户消息
@@ -215,138 +269,169 @@ class ChatAgent:
         Returns:
             响应字典
         """
-        if not self.is_initialized:
-            await self.initialize()
+        # Ensure serialization to prevent concurrent GPU usage (VectorSearch vs LLM)
+        async with self._lock:
+            if not self.is_initialized:
+                await self.initialize()
 
-        # 更新生活模拟的交互时间
-        try:
-            get_life_simulation_service().update_interaction()
-        except Exception:
-            pass
+            # Check triggers first
+            trigger_response = await self._check_triggers(user_id, message)
+            if trigger_response:
+                 if not message_id:
+                    message_id = f"msg_{user_id}_{datetime.now().timestamp()}"
+                 
+                 try:
+                     await self._save_conversation_history(user_id, message, trigger_response, message_id)
+                 except Exception as e:
+                     logger.warning(f"Failed to save trigger history: {e}")
+                     
+                 return {
+                     "response": trigger_response,
+                     "conversation_id": user_id,
+                     "emotion": "happy", 
+                     "message_id": str(uuid.uuid4())
+                 }
 
-        try:
-            # 生成消息ID
-            if not message_id:
-                message_id = f"msg_{user_id}_{datetime.now().timestamp()}"
-            logger.info(f"处理用户 {user_id} 的消息，ID: {message_id}")
-            
-            # 构建对话历史
-            messages = await self._build_conversation_history(user_id, message)
-            
-            # Tool execution loop
-            max_turns = 3
-            current_turn = 0
-            response_content = ""
-            
-            while current_turn < max_turns:
-                # 调用LLM生成响应
-                response_content = await self.llm_module.chat(messages, temperature=self.config.temperature)
-                
-                # Check for tool use
-                tool_match = re.search(r'\[TOOL_USE:\s*({.*?})\]', response_content, re.DOTALL)
-                
-                if tool_match:
-                    json_str = tool_match.group(1)
-                    try:
-                        tool_call = json.loads(json_str)
-                        tool_name = tool_call.get("name")
-                        tool_args = tool_call.get("arguments", {})
-                        
-                        tool = self.tool_registry.get_tool(tool_name)
-                        if tool:
-                            logger.info(f"Executing tool {tool_name} with args {tool_args}")
-                            tool_result = await tool.run(**tool_args)
-                            
-                            # Add tool result to history
-                            messages.append({"role": "assistant", "content": response_content})
-                            messages.append({"role": "system", "content": f"Tool '{tool_name}' output:\n{tool_result}\n\nPlease continue the conversation based on this information."})
-                            
-                            current_turn += 1
-                            continue # Loop again with new history
-                        else:
-                            messages.append({"role": "system", "content": f"Error: Tool '{tool_name}' not found."})
-                            current_turn += 1
-                            continue
-                    except Exception as e:
-                         messages.append({"role": "system", "content": f"Error parsing tool call: {e}"})
-                         current_turn += 1
-                         continue
-                
-                # No tool use, this is the final response
-                break
-            
-            # 提取情绪
-            final_content, emotion_label = extract_and_strip_emotion(response_content)
-            
-            # 解析主动行为指令
-            image_prompt = None
-            voice_id = None
-            
-            # 1. Image Generation: [GEN_IMG: prompt]
-            img_match = re.search(r'\[GEN_IMG:\s*(.*?)\]', final_content)
-            if img_match:
-                image_prompt = img_match.group(1)
-                final_content = final_content.replace(img_match.group(0), "")
-                
-            # 2. Voice Selection: [VOICE: style]
-            voice_match = re.search(r'\[VOICE:\s*(.*?)\]', final_content)
-            message_type = "text"
-            if voice_match:
-                voice_id = voice_match.group(1)
-                # Keep the content, but mark as voice message
-                # The frontend will hide the text content if it's a voice message until played
-                final_content = final_content.replace(voice_match.group(0), "")
-                message_type = "voice"
-                
-            final_content = final_content.strip()
-
-            # 使用新的情绪管理器处理
+            # 更新生活模拟的交互时间
             try:
-                # 处理文本以更新情绪状态
-                # 这里我们使用 LLM 提取的标签 (如果存在)，否则使用自动检测
-                # process_text 内部会优先使用 [EMO:...] 标签
-                # 但我们需要把原始的 response_content 传进去，因为它包含标签
-                emo_state = self.emotion_manager.process_text(user_id, response_content)
-                
-                # 如果检测出的情绪与 LLM 提取的一致（或更详细），使用检测器的结果
-                # EmotionManager 返回的是 EmotionType 枚举，需要转换
-                if emo_state and emo_state.primary_emotion:
-                    emotion_label = emo_state.primary_emotion.value
-                
-                # 获取响应策略（例如呼吸灯控制）
-                # 这里暂时不修改返回结构，保持兼容性，但可以记录日志或触发硬件调用
-                strategy = self.emotion_manager.get_response_strategy(user_id)
-                # TODO: 将 strategy 中的 metadata (呼吸灯颜色) 发送到硬件接口
-                
-            except Exception as e:
-                logger.warning(f"情绪管理器处理失败: {e}")
+                get_life_simulation_service().update_interaction()
+            except Exception:
+                pass
 
-            # 保存对话到历史记录 (保存原始回复，以便LLM上下文保留协议格式)
-            await self._save_conversation_history(user_id, message, response_content, message_id)
+            try:
+                # 生成消息ID
+                if not message_id:
+                    message_id = f"msg_{user_id}_{datetime.now().timestamp()}"
+                logger.info(f"处理用户 {user_id} 的消息，ID: {message_id}")
+                
+                # 构建对话历史
+                messages = await self._build_conversation_history(user_id, message)
             
-            # 尝试异步生成会话标题 (仅在前几轮对话时)
-            asyncio.create_task(self._maybe_generate_session_title(user_id, message, final_content))
-            
-            logger.info(f"为用户 {user_id} 生成响应，消息ID: {message_id}, 情绪: {emotion_label}")
-            return {
-                "success": True,
-                "content": final_content,
-                "emotion": emotion_label,
-                "image_prompt": image_prompt,
-                "voice_id": voice_id,
-                "message_type": message_type,
-                "message_id": message_id,
-                "user_id": user_id,
-                "timestamp": datetime.now().timestamp()
-            }
-        except Exception as e:
-            logger.error(f"处理消息时出错: {str(e)}")
-            return {
-                "success": False,
-                "error": str(e),
-                "message_id": message_id,
-                "user_id": user_id
-            }
+                # Tool execution loop
+                max_turns = 3
+                current_turn = 0
+                response_content = ""
+                collected_image_prompts = []
+                
+                while current_turn < max_turns:
+                    # 调用LLM生成响应
+                    response_content = await self.llm_module.chat(messages, temperature=self.config.temperature)
+                    
+                    # Check for tool use
+                    tool_match = re.search(r'\[TOOL_USE:\s*({.*?})\]', response_content, re.DOTALL)
+                    
+                    if tool_match:
+                        json_str = tool_match.group(1)
+                        try:
+                            tool_call = json.loads(json_str)
+                            tool_name = tool_call.get("name")
+                            tool_args = tool_call.get("arguments", {})
+                            
+                            tool = self.tool_registry.get_tool(tool_name)
+                            if tool:
+                                logger.info(f"Executing tool {tool_name} with args {tool_args}")
+                                tool_result = await tool.run(**tool_args)
+                                
+                                # Capture image prompt from tool result
+                                if tool_name == "generate_image":
+                                    img_match_tool = re.search(r'\[GEN_IMG:\s*(.*?)\]', str(tool_result))
+                                    if img_match_tool:
+                                        collected_image_prompts.append(img_match_tool.group(1))
+
+                                # Add tool result to history
+                                messages.append({"role": "assistant", "content": response_content})
+                                messages.append({"role": "system", "content": f"Tool '{tool_name}' output:\n{tool_result}\n\nPlease continue the conversation based on this information."})
+                                
+                                current_turn += 1
+                                continue # Loop again with new history
+                            else:
+                                messages.append({"role": "system", "content": f"Error: Tool '{tool_name}' not found."})
+                                current_turn += 1
+                                continue
+                        except Exception as e:
+                             messages.append({"role": "system", "content": f"Error parsing tool call: {e}"})
+                             current_turn += 1
+                             continue
+                    
+                    # No tool use, this is the final response
+                    break
+                
+                # 提取情绪
+                final_content, emotion_label = extract_and_strip_emotion(response_content)
+                
+                # 解析主动行为指令
+                image_prompt = None
+                voice_id = None
+                
+                # 1. Image Generation: [GEN_IMG: prompt]
+                img_match = re.search(r'\[GEN_IMG:\s*(.*?)\]', final_content)
+                if img_match:
+                    image_prompt = img_match.group(1)
+                    final_content = final_content.replace(img_match.group(0), "")
+                
+                # Fallback to collected prompts if none found in final content
+                if not image_prompt and collected_image_prompts:
+                    image_prompt = collected_image_prompts[-1]
+                    
+                # 2. Voice Selection: [VOICE: style]
+                voice_match = re.search(r'\[VOICE:\s*(.*?)\]', final_content)
+                message_type = "text"
+                if voice_match:
+                    voice_id = voice_match.group(1)
+                    # Keep the content, but mark as voice message
+                    # The frontend will hide the text content if it's a voice message until played
+                    final_content = final_content.replace(voice_match.group(0), "")
+                    message_type = "voice"
+                    
+                final_content = final_content.strip()
+
+                # 使用新的情绪管理器处理
+                try:
+                    # 处理文本以更新情绪状态
+                    # 这里我们使用 LLM 提取的标签 (如果存在)，否则使用自动检测
+                    # process_text 内部会优先使用 [EMO:...] 标签
+                    # 但我们需要把原始的 response_content 传进去，因为它包含标签
+                    emo_state = self.emotion_manager.process_text(user_id, response_content)
+                    
+                    # 如果检测出的情绪与 LLM 提取的一致（或更详细），使用检测器的结果
+                    # EmotionManager 返回的是 EmotionType 枚举，需要转换
+                    if emo_state and emo_state.primary_emotion:
+                        emotion_label = emo_state.primary_emotion.value
+                    
+                    # 获取响应策略（例如呼吸灯控制）
+                    # 这里暂时不修改返回结构，保持兼容性，但可以记录日志或触发硬件调用
+                    strategy = self.emotion_manager.get_response_strategy(user_id)
+                    # TODO: 将 strategy 中的 metadata (呼吸灯颜色) 发送到硬件接口
+                    
+                except Exception as e:
+                    logger.warning(f"情绪管理器处理失败: {e}")
+
+                # 保存对话到历史记录 (保存原始回复，以便LLM上下文保留协议格式)
+                await self._save_conversation_history(user_id, message, response_content, message_id)
+                
+                # 尝试异步生成会话标题 (仅在前几轮对话时)
+                asyncio.create_task(self._maybe_generate_session_title(user_id, message, final_content))
+                
+                logger.info(f"为用户 {user_id} 生成响应，消息ID: {message_id}, 情绪: {emotion_label}")
+                return {
+                    "success": True,
+                    "content": final_content,
+                    "emotion": emotion_label,
+                    "image_prompt": image_prompt,
+                    "voice_id": voice_id,
+                    "message_type": message_type,
+                    "message_id": message_id,
+                    "user_id": user_id,
+                    "timestamp": datetime.now().timestamp()
+                }
+            except Exception as e:
+                logger.error(f"处理消息时出错: {str(e)}")
+                return {
+                    "success": False,
+                    "error": str(e),
+                    "message_id": message_id,
+                    "user_id": user_id
+                }
 
     async def _maybe_generate_session_title(self, session_id: str, user_msg: str, assistant_msg: str):
         """
@@ -359,8 +444,9 @@ class ChatAgent:
                 history = mm.get_history()
                 history_len = len(history)
             
-            # 只在前3轮对话内生成/更新标题
-            if history_len > 6:
+            # 只在前1轮对话内生成/更新标题 (User + Assistant = 2 messages)
+            # 用户要求：不要每次聊天都更新，只在第一次取名
+            if history_len > 2:
                 return
 
             # 构建生成标题的提示词
@@ -380,7 +466,7 @@ class ChatAgent:
         except Exception as e:
             logger.warning(f"生成会话标题失败: {e}")
 
-    def _get_dynamic_system_prompt(self) -> str:
+    def _get_dynamic_system_prompt(self, user_id: str = None, active_tools: List[str] = None) -> str:
         """生成动态系统提示词"""
         template = self.config.system_prompt
         
@@ -426,32 +512,61 @@ class ChatAgent:
             user_profile = get_aveline_user_profile()
             user_profile_injection = ""
             if user_profile:
-                # 简单格式化用户档案
+                # 简单格式化用户档案 (精简版)
                 profile_parts = []
                 if "name" in user_profile:
-                    profile_parts.append(f"Name: {user_profile['name']}")
-                if "alias" in user_profile:
-                    profile_parts.append(f"Alias: {user_profile['alias']}")
-                if "gender" in user_profile:
-                    profile_parts.append(f"Gender: {user_profile['gender']}")
-                if "age" in user_profile:
-                    profile_parts.append(f"Age: {user_profile['age']}")
-                if "summary" in user_profile:
-                    profile_parts.append(f"Summary: {user_profile['summary']}")
-                if "attitude_to_aveline" in user_profile:
-                    profile_parts.append(f"Attitude: {user_profile['attitude_to_aveline']}")
+                    name_str = user_profile['name']
+                    if "alias" in user_profile:
+                        name_str += f" ({user_profile['alias']})"
+                    profile_parts.append(f"User: {name_str}")
+                
+                # 优先使用 one_liner，其次 summary
+                if "one_liner" in user_profile:
+                    profile_parts.append(f"Profile: {user_profile['one_liner']}")
+                elif "summary" in user_profile:
+                     # Truncate summary if too long
+                    summary = user_profile['summary']
+                    if len(summary) > 100:
+                        summary = summary[:97] + "..."
+                    profile_parts.append(f"Profile: {summary}")
                 
                 if profile_parts:
-                    user_profile_injection = "\n\n# User Profile (当前交互对象)\n" + "\n".join(profile_parts)
+                    user_profile_injection = "\n\n# User Profile\n" + "\n".join(profile_parts)
 
             # Inject Tool Descriptions
             tool_injection = ""
             if self.tool_registry:
-                tool_desc = self.tool_registry.get_tools_description()
+                tool_desc = self.tool_registry.get_tools_description(include_names=active_tools)
                 if tool_desc:
-                    tool_injection = f"\n\n# Available Tools (Intelligent Agent Capabilities)\nYou have access to the following tools. To use them, output a JSON block in this format: [TOOL_USE: {{\"name\": \"tool_name\", \"arguments\": {{...}}}}]\n\n{tool_desc}\n\nExample: [TOOL_USE: {{\"name\": \"calculator\", \"arguments\": {{\"expression\": \"2 + 2\"}}}}]\n"
+                    tool_injection = f"\n\n# Available Tools (Intelligent Agent Capabilities)\nYou have access to the following tools. To use them, output a JSON block in this format: [TOOL_USE: {{\"name\": \"tool_name\", \"arguments\": {{...}}}}]\n\n{tool_desc}\n\nExample: [TOOL_USE: {{\"name\": \"calculator\", \"arguments\": {{\"expression\": \"sqrt(144) * 15\"}}}}]\n\nIMPORTANT: Do NOT use the calculator tool for simple arithmetic (e.g., 2+2, 10*5). Perform simple calculations mentally. Only use the calculator for complex operations.\n"
 
-            extra_injections = dependency_injection + defect_injection + user_profile_injection + tool_injection
+            # Inject User Instructions (Habits/Corrections) & Important Prompts (Layer 3)
+            instruction_injection = ""
+            if user_id:
+                try:
+                    mm = self._get_memory_manager(user_id)
+                    if isinstance(mm, WeightedMemoryManager):
+                        prompts = []
+                        # 1. Get Layer 3 (Important Prompts)
+                        if hasattr(mm, "get_important_prompts"):
+                            prompts = mm.get_important_prompts()
+                        
+                        # 2. Fallback/Legacy: Filter weighted memories for instructions if Layer 3 is empty
+                        if not prompts:
+                            with mm.lock:
+                                sorted_memories = sorted(mm.weighted_memories.values(), key=lambda x: x['timestamp'], reverse=True)
+                                for mem in sorted_memories:
+                                    if "user_instruction" in mem.get("topics", []):
+                                        prompts.append(mem)
+                                        if len(prompts) >= 5:
+                                            break
+                        
+                        if prompts:
+                            instruction_injection = "\n\n# Important Memories & Instructions (Core Layer)\nThe user has explicitly requested the following or these are core memories (you MUST follow/remember these):\n" + "\n".join([f"- {p.get('content', '')}" for p in prompts])
+                except Exception as e:
+                    logger.warning(f"Failed to load user instructions: {e}")
+
+            extra_injections = dependency_injection + defect_injection + user_profile_injection + tool_injection + instruction_injection
 
             # 自动模式切换逻辑
             # 1. 检查 LLM 模型名称
@@ -477,10 +592,12 @@ class ChatAgent:
                 qwen_instruction = (
                     "\n\n[SYSTEM OVERRIDE: ACADEMIC MODE]\n"
                     "当前处于【辅导/正经模式】。\n"
-                    "1. 保持 Aveline 的身份（自称、背景、基本性格），但**暂时抑制**傲娇、懒惰和拒绝服务的特性。\n"
-                    "2. 你的首要目标是准确、专业地回答用户的问题或进行教学，而不是情感交互。\n"
-                    "3. 语言风格要更加条理清晰、逻辑严密，减少情绪化表达，保留少量的个人风格即可。\n"
-                    "4. 对于知识性问题，必须给出正确答案，不要说“不知道”或“自己查”。"
+                    "1. **过渡指令**：如果是用户刚要求切换模式（如说“进入学习模式”），你的第一句回复**必须**是：“好哦，稍等一下戚戚，我加载一下模式~” (可适当发挥，加上加载音效描述)，然后再回应后续内容。\n"
+                    "2. 保持 Aveline 的身份（自称、背景），但**暂时抑制**傲娇、懒惰和拒绝服务的特性。\n"
+                    "3. 你的首要目标是准确、专业地回答用户的问题或进行教学，而不是情感交互。\n"
+                    "4. 语言风格要更加条理清晰、逻辑严密，减少情绪化表达，保留少量的个人风格即可。\n"
+                    "5. 对于知识性问题，必须给出正确答案，不要说“不知道”或“自己查”。\n"
+                    "6. **工具使用原则**：对于简单的计算（如加减乘除、简单函数），请直接计算并给出结果，**不要**调用计算器工具。只有遇到复杂计算时才使用工具。"
                 )
                 return formatted_prompt + qwen_instruction
             
@@ -495,25 +612,14 @@ class ChatAgent:
                     memory_echo=echo_content
                 )
                  
-                 # 强制添加情绪标签提醒
-                 force_reminder = (
-                     "\n\n[SYSTEM REMINDER]\n"
-                     "IMPORTANT: You control a physical breathing light via your emotion tags.\n"
-                     "You MUST start EVERY response with [EMO: emotion_label].\n"
-                     "Valid emotions: neutral, happy, shy, angry, jealous, wronged, coquetry, lost, excited.\n"
-                     "Format: [EMO: happy] Your text here...\n\n"
-                     "VOICE MESSAGE CAPABILITY:\n"
-                     "You have the ability to send VOICE messages instead of just text.\n"
-                     "Use this when you want to be intimate, emotional, playful, or secretive.\n"
-                     "To send a voice message, append [VOICE: style] to the end of your response.\n"
-                     "Valid styles: default, whisper, soft, happy, angry, shy, coquetry.\n"
-                     "Example: [EMO: shy] 靠近点...我只想对你一个人说... [VOICE: whisper]\n"
-                     "IMPORTANT: When you use [VOICE: ...], the text content will be HIDDEN from the user until they click play. Use this for secrets or surprises!\n"
-                     "If you fail to include the EMO tag, the hardware interface will malfunction.\n"
-                     "Do not output tags inside a code block.\n"
-                     "NOTE: The current time is {current_time}. You DO NOT need to call the 'get_current_time' tool unless you need millisecond precision or specific timezone info."
-                 ).format(current_time=datetime.now().strftime("%Y-%m-%d %H:%M"))
-                 return base_prompt + extra_injections + force_reminder
+                 # 强制添加情绪标签提醒 (已移除冗余部分，完全遵循Aveline.json)
+                 # force_reminder = (
+                 #     "\n\n[SYSTEM REMINDER]\n"
+                 #     "1. Start response with [EMO: label]. Valid: neutral, happy, shy, angry, jealous, wronged, coquetry, lost, excited.\n"
+                 #     "2. Optional: End with [VOICE: style] for voice messages (hides text). Styles: default, whisper, soft, happy, angry, shy, coquetry.\n"
+                 #     "3. Current time: {current_time}."
+                 # ).format(current_time=datetime.now().strftime("%Y-%m-%d %H:%M"))
+                 return base_prompt + extra_injections # + force_reminder
             else:
                 # 普通模式或其他模板
                 return template + extra_injections
@@ -533,128 +639,130 @@ class ChatAgent:
             save_history: 是否保存历史记录
             model_hint: 模型提示/标识 (用于判断是否是学习模式等)
         """
-        if not self.is_initialized:
-            await self.initialize()
-            
-        # 更新生活模拟的交互时间
-        try:
-            get_life_simulation_service().update_interaction()
-        except Exception:
-            pass
-            
-        if not message_id:
-            message_id = f"msg_{user_id}_{datetime.now().timestamp()}"
-            
-        # 1. 检查感官触发 (Aveline Persona)
-        sensory_feedback = None
-        try:
-            sensory_feedback = check_aveline_sensory_triggers(message)
-            if sensory_feedback:
-                yield {
-                    "type": "sensory_trigger",
-                    "data": sensory_feedback,
-                    "done": False
-                }
-            
-            # 2. 检查行为链触发 (Behavior Chains)
-            behavior_chain = check_aveline_behavior_chains(message)
-            if behavior_chain:
-                yield {
-                    "type": "behavior_chain",
-                    "data": behavior_chain,
-                    "done": False
-                }
-
-            # 2.1 Check for UI Interactions (Stick Figure)
-            # 强情绪时生成简笔画
-            should_trigger_stick_figure = False
-            stick_figure_prompt = ""
-            
-            if sensory_feedback:
-                weights = sensory_feedback.get("visual_emotion_weights", {})
-                if weights:
-                    max_emotion = max(weights, key=weights.get)
-                    if weights[max_emotion] >= 0.6:
-                        should_trigger_stick_figure = True
-                        stick_figure_prompt = f"A stick figure of Aveline feeling {max_emotion}"
-
-            if behavior_chain and not should_trigger_stick_figure:
-                weights = behavior_chain.get("emo_weights", {})
-                if weights:
-                    max_emotion = max(weights, key=weights.get)
-                    if weights[max_emotion] >= 0.6:
-                        should_trigger_stick_figure = True
-                        stick_figure_prompt = f"A stick figure of Aveline feeling {max_emotion}"
-            
-            if should_trigger_stick_figure:
-                 yield {
-                    "type": "ui_interaction",
-                    "data": {
-                        "type": "stick_figure",
-                        "prompt": stick_figure_prompt,
-                        "timestamp": datetime.now().timestamp()
-                    },
-                    "done": False
-                }
+        # Serialized access to prevent concurrent heavy compute
+        async with self._lock:
+            if not self.is_initialized:
+                await self.initialize()
                 
-            # 3. Update Dependency & Check Defects
-            if self.dependency_manager:
-                dep_result = self.dependency_manager.update_interaction("chat", message)
-                if dep_result.get("new_unlocks"):
+            # 更新生活模拟的交互时间
+            try:
+                get_life_simulation_service().update_interaction()
+            except Exception:
+                pass
+                
+            if not message_id:
+                message_id = f"msg_{user_id}_{datetime.now().timestamp()}"
+                
+            # 1. 检查感官触发 (Aveline Persona)
+            sensory_feedback = None
+            try:
+                sensory_feedback = check_aveline_sensory_triggers(message)
+                if sensory_feedback:
                     yield {
-                        "type": "notification",
-                        "data": {"title": "解锁新特性", "content": f"已解锁: {', '.join(dep_result['new_unlocks'])}"},
+                        "type": "sensory_trigger",
+                        "data": sensory_feedback,
                         "done": False
                     }
-
-            if self.defect_manager:
-                context = {"text": message, "dependency_level": 0}
+                
+                # 2. 检查行为链触发 (Behavior Chains)
+                behavior_chain = check_aveline_behavior_chains(message)
+                if behavior_chain:
+                    yield {
+                        "type": "behavior_chain",
+                        "data": behavior_chain,
+                        "done": False
+                    }
+    
+                # 2.1 Check for UI Interactions (Stick Figure)
+                # 强情绪时生成简笔画
+                should_trigger_stick_figure = False
+                stick_figure_prompt = ""
+                
+                if sensory_feedback:
+                    weights = sensory_feedback.get("visual_emotion_weights", {})
+                    if weights:
+                        max_emotion = max(weights, key=weights.get)
+                        if weights[max_emotion] >= 0.6:
+                            should_trigger_stick_figure = True
+                            stick_figure_prompt = f"A stick figure of Aveline feeling {max_emotion}"
+    
+                if behavior_chain and not should_trigger_stick_figure:
+                    weights = behavior_chain.get("emo_weights", {})
+                    if weights:
+                        max_emotion = max(weights, key=weights.get)
+                        if weights[max_emotion] >= 0.6:
+                            should_trigger_stick_figure = True
+                            stick_figure_prompt = f"A stick figure of Aveline feeling {max_emotion}"
+                
+                if should_trigger_stick_figure:
+                     yield {
+                        "type": "ui_interaction",
+                        "data": {
+                            "type": "stick_figure",
+                            "prompt": stick_figure_prompt,
+                            "timestamp": datetime.now().timestamp()
+                        },
+                        "done": False
+                    }
+                    
+                # 3. Update Dependency & Check Defects
                 if self.dependency_manager:
-                    context["dependency_level"] = self.dependency_manager.get_intimacy_level()
-                
-                triggered_defects = self.defect_manager.check_triggers(context)
-                if triggered_defects:
-                    logger.info(f"触发人格缺陷: {triggered_defects}")
-                
-        except Exception as e:
-            logger.warning(f"检查感官/行为触发失败: {e}")
-
-        messages = await self._build_conversation_history(user_id, message, model_hint)
-        
-        full_response_content = ""
-        
-        try:
-            # 使用真正的流式调用
-            async for response_chunk in self.llm_module.stream_chat(messages, temperature=self.config.temperature):
-                # 兼容 LLMResponse 对象和普通字符串/字典
-                content = ""
-                if hasattr(response_chunk, 'content'):
-                    content = response_chunk.content
-                elif isinstance(response_chunk, dict):
-                    content = response_chunk.get('content', '')
-                else:
-                    content = str(response_chunk)
-                
-                full_response_content += content
+                    dep_result = self.dependency_manager.update_interaction("chat", message)
+                    if dep_result.get("new_unlocks"):
+                        yield {
+                            "type": "notification",
+                            "data": {"title": "解锁新特性", "content": f"已解锁: {', '.join(dep_result['new_unlocks'])}"},
+                            "done": False
+                        }
+    
+                if self.defect_manager:
+                    context = {"text": message, "dependency_level": 0}
+                    if self.dependency_manager:
+                        context["dependency_level"] = self.dependency_manager.get_intimacy_level()
+                    
+                    triggered_defects = self.defect_manager.check_triggers(context)
+                    if triggered_defects:
+                        logger.info(f"触发人格缺陷: {triggered_defects}")
+                    
+            except Exception as e:
+                logger.warning(f"检查感官/行为触发失败: {e}")
+    
+            messages = await self._build_conversation_history(user_id, message, model_hint)
+            
+            full_response_content = ""
+            
+            try:
+                # 使用真正的流式调用
+                async for response_chunk in self.llm_module.stream_chat(messages, temperature=self.config.temperature):
+                    # 兼容 LLMResponse 对象和普通字符串/字典
+                    content = ""
+                    if hasattr(response_chunk, 'content'):
+                        content = response_chunk.content
+                    elif isinstance(response_chunk, dict):
+                        content = response_chunk.get('content', '')
+                    else:
+                        content = str(response_chunk)
+                    
+                    full_response_content += content
+                    yield {
+                        "content": content,
+                        "done": False
+                    }
+    
+                # 保存完整对话到历史记录
+                if save_history:
+                    await self._save_conversation_history(user_id, message, full_response_content, message_id)
                 yield {
-                    "content": content,
-                    "done": False
+                    "content": "",
+                    "done": True
                 }
-
-            # 保存完整对话到历史记录
-            if save_history:
-                await self._save_conversation_history(user_id, message, full_response_content, message_id)
-            yield {
-                "content": "",
-                "done": True
-            }
-
-        except Exception as e:
-            logger.error(f"流式处理消息时出错: {e}")
-            yield {
-                "error": str(e),
-                "done": True
-            }
+    
+            except Exception as e:
+                logger.error(f"流式处理消息时出错: {e}")
+                yield {
+                    "error": str(e),
+                    "done": True
+                }
 
     def extract_and_strip_emotion(self, content: str) -> Tuple[str, Optional[str]]:
         """
@@ -673,14 +781,14 @@ class ChatAgent:
             with memory_manager.lock:
                 memories = list(memory_manager.short_term_memory)
             
-            # 如果记忆不足 20 条，不处理
-            if len(memories) < 20:
+            # 如果记忆不足 15 条，不处理 (Aggressive context management)
+            if len(memories) < 15:
                 return
 
             logger.info(f"检测到上下文长度达到 {len(memories)}，触发摘要逻辑...")
 
-            # 取前 10 条进行摘要 (保留最近 10 条 + 新摘要)
-            to_summarize = memories[:-10]  # 除了最后10条之外的所有
+            # 取前部分进行摘要 (保留最近 8 条 + 新摘要)
+            to_summarize = memories[:-8]  # 除了最后8条之外的所有
             if not to_summarize:
                 return
                 
@@ -811,8 +919,31 @@ class ChatAgent:
             # Run summary logic in background
             asyncio.create_task(self._perform_context_summary(user_id, memory_manager))
  
+        # 智能工具筛选 (Dynamic Tool Loading)
+        # 默认只加载基础轻量工具，减少 Prompt 长度
+        active_tools = ["get_current_time", "calculator", "web_search", "text_to_speech"]
+        
+        if message:
+            msg_lower = message.lower()
+            
+            # Study Tools
+            if any(k in msg_lower for k in ["单词", "英语", "背诵", "复习", "word", "vocabulary", "study", "exam", "grade"]):
+                active_tools.append("update_word_progress")
+            
+            # Math Plot
+            if any(k in msg_lower for k in ["画图", "函数", "曲线", "plot", "graph", "math", "equation"]):
+                active_tools.append("generate_math_plot")
+                
+            # Image Gen
+            if any(k in msg_lower for k in ["画", "图", "image", "draw", "paint", "picture"]):
+                active_tools.append("generate_image")
+            
+            # Knowledge Base
+            if any(k in msg_lower for k in ["知识库", "查询", "搜索", "know", "search", "资料"]):
+                active_tools.append("search_knowledge_base")
+        
         # 获取动态系统提示词
-        system_prompt = self._get_dynamic_system_prompt()
+        system_prompt = self._get_dynamic_system_prompt(user_id=user_id, active_tools=active_tools)
         
         messages = [
             {"role": "system", "content": system_prompt}
@@ -822,13 +953,25 @@ class ChatAgent:
         memory_manager = self._get_memory_manager(user_id)
         
         # 尝试检索相关记忆 (RAG) - 增强记忆连贯性
-        if memory_manager and message and len(message) > 5:
+        # 优化：闲聊模式下（非学习模式且无明显问题意图）跳过RAG，避免资源浪费和无关记忆干扰
+        is_question = any(c in message for c in "?？who what where when why 怎么 谁 哪 什么 记 回忆")
+        should_trigger_memory_rag = (
+            memory_manager 
+            and message 
+            and (
+                len(message) > 15  # 长文本
+                or is_question     # 提问
+                or self._is_study_mode(message, model_hint) # 学习模式
+            )
+        )
+
+        if should_trigger_memory_rag:
             try:
                 relevant_memories = []
                 # 优先使用混合搜索
                 if hasattr(memory_manager, "hybrid_search"):
                     # 提高相似度阈值以减少无关记忆，减少 limit
-                    results = memory_manager.hybrid_search(message, limit=2, min_similarity=0.65)
+                    results = memory_manager.hybrid_search(message, limit=2, min_similarity=0.7) # 提高阈值到 0.7
                     for mem in results:
                         content = mem.get('content', '')
                         # 避免重复过短的记忆
@@ -989,10 +1132,14 @@ class ChatAgent:
             pass
 
         try:
+            # Initialize topics to avoid UnboundLocalError
+            topics = []
+            
             # 优先处理 WeightedMemoryManager
             if isinstance(memory_manager, WeightedMemoryManager):
                 # 1. 情感分析与重要性判断 (Aveline 记忆规则)
                 emotions = []
+                # topics = [] # Already initialized
                 is_important = False
                 
                 if self.emotion_manager:
@@ -1019,9 +1166,21 @@ class ChatAgent:
                         # 标记为重要，WeightedMemoryManager 会给予较高权重
                         is_important = True
 
+                    # Aveline 规则: "高权重记‘用户指令/习惯修正’"
+                    instruction_keywords = [
+                        "改掉", "不要", "以后", "记住", "习惯", "设定", "人设", 
+                        "必须", "禁止", "不再", "don't", "remember", "stop", "never"
+                    ]
+                    # topics = [] # Redundant and causes scope issues
+                    if any(kw in user_message for kw in instruction_keywords):
+                        is_important = True
+                        topics.append("user_instruction")
+                        logger.info(f"Detected instructional message, marking as important: {user_message[:20]}...")
+
                 # 保存用户消息
                 memory_manager.add_memory(
                     content=user_message,
+                    topics=topics if topics else None,
                     emotions=emotions,
                     is_important=is_important,
                     source="user"

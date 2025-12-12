@@ -42,47 +42,32 @@ export function useBreathingColors(
       let targetSpeed: number;
 
       // 1. Determine Target Colors & Speed
-      // Check if we are in a "Locked Emotion" state (triggered by LLM output like {happy})
-      if (Date.now() < emotionLockUntil) {
-        // Locked: Use current emotion's colors
-        const emoConfig = EMOTIONS[emotion] || EMOTIONS.neutral;
-        targetColors = emoConfig.colors;
-        // User requested constant slow speed, ignoring emotion-specific speed
-        targetSpeed = 6; 
-      } else {
-        // Unlocked: Calculate based on system stats (Ambient Mode)
-        const c = Math.max(0, Math.min(100, stats.cpu));
-        const g = Math.max(0, Math.min(100, stats.gpu));
-        const m = Math.max(0, Math.min(100, stats.memory));
-        const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
-        
-        // Adjust weights for more dynamic response
-        const w_excited = clamp01((g - 30) / 70) * 0.6 + clamp01((c - 40) / 60) * 0.4;
-        const w_angry = clamp01((m - 70) / 30) * 0.8 + clamp01((c - 85) / 15) * 0.2;
-        const w_lost = clamp01((m - 85) / 15) * 0.8;
-        
-        // Happy if balanced load
-        const load = (c + g + m) / 3;
-        const w_happy = (load > 20 && load < 60) ? 0.5 : 0;
-        
-        const base = 0.3; // Always some neutral base
-        
-        const weights: Record<string, number> = {
-          neutral: base,
-          excited: w_excited,
-          angry: w_angry,
-          lost: w_lost,
-          happy: w_happy,
-          shy: 0,
-          jealous: 0,
-          wronged: 0,
-          coquetry: 0
-        };
-        
-        targetColors = calculateMixedColors(weights);
-        // User requested constant slow speed
-        targetSpeed = 6;
+      // Always prioritize Emotion for colors as per user request
+      const emoConfig = EMOTIONS[emotion] || EMOTIONS.neutral;
+      
+      // Calculate system load for potential modulation (optional, keeping it subtle or just purely emotion)
+      // User explicitly asked for breathing light to be affected by emotion.
+      // We will use the emotion colors directly.
+      targetColors = emoConfig.colors;
+      
+      // Speed logic:
+      // If locked (strong emotion trigger), use slow speed? 
+      // User complained about "invariant" light. 
+      // Let's make speed dynamic based on emotion "arousal" implied by the emotion type.
+      // Angry/Excited -> Faster? Sad/Tired -> Slower?
+      // For now, let's keep the user's preferred "slow" speed or adapt slightly.
+      // The previous code had `targetSpeed = 6` for both branches.
+      targetSpeed = 4; // Default to a breathing pace
+
+      if (emotion === 'excited' || emotion === 'angry' || emotion === 'jealous') {
+          targetSpeed = 2; // Faster breathing for high arousal
+      } else if (emotion === 'lost' || emotion === 'wronged' || emotion === 'shy') {
+          targetSpeed = 6; // Slow breathing for low arousal
       }
+
+      /* Previous logic for reference (removed to fix "invariant" issue)
+      if (Date.now() < emotionLockUntil) { ... } else { ... }
+      */
 
       // 2. Smoothly Interpolate Current -> Target
       const colorFactor = 0.05; 

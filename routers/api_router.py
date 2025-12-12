@@ -83,7 +83,7 @@ async def process_message_with_async(content, conversation_id, model, aveline_se
             model_hint=model
         )
         
-        return {
+        result = {
             "reply": response_text,
             "conversation_id": conversation_id,
             "model": metadata.get("model"),
@@ -92,6 +92,81 @@ async def process_message_with_async(content, conversation_id, model, aveline_se
             "voice_id": metadata.get("voice_id"),
             "image_prompt": metadata.get("image_prompt")
         }
+
+        # 1. Handle Auto Image Generation
+        if metadata.get("image_prompt"):
+            try:
+                from core.image.image_manager import get_image_manager, ImageGenerationConfig
+                from config.integrated_config import get_settings
+                
+                logger.info(f"Auto-generating image for prompt: {metadata['image_prompt']}")
+                settings = get_settings()
+                manager = await get_image_manager()
+                
+                config = ImageGenerationConfig(
+                    prompt=metadata['image_prompt'],
+                    width=settings.model.image_gen_width,
+                    height=settings.model.image_gen_height,
+                    num_inference_steps=settings.model.image_gen_steps,
+                )
+                
+                gen_result = await manager.generate_image(
+                    prompt=metadata['image_prompt'],
+                    model_id=settings.model.default_image_model,
+                    config=config,
+                    save_to_file=True
+                )
+                
+                if gen_result.get('success') and gen_result.get('image_path'):
+                    import base64
+                    with open(gen_result['image_path'], "rb") as img_file:
+                        b64_string = base64.b64encode(img_file.read()).decode('utf-8')
+                        result["image_base64"] = f"data:image/png;base64,{b64_string}"
+                        result["image_path"] = gen_result['image_path']
+                        
+                        # Generate relative URL for frontend
+                        # Assuming gen_result['image_path'] is absolute path inside project/static
+                        # We want /static/images/generated/...
+                        if "static" in gen_result['image_path']:
+                            parts = gen_result['image_path'].split("static")
+                            if len(parts) > 1:
+                                result["image_url"] = f"/static{parts[-1].replace(os.sep, '/')}"
+            except Exception as e:
+                logger.error(f"Auto image generation failed: {e}")
+
+        # 2. Handle Auto Voice Generation
+        if metadata.get("voice_id"):
+            try:
+                from core.voice import get_tts_manager
+                tts_manager = get_tts_manager()
+                
+                # The text to speak is the response text
+                # We might want to strip any remaining tags if they exist, but generate_response should have cleaned them
+                speak_text = response_text
+                
+                if speak_text:
+                    logger.info(f"Auto-generating voice ({metadata['voice_id']}) for text: {speak_text[:30]}...")
+                    # Note: text_to_speech might be blocking or async depending on implementation
+                    # Using run_in_threadpool if it's blocking, but tts_manager.text_to_speech seems to be sync in the search result
+                    # but it calls an async engine? No, it calls new engine synchronously?
+                    # Let's assume it's safe or wrap it.
+                    audio_path = await run_in_threadpool(
+                        tts_manager.text_to_speech, 
+                        speak_text, 
+                        # You might map voice_id to specific style/speed/emotion if supported
+                        # emotion=metadata.get("emotion") 
+                    )
+                    
+                    if audio_path and os.path.exists(audio_path):
+                        import base64
+                        with open(audio_path, "rb") as audio_file:
+                            b64_string = base64.b64encode(audio_file.read()).decode('utf-8')
+                            result["audio_base64"] = b64_string # Raw base64 for audio
+                            result["audio_path"] = audio_path
+            except Exception as e:
+                logger.error(f"Auto voice generation failed: {e}")
+
+        return result
     except Exception as e:
         logger.error(f"Process message error: {e}")
         raise e
@@ -249,6 +324,75 @@ async def get_system_resources():
         }
     except Exception as e:
         logger.error(f"获取系统资源失败: {e}")
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+# --- Notification & Study Endpoints ---
+
+from core.managers.notification_manager import get_notification_manager
+from core.tools.study.english.vocabulary_manager import VocabularyManager
+
+@router.get("/notifications")
+async def get_notifications(user_id: str = "default"):
+    """
+    Poll for pending notifications (push messages, active voice, etc.)
+    """
+    nm = get_notification_manager()
+    notifs = nm.get_pending_notifications(user_id)
+    return {
+        "status": "success",
+        "data": notifs,
+        "timestamp": time.time()
+    }
+
+@router.get("/study/vocabulary/daily")
+async def get_daily_vocabulary(limit: int = 20):
+    """
+    Get daily vocabulary list (20 words)
+    """
+    try:
+        vm = VocabularyManager()
+        words = vm.get_daily_words(limit=limit)
+        return {
+            "status": "success",
+            "data": words,
+            "count": len(words),
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get daily vocabulary: {e}")
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+@router.post("/study/vocabulary/trigger")
+async def trigger_vocabulary_push(user_id: str = "default"):
+    """
+    Manually trigger a vocabulary push notification
+    """
+    try:
+        vm = VocabularyManager()
+        words = vm.get_daily_words(limit=20)
+        
+        nm = get_notification_manager()
+        nm.add_notification(
+            user_id=user_id,
+            type="vocabulary",
+            title="今日单词打卡",
+            content=f"今日需复习 {len(words)} 个单词",
+            payload={"words": words}
+        )
+        
+        return {
+            "status": "success",
+            "message": "Vocabulary push triggered",
+            "count": len(words)
+        }
+    except Exception as e:
+        logger.error(f"Failed to trigger vocabulary push: {e}")
         return {
             "status": "error",
             "message": str(e)
@@ -540,7 +684,7 @@ async def handle_message(
             ))
             
             # 从配置中获取超时时间
-            timeout_seconds = config_manager.get("limits.message_timeout", 120)  # 默认120秒
+            timeout_seconds = config_manager.get("limits.message_timeout", 300)  # 默认300秒 (5分钟)
             # 设置超时
             response = await asyncio.wait_for(task, timeout=timeout_seconds)
             
@@ -555,6 +699,17 @@ async def handle_message(
                 "voice_id": response.get("voice_id"),
                 "image_prompt": response.get("image_prompt")
             }
+            
+            # 附加生成的媒体数据
+            if "image_base64" in response:
+                response_data["image_base64"] = response["image_base64"]
+            if "image_path" in response:
+                response_data["image_path"] = response["image_path"]
+            if "audio_base64" in response:
+                response_data["audio_base64"] = response["audio_base64"]
+            if "audio_path" in response:
+                response_data["audio_path"] = response["audio_path"]
+
             m_used = response.get("model") or model
             if m_used:
                 response_data["model"] = m_used
@@ -686,10 +841,15 @@ async def _generate_tts_with_async(text: str, params: Dict[str, Any]) -> Dict[st
         
         # 如果请求中包含 gpt_sovits_weights，尝试切换模型权重
         weights_path = params.get("gpt_sovits_weights")
-        if weights_path and hasattr(mgr.engine, "set_gpt_weights"):
+        # 过滤掉 "default" 或空值，避免将 speaker ID 当作路径
+        if weights_path and weights_path.lower() != "default" and hasattr(mgr.engine, "set_gpt_weights"):
             try:
-                logger.info(f"Switching GPT-SoVITS weights to: {weights_path}")
-                await mgr.engine.set_gpt_weights(weights_path)
+                # 简单检查是否看起来像文件路径 (包含扩展名或分隔符)
+                if "." in weights_path or "/" in weights_path or "\\" in weights_path:
+                    logger.info(f"Switching GPT-SoVITS weights to: {weights_path}")
+                    await mgr.engine.set_gpt_weights(weights_path)
+                else:
+                    logger.debug(f"Skipping set_gpt_weights for non-path ID: {weights_path}")
             except Exception as w_err:
                 logger.warning(f"Failed to switch GPT-SoVITS weights: {w_err}")
         

@@ -1,10 +1,11 @@
 import os
 import torch
 try:
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
 except ImportError:
     AutoModelForCausalLM = None
     AutoTokenizer = None
+    TextIteratorStreamer = None
 
 try:
     from llama_cpp import Llama
@@ -13,6 +14,7 @@ except ImportError:
 
 import gc
 import asyncio
+import threading
 from config.integrated_config import get_settings
 from core.utils.logger import get_logger
 
@@ -49,6 +51,7 @@ class LLMModule:
         self.is_loaded = False
         self.is_gguf = False
         self._lock = asyncio.Lock()
+        self._thread_lock = threading.Lock()
         
     async def _load_model(self):
         """
@@ -125,6 +128,133 @@ class LLMModule:
             logger.error(f"加载文本模型失败: {str(e)}")
             return False
 
+    async def stream_chat(self, prompt, max_tokens=None, temperature=None):
+        """
+        流式生成文本回复
+        """
+        logger.info("Entering stream_chat...")
+        # Ensure model is loaded (async lock handled inside _load_model but we check state first)
+        if not self.is_loaded:
+             logger.info("Model not loaded, loading...")
+             async with self._lock:
+                if not self.is_loaded:
+                    success = await self._load_model()
+                    if not success:
+                        logger.error("Model load failed.")
+                        yield {"status": "error", "error": "模型加载失败"}
+                        return
+
+        logger.info("Model loaded. Preparing generation...")
+        # Get params
+        max_tokens = max_tokens or self.settings.model.max_new_tokens or 512
+        temperature = temperature or self.settings.model.temperature or 0.7
+        min_p = self.settings.model.min_p
+        repetition_penalty = self.settings.model.repetition_penalty or 1.1
+        top_p = self.settings.model.top_p or 0.9
+
+        queue = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+
+        def _producer():
+            logger.info("Producer thread started.")
+            try:
+                # Use thread lock for model access safety
+                with self._thread_lock:
+                    logger.info("Acquired thread lock. Starting generation...")
+                    if self.is_gguf:
+                        # GGUF Streaming
+                        logger.info("Using GGUF generation.")
+                        messages = []
+                        if isinstance(prompt, str):
+                            messages = [{"role": "user", "content": prompt}]
+                        elif isinstance(prompt, list):
+                            messages = prompt
+                        
+                        stream = self.llama_model.create_chat_completion(
+                            messages=messages,
+                            max_tokens=max_tokens,
+                            temperature=temperature,
+                            top_p=top_p,
+                            repeat_penalty=repetition_penalty,
+                            stream=True
+                        )
+                        
+                        for chunk in stream:
+                            delta = chunk['choices'][0]['delta']
+                            if 'content' in delta:
+                                asyncio.run_coroutine_threadsafe(queue.put({"content": delta['content']}), loop)
+                    
+                    else:
+                        # Transformers Streaming
+                        logger.info("Using Transformers generation.")
+                        if not TextIteratorStreamer:
+                             logger.error("TextIteratorStreamer not found.")
+                             asyncio.run_coroutine_threadsafe(queue.put({"error": "Transformers library or TextIteratorStreamer not available"}), loop)
+                             return
+
+                        streamer = TextIteratorStreamer(self.tokenizer, skip_prompt=True, skip_special_tokens=True)
+                        
+                        # Prepare inputs
+                        if isinstance(prompt, list):
+                            try:
+                                prompt_text = self.tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
+                            except:
+                                prompt_text = str(prompt)
+                        else:
+                            prompt_text = str(prompt)
+
+                        inputs = self.tokenizer(prompt_text, return_tensors="pt")
+                        if self.device == "cuda":
+                            inputs = {k: v.cuda() for k, v in inputs.items()}
+                        
+                        gen_kwargs = {
+                            "max_new_tokens": max_tokens,
+                            "temperature": temperature,
+                            "do_sample": True,
+                            "repetition_penalty": repetition_penalty,
+                            "pad_token_id": self.tokenizer.eos_token_id,
+                            "streamer": streamer
+                        }
+                        if min_p is not None: gen_kwargs["min_p"] = min_p
+                        if top_p is not None: gen_kwargs["top_p"] = top_p
+                        
+                        # Start generation in a sub-thread
+                        logger.info("Starting generation thread...")
+                        generation_thread = threading.Thread(target=self.model.generate, kwargs=dict(inputs, **gen_kwargs))
+                        generation_thread.start()
+                        
+                        logger.info("Iterating streamer...")
+                        for new_text in streamer:
+                            # logger.info(f"Generated chunk: {new_text[:10]}...") 
+                            asyncio.run_coroutine_threadsafe(queue.put({"content": new_text}), loop)
+                        
+                        logger.info("Streamer finished. Joining thread...")
+                        generation_thread.join()
+                        logger.info("Generation thread joined.")
+
+            except Exception as e:
+                logger.error(f"Stream generation error: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                asyncio.run_coroutine_threadsafe(queue.put({"error": str(e)}), loop)
+            finally:
+                logger.info("Producer thread finishing. Sending sentinel.")
+                asyncio.run_coroutine_threadsafe(queue.put(None), loop) # Sentinel
+
+        # Start producer thread
+        threading.Thread(target=_producer).start()
+
+        # Consume queue
+        logger.info("Consuming queue...")
+        while True:
+            item = await queue.get()
+            if item is None:
+                logger.info("Received sentinel. Stream finished.")
+                break
+            if isinstance(item, dict) and "error" in item:
+                 logger.error(f"Stream error in queue: {item['error']}")
+            yield item
+
     def get_current_model_name(self):
         """获取当前加载的模型名称或路径"""
         return self.text_model_path
@@ -183,62 +313,62 @@ class LLMModule:
 
     def _chat_sync(self, prompt, max_tokens, temperature, min_p, repetition_penalty, top_p):
         """同步推理逻辑"""
-        
-        if self.is_gguf:
-            return self._chat_sync_gguf(prompt, max_tokens, temperature, repetition_penalty, top_p)
-            
-        # Transformers logic
-        # 处理消息列表，应用 Chat Template
-        if isinstance(prompt, list):
-            try:
-                # 使用 apply_chat_template 自动格式化为 Llama-3 格式
-                # 假设 prompt 是 [{"role": "system", "content": ...}, {"role": "user", "content": ...}]
-                prompt_text = self.tokenizer.apply_chat_template(
-                    prompt, 
-                    tokenize=False, 
-                    add_generation_prompt=True
-                )
-            except Exception as e:
-                logger.warning(f"应用Chat Template失败，回退到原始文本: {e}")
+        with self._thread_lock:
+            if self.is_gguf:
+                return self._chat_sync_gguf(prompt, max_tokens, temperature, repetition_penalty, top_p)
+                
+            # Transformers logic
+            # 处理消息列表，应用 Chat Template
+            if isinstance(prompt, list):
+                try:
+                    # 使用 apply_chat_template 自动格式化为 Llama-3 格式
+                    # 假设 prompt 是 [{"role": "system", "content": ...}, {"role": "user", "content": ...}]
+                    prompt_text = self.tokenizer.apply_chat_template(
+                        prompt, 
+                        tokenize=False, 
+                        add_generation_prompt=True
+                    )
+                except Exception as e:
+                    logger.warning(f"应用Chat Template失败，回退到原始文本: {e}")
+                    prompt_text = str(prompt)
+            else:
                 prompt_text = str(prompt)
-        else:
-            prompt_text = str(prompt)
 
-        inputs = self.tokenizer(prompt_text, return_tensors="pt")
-        if self.device == "cuda":
-            inputs = {k: v.cuda() for k, v in inputs.items()}
-            
-        with torch.no_grad():
-            # 构建生成参数
-            gen_kwargs = {
-                "max_new_tokens": max_tokens,
-                "temperature": temperature,
-                "do_sample": True,
-                "repetition_penalty": repetition_penalty,
-                "pad_token_id": self.tokenizer.eos_token_id
-            }
-            
-            # 支持 Min-P (如果 transformers 版本支持或手动实现，这里假设直接传递给 generate)
-            if min_p is not None:
-                gen_kwargs["min_p"] = min_p
-            
-            if top_p is not None:
-                gen_kwargs["top_p"] = top_p
+            inputs = self.tokenizer(prompt_text, return_tensors="pt")
+            if self.device == "cuda":
+                inputs = {k: v.cuda() for k, v in inputs.items()}
+                
+            with torch.no_grad():
+                # 构建生成参数
+                gen_kwargs = {
+                    "max_new_tokens": max_tokens,
+                    "temperature": temperature,
+                    "do_sample": True,
+                    "repetition_penalty": repetition_penalty,
+                    "pad_token_id": self.tokenizer.eos_token_id
+                }
+                
+                # 支持 Min-P (如果 transformers 版本支持或手动实现，这里假设直接传递给 generate)
+                if min_p is not None:
+                    gen_kwargs["min_p"] = min_p
+                
+                if top_p is not None:
+                    gen_kwargs["top_p"] = top_p
 
-            output = self.model.generate(
-                **inputs,
-                **gen_kwargs
+                output = self.model.generate(
+                    **inputs,
+                    **gen_kwargs
+                )
+                
+            response = self.tokenizer.decode(
+                output[0][len(inputs["input_ids"][0]):],
+                skip_special_tokens=True
             )
             
-        response = self.tokenizer.decode(
-            output[0][len(inputs["input_ids"][0]):],
-            skip_special_tokens=True
-        )
-        
-        return {
-            "status": "success",
-            "response": response
-        }
+            return {
+                "status": "success",
+                "response": response
+            }
 
     def _chat_sync_gguf(self, prompt, max_tokens, temperature, repetition_penalty, top_p):
         """GGUF (llama_cpp) 同步推理逻辑"""

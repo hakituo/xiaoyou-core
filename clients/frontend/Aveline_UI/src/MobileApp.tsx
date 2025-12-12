@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Settings, Menu, ArrowLeft, Save, MessageSquare, Database, LayoutGrid, User, Activity, X } from 'lucide-react';
+import { Settings, Menu, ArrowLeft, Save, MessageSquare, Database, LayoutGrid, User, Activity, X, BookOpen } from 'lucide-react';
 import { api } from './api/apiService';
 import config from './api/config';
 import { Message } from './types';
-import { resolveEmotionFromLabel, stripEmotionMarkers, ttsParamsForEmotion } from './utils/emotion';
+import { resolveEmotionFromLabel, stripEmotionMarkers, ttsParamsForEmotion, inferEmotionFromText } from './utils/emotion';
 import { useStatus } from './hooks/useStatus';
 import { useBreathingColors, BreathingBackground } from './components/BreathingSystem';
 import { useModels } from './hooks/useModels';
@@ -19,6 +19,7 @@ import MemoryPanel from './components/MemoryPanel';
 import PluginsPanel from './components/PluginsPanel';
 import PersonaPanel from './components/PersonaPanel';
 import StatusPanel from './components/StatusPanel';
+import StudyPanel from './components/StudyPanel';
 import { SessionList } from './components/SessionList';
 
 const STORAGE_KEY = 'aveline_chat_history_v2';
@@ -249,7 +250,8 @@ export function MobileApp() {
           normal: 150,
           long: 400
         };
-        const maxTokens = maxTokensMap[responseLength] || 150;
+        // Remove token limit for Study mode
+        const maxTokens = activeTab === 'Study' ? 4096 : (maxTokensMap[responseLength] || 150);
 
       // Ensure session exists
       let sessionId = currentSessionId;
@@ -290,7 +292,7 @@ export function MobileApp() {
 
       // Parse emotion
       let emoLabel = null;
-      if (res?.emotion && res.emotion !== 'neutral') {
+      if (res?.emotion) {
           emoLabel = res.emotion;
       } else {
           // Fallback regex for [EMO:happy], {happy}, or [happy]
@@ -301,6 +303,14 @@ export function MobileApp() {
       }
 
       const cleanText = stripEmotionMarkers(fullReply);
+      
+      // If no explicit emotion tag, infer from text content
+      if (!emoLabel || emoLabel === 'neutral') {
+          const inferred = inferEmotionFromText(cleanText);
+          if (inferred !== 'neutral') {
+              emoLabel = inferred;
+          }
+      }
       
       if (emoLabel) {
         const parsed = resolveEmotionFromLabel(emoLabel);
@@ -360,18 +370,20 @@ export function MobileApp() {
          setTimeout(() => reject(new Error("TTS Timeout")), 30000)
        );
 
-       const res = await Promise.race([
-         api.tts({
-           text,
-           text_language: "中英混合",
-           prompt_language: "中英混合",
-           speed: params.speed,
-           pitch: params.pitch,
-           emotion: params.emotion,
-           gpt_sovits_weights: selectedVoiceId
-         }),
-         timeoutPromise
-       ]) as any;
+       const refAudio = sessionStorage.getItem('selected_ref_audio');
+      const res = await Promise.race([
+        api.tts({
+          text,
+          text_language: "中英混合",
+          prompt_language: "中英混合",
+          speed: params.speed,
+          pitch: params.pitch,
+          emotion: params.emotion,
+          gpt_sovits_weights: selectedVoiceId,
+          reference_audio: refAudio || undefined
+        }),
+        timeoutPromise
+      ]) as any;
 
        const b64 = res?.data?.audio_base64;
        if (b64) {
@@ -420,6 +432,7 @@ export function MobileApp() {
   const navItems = [
     { id: 'Chat', icon: <MessageSquare size={20} />, label: 'Chat' },
     { id: 'Memory', icon: <Database size={20} />, label: 'Memory' },
+    { id: 'Study', icon: <BookOpen size={20} />, label: 'Study' },
     { id: 'Plugins', icon: <LayoutGrid size={20} />, label: 'Apps' },
     { id: 'Status', icon: <Activity size={20} />, label: 'Status' },
     { id: 'Settings', icon: <User size={20} />, label: 'Me' },
@@ -595,6 +608,12 @@ export function MobileApp() {
                         onDelete={handleDeleteMessage}
                         storageKey={STORAGE_KEY}
                    />
+               </div>
+           )}
+
+           {activeTab === 'Study' && (
+               <div className="flex-1 overflow-hidden relative flex flex-col">
+                   <StudyPanel />
                </div>
            )}
 

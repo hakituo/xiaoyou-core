@@ -11,7 +11,7 @@ import os
 import json
 import asyncio
 import aiofiles
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from config.integrated_config import get_settings
@@ -43,8 +43,29 @@ class ActiveCareService:
         logger.info("Initializing ActiveCareService...")
         self.scheduler = AsyncIOScheduler()
         
-        # Check every 1 minute to support granular random delays (0, 10, 20, 30 mins)
-        self.scheduler.add_job(self._proactive_check, 'interval', minutes=1, args=[False])
+        # Check every 2 minutes to reduce log noise and collisions
+        self.scheduler.add_job(
+            self._proactive_check, 
+            'interval', 
+            minutes=2, 
+            args=[False], 
+            max_instances=1, 
+            coalesce=True,
+            misfire_grace_time=60
+        )
+        
+        # Check daily vocabulary every hour
+        self.scheduler.add_job(
+            self._check_daily_vocabulary, 
+            'interval', 
+            hours=1, 
+            max_instances=1, 
+            coalesce=True
+        )
+        
+        # Also run once on startup (with a small delay to let LLM load)
+        self.scheduler.add_job(self._check_daily_vocabulary, 'date', run_date=datetime.now() + timedelta(seconds=15))
+
         self.scheduler.start()
         self._running = True
         
@@ -110,6 +131,48 @@ class ActiveCareService:
             if not svc:
                 logger.warning("Active Care: Service not ready, skipping")
                 return
+
+            # 0. Check if any client is connected
+            # If no client is connected, proactive messages are wasted.
+            try:
+                from core.server.connection_manager import get_connection_manager
+                # Note: get_websocket_manager imported locally below to avoid circular imports
+                
+                has_active_client = False
+                
+                # Check legacy ConnectionManager
+                try:
+                    conn_manager = get_connection_manager()
+                    if conn_manager and conn_manager.get_active_count() > 0:
+                        has_active_client = True
+                except Exception:
+                    pass
+                
+                # Check enhanced WebSocketManager
+                if not has_active_client:
+                    try:
+                        # Use local import for get_websocket_manager to avoid potential circular import issues
+                        # if the module is large or imports many other things.
+                        from core.interfaces.websocket.websocket_manager import get_websocket_manager
+                        ws_manager = get_websocket_manager()
+                        # Check if it has connections (assuming stats or connections dict)
+                        if ws_manager and hasattr(ws_manager, 'connections') and len(ws_manager.connections) > 0:
+                            has_active_client = True
+                    except (ImportError, Exception):
+                        # Enhanced WebSocketManager might not be available in all setups
+                        pass
+                
+                if not has_active_client:
+                    logger.debug("Active Care: No active clients connected. Skipping proactive check.")
+                    return
+
+            except Exception as e:
+                logger.warning(f"Active Care: Failed to check client connection status: {e}")
+                # If check fails, assume we should proceed (fail open) or return?
+                # Let's fail open to be safe, or return to save resources.
+                # Given user request "if frontend is not open, it's useless", we should probably return.
+                # But if check failed, maybe managers aren't initialized.
+                pass
 
             # Get last interaction time
             sim_service = get_life_simulation_service()
@@ -280,6 +343,7 @@ class ActiveCareService:
                 
                 # Only send if generation successful and contains EMO
                 if text and "EMO" in text:
+                    # 1. Broadcast to WebSocket (for Electron/Web)
                     conn_manager = get_connection_manager()
                     await conn_manager.broadcast({
                         "type": "chat_message",
@@ -287,7 +351,40 @@ class ActiveCareService:
                         "content": text,
                         "timestamp": datetime.now().isoformat()
                     })
+                    
+                    # 2. Push to NotificationManager (for Android/Pollers)
+                    try:
+                        from core.managers.notification_manager import get_notification_manager
+                        nm = get_notification_manager()
+                        # Use a default user_id or "default"
+                        # Ideally, we should iterate over active users, but for single-user system:
+                        user_id = "default" 
+                        
+                        # Clean up text (remove EMO tag for title if needed, or keep it)
+                        # The text likely contains [EMO: ...] Content
+                        # Let's strip EMO for title
+                        clean_content = text
+                        import re
+                        emo_match = re.search(r'\[EMO:.*?\]', text)
+                        if emo_match:
+                            clean_content = text.replace(emo_match.group(0), "").strip()
+                            
+                        nm.add_notification(
+                            user_id=user_id,
+                            type="text",
+                            title="Aveline的主动关怀",
+                            content=clean_content,
+                            payload={"raw_text": text}
+                        )
+                    except Exception as ne:
+                        logger.warning(f"Active Care: Failed to push to NotificationManager: {ne}")
+
                     logger.info(f"Active Care: Pushed - {text[:20]}...")
+                    
+                    # Force update local state to prevent immediate re-trigger
+                    # This ensures we don't trigger again in the next minute loop
+                    # even if LifeSimulationService update is delayed or skipped
+                    self.last_checked_interaction = datetime.now().timestamp()
                     
                     # Update count
                     if not is_startup:
@@ -302,6 +399,85 @@ class ActiveCareService:
                 
         except Exception as e:
             logger.error(f"Active Care execution error: {e}")
+
+    async def _check_daily_vocabulary(self):
+        """Check and push daily vocabulary if not already done today"""
+        try:
+            # 1. Check status file
+            runtime_dir = self.settings.memory.history_dir or "runtime"
+            if not os.path.isabs(runtime_dir):
+                base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+                runtime_dir = os.path.join(base_dir, runtime_dir)
+            
+            os.makedirs(runtime_dir, exist_ok=True)
+            vocab_file = os.path.join(runtime_dir, 'daily_vocab_status.json')
+            
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            status = {}
+            if os.path.exists(vocab_file):
+                try:
+                    async with aiofiles.open(vocab_file, 'r', encoding='utf-8') as f:
+                        content = await f.read()
+                        if content:
+                            status = json.loads(content)
+                except Exception:
+                    pass
+                
+            if status.get(today_str, False):
+                return # Already pushed today
+                
+            # 2. Get Vocabulary from Manager
+            logger.info("Fetching daily vocabulary from manager...")
+            try:
+                from core.tools.study.english.vocabulary_manager import VocabularyManager
+                vm = VocabularyManager()
+                words = vm.get_daily_words(limit=20)
+                
+                if not words:
+                    logger.warning("No vocabulary words available.")
+                    return
+
+                # Format content
+                content_lines = ["📅 **每日单词 (Daily Vocabulary)**\n"]
+                content_lines.append("Here are your 20 words for today! Keep it up! ✨\n")
+                
+                for idx, item in enumerate(words):
+                    word = item['word']
+                    translation = "暂无释义"
+                    if item.get('translations'):
+                        t = item['translations'][0]
+                        translation = f"{t['type']}. {t['translation']}"
+                    
+                    status_icon = "🆕" if item.get('status') == 'new' else "🔄"
+                    content_lines.append(f"{idx+1}. {status_icon} **{word}** - {translation}")
+                
+                content = "\n".join(content_lines)
+                
+                # 3. Push Notification
+                from core.managers.notification_manager import get_notification_manager
+                nm = get_notification_manager()
+                nm.add_notification(
+                    user_id="default",
+                    type="vocabulary",
+                    title="每日单词 (20个)",
+                    content="点击查看今日单词...", # Short preview
+                    payload={"full_text": content}
+                )
+                
+                # 4. Save status
+                status[today_str] = True
+                async with aiofiles.open(vocab_file, 'w', encoding='utf-8') as f:
+                    await f.write(json.dumps(status))
+                    
+                logger.info("Daily vocabulary pushed.")
+                
+            except ImportError:
+                logger.error("VocabularyManager not found.")
+            except Exception as e:
+                logger.error(f"Error processing vocabulary: {e}")
+
+        except Exception as e:
+            logger.error(f"Failed to generate daily vocabulary: {e}")
 
 _active_care_service = None
 

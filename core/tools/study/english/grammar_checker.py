@@ -19,7 +19,14 @@ class GrammarChecker:
     
     def __init__(self):
         """初始化语法检测器"""
-        self.tool = LanguageTool('en-US')  # 初始化语言工具
+        # 使用公共远程服务器以避免下载本地Java服务器（解决下载慢的问题）
+        # 注意：公共服务器可能有请求限制
+        try:
+            self.tool = LanguageTool('en-US', remote_server='https://api.languagetool.org/v2/')
+        except Exception as e:
+            print(f"Warning: Failed to connect to LanguageTool remote server: {e}. Falling back to local/default.")
+            self.tool = LanguageTool('en-US')
+            
         self.config = {
             "detect_chinese_english": True,  # 检测中式英语
             "error_types": {

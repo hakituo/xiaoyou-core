@@ -149,7 +149,13 @@ class VectorSearch:
                             os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
                         try:
-                            # Try loading the standard model
+                            # Try loading the standard model with CPU enforced to save VRAM for LLM
+                            return embedding_functions.SentenceTransformerEmbeddingFunction(
+                                model_name=model_name,
+                                device="cpu"
+                            )
+                        except TypeError:
+                            # Older versions might not support device arg
                             return embedding_functions.SentenceTransformerEmbeddingFunction(model_name=model_name)
                         except Exception as e:
                             logger.warning(f"Failed to load SentenceTransformer: {e}. Trying with SSL verification disabled...")

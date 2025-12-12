@@ -203,32 +203,84 @@ class VocabularyManager:
             elif data["reps"] == 1:
                 data["interval"] = 6
             else:
-                data["interval"] = math.ceil(data["interval"] * data["easiness"])
+                data["interval"] = round(data["interval"] * data["easiness"])
             
             data["reps"] += 1
-            
-            # Update Easiness Factor
-            # EF' = EF + (0.1 - (5-q) * (0.08 + (5-q) * 0.02))
-            # q = quality
-            data["easiness"] = data["easiness"] + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02))
+            data["easiness"] += (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02))
             if data["easiness"] < 1.3:
                 data["easiness"] = 1.3
-                
         else:
-            # Forgot the word, reset reps and interval
             data["reps"] = 0
             data["interval"] = 1
-            # Easiness doesn't change on failure in standard SM-2, but some variants decrease it.
-            # We'll keep it simple.
             
-        # Calculate next review time (interval is in days)
-        # Add random jitter (±5%) to prevent bunching
-        jitter = random.uniform(0.95, 1.05)
-        next_review_seconds = data["interval"] * 24 * 3600 * jitter
-        data["next_review"] = time.time() + next_review_seconds
-        
+        data["next_review"] = time.time() + data["interval"] * 86400
         self._save_progress()
-        logger.info(f"Updated progress for '{word}': interval={data['interval']}d, next_review={datetime.fromtimestamp(data['next_review'])}")
+        
+    def get_mistakes(self, limit: int = 20) -> List[Dict]:
+        """Get words with high error rates"""
+        mistake_counts = []
+        
+        for word, data in self.progress.items():
+            errors = sum(1 for h in data.get("history", []) if h["quality"] < 3)
+            if errors > 0:
+                mistake_counts.append({
+                    "word": word,
+                    "error_count": errors,
+                    "last_error": data.get("history", [])[-1]["timestamp"] if data.get("history") else 0
+                })
+        
+        # Sort by error count descending
+        mistake_counts.sort(key=lambda x: x["error_count"], reverse=True)
+        
+        # Get full details
+        result = []
+        for m in mistake_counts[:limit]:
+            info = self.get_word_info(m["word"])
+            if info:
+                result.append({
+                    **m,
+                    "translations": info.get("translations", [])
+                })
+        
+        return result
+
+    def get_retention_curve(self) -> List[int]:
+        """
+        Calculate retention curve based on user's average stability/easiness.
+        Returns projected retention % for days 1-7.
+        """
+        if not self.progress:
+            return [100, 80, 60, 45, 35, 28, 25] # Default Ebbinghaus
+            
+        # Calculate average easiness
+        total_easiness = sum(d["easiness"] for d in self.progress.values())
+        avg_easiness = total_easiness / len(self.progress)
+        
+        # Calculate average interval (stability)
+        total_interval = sum(d["interval"] for d in self.progress.values())
+        avg_interval = total_interval / len(self.progress)
+        
+        # If user is advanced (high interval), curve is flatter
+        # If user is struggling (low easiness), curve drops faster
+        
+        # Simplified projection model
+        curve = []
+        for day in range(1, 8): # Days 0 to 6? Frontend shows 7 bars.
+            # R = e^(-t/S)
+            # We scale S by avg_easiness/2.5 to account for difficulty
+            
+            # Use a blended stability factor: avg_interval (long term) + avg_easiness (inherent)
+            # For new users, avg_interval is ~1.
+            stability = max(1.0, avg_interval * 0.5 + (avg_easiness - 2.5) * 5)
+            
+            retention = math.exp(-day / stability) * 100
+            curve.append(min(100, max(5, int(retention))))
+            
+        # Normalize first day to near 100 if it's too low? No, let it reflect reality.
+        # But for UI consistency, maybe Day 0 is 100.
+        # Frontend shows 7 bars. Let's assume they are Day 1-7.
+        
+        return curve
 
     def get_stats(self) -> Dict:
         """Get learning statistics"""

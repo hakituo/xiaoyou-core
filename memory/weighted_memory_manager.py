@@ -123,6 +123,7 @@ class WeightedMemoryManager:
         
         # 扩展数据结构 (WeightedMemoryManager 特有)
         self.weighted_memories: Dict[str, Dict[str, Any]] = {}  # 按ID索引的权重记忆
+        self.important_prompts: List[Dict[str, Any]] = []  # Layer 3: Important Prompts
         self.topic_weights: Dict[str, float] = defaultdict(float)  # 话题权重映射
         self.emotion_memory_map: Dict[str, List[Dict[str, Any]]] = defaultdict(list)  # 情绪-记忆映射
         
@@ -135,6 +136,7 @@ class WeightedMemoryManager:
         
         # 加载权重数据
         self._load_weighted_data()
+        self._load_important_prompts()
         
         # 启动时自动重分类（优化历史数据）
         if not self.skip_auto_reclassify:
@@ -464,6 +466,14 @@ class WeightedMemoryManager:
             if is_important or weight > 1.2:
                 self.weighted_memories[memory_id] = memory
                 
+                # Layer 3: Important Prompts (High Weight Promotion)
+                # Threshold set to 4.0 (requires e.g. importance * 3 + some bonus)
+                if weight >= 4.0 or (is_important and "user_instruction" in topics):
+                    # Check if already exists to avoid duplicates
+                    if not any(m['content'] == content for m in self.important_prompts):
+                        self.important_prompts.append(memory)
+                        logger.info(f"Memory promoted to Layer 3 (Important Prompt): {content[:30]}... (Weight: {weight})")
+                
                 for topic in topics:
                     self.topic_weights[topic] += 0.1
                 
@@ -622,6 +632,11 @@ class WeightedMemoryManager:
                             )
                             self.weighted_memories[memory["id"]] = memory
                     
+                    # 兼容性处理：如果旧版本数据在 weighted.json 中，迁移到 important_prompts
+                    if "important_prompts" in data and not self.important_prompts:
+                        self.important_prompts = data["important_prompts"]
+                        logger.info(f"已从 weighted.json 迁移 {len(self.important_prompts)} 条重要Prompt")
+                    
                     if "topic_weights" in data:
                         self.topic_weights = defaultdict(float, data["topic_weights"])
                     
@@ -632,6 +647,25 @@ class WeightedMemoryManager:
         except Exception as e:
             logger.error(f"加载权重数据时出错: {e}")
     
+    def _load_important_prompts(self):
+        """加载重要Prompt层数据 (Layer 3)"""
+        try:
+            prompts_file = WEIGHTED_MEMORY_DIR / "important_prompts.json"
+            if prompts_file.exists():
+                with open(prompts_file, 'r', encoding=DEFAULT_ENCODING) as f:
+                    data = json.load(f)
+                    if isinstance(data, list):
+                        self.important_prompts = data
+                        logger.info(f"已加载 {len(self.important_prompts)} 条重要Prompt")
+                    elif isinstance(data, dict) and "important_prompts" in data:
+                        # 兼容可能得字典格式
+                        self.important_prompts = data["important_prompts"]
+            else:
+                logger.info("未找到 important_prompts.json，将创建新文件")
+        except Exception as e:
+            logger.error(f"加载重要Prompt数据失败: {e}")
+            self.important_prompts = []
+
     def save_memory(self):
         """保存记忆数据（包括权重数据）"""
         # 保存基础数据 (逻辑来自原 EnhancedMemoryManager.save_memory)
@@ -649,17 +683,24 @@ class WeightedMemoryManager:
                 
                 # 保存权重数据 (也在锁内)
                 self._save_weighted_data_locked()
+                self._save_important_prompts_locked()
                 self.last_save_time = time.time()
                 
         except Exception as e:
             logger.error(f"保存记忆失败: {e}")
         
+    def get_important_prompts(self) -> List[Dict[str, Any]]:
+        """获取重要Prompt层记忆 (Layer 3)"""
+        with self.lock:
+            return list(self.important_prompts)
+
     def _save_weighted_data_locked(self):
         """保存权重相关数据 (假设已持有锁)"""
         try:
             weighted_file = WEIGHTED_MEMORY_DIR / f"{self.user_id}_weighted.json"
             data = {
                 "weighted_memories": list(self.weighted_memories.values()),
+                # "important_prompts": self.important_prompts, # 已移至独立文件
                 "topic_weights": dict(self.topic_weights),
                 "emotion_memory_map": dict(self.emotion_memory_map),
                 "last_updated": time.time()
@@ -676,6 +717,27 @@ class WeightedMemoryManager:
             logger.debug(f"已保存用户 {self.user_id} 的权重数据")
         except Exception as e:
             logger.error(f"保存权重数据时出错: {e}")
+
+    def _save_important_prompts_locked(self):
+        """保存重要Prompt层数据 (假设已持有锁)"""
+        try:
+            prompts_file = WEIGHTED_MEMORY_DIR / "important_prompts.json"
+            
+            # 使用列表格式直接存储，或者包装在对象中
+            # 为了简单和可读性，直接存储列表
+            data = self.important_prompts
+            
+            temp_file_path = str(prompts_file) + '.tmp'
+            with open(temp_file_path, 'w', encoding=DEFAULT_ENCODING) as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+                
+            if os.path.exists(prompts_file):
+                os.remove(prompts_file)
+            os.rename(temp_file_path, prompts_file)
+            
+            logger.debug(f"已保存重要Prompt数据，共 {len(self.important_prompts)} 条")
+        except Exception as e:
+            logger.error(f"保存重要Prompt数据时出错: {e}")
 
     def _save_weighted_data(self):
         """保存权重相关数据 (对外接口，获取锁)"""

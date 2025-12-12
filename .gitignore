@@ -11,6 +11,13 @@ legacy/
 logs/
 chromadb/
 data/chroma/
+Aveline.json
+core/character/configs/Aveline.json
+core/character/configs/*.json
+
+# --- User Data ---
+data/emotions/
+data/user_states/
 
 # --- Sensitive Data & Secrets ---
 .env
