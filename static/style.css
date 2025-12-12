@@ -1,4 +1,0 @@
-body{background:linear-gradient(135deg,#111,#333);color:#fff;font-family:'Inter';}
-#chat-window{height:450px;overflow-y:auto;padding:10px;margin:10px;border-radius:12px;background:radial-gradient(circle at 30% 30%,rgba(255,255,255,0.05),rgba(0,0,0,0.4));box-shadow:0 0 20px rgba(0,255,255,0.2);}
-p{padding:4px 6px;margin:2px 0;border-radius:6px;animation:fadeIn 0.3s;}
-@keyframes fadeIn{from{opacity:0}to{opacity:1}}
