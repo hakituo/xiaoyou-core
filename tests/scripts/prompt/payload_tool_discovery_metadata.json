@@ -1,0 +1,28 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-24",
+      "weekday": "周一",
+      "title": "整理工具发现分类并改为权限内按需加载 schema",
+      "background": "主对话完整注册 80 余个工具，原有 category 同时被当作权限分类和业务分类，utility 等大类过载；仅靠关键词路由缩减 schema 时，未命中的工具又无法被模型选择。",
+      "root_causes": [
+        "BaseTool.category 是现有人设权限过滤依据，不能直接改造成业务发现分类",
+        "流式与非流式多轮调用会复用首轮 schema，缺少先发现候选、下一轮再扩展参数定义的机制"
+      ],
+      "fixes": [
+        "新增统一工具发现元数据目录，将 83 个工具整理为 21 个领域，并补齐标签、风险等级、加载策略和短摘要",
+        "新增常驻 search_tools，只在当前人设可见工具集合内搜索候选",
+        "流式与非流式路径在搜索完成后只追加命中的候选 schema，同时保留原有 category 权限语义",
+        "保留关键词路由作为低延迟快路径，并为工具元数据完整性、检索质量和权限隔离增加专项验证"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\prompt\\verify_tool_discovery_metadata.py",
+        "venv_core\\Scripts\\python.exe tests\\scripts\\prompt\\verify_prompt_tool_schema_budget.py"
+      ],
+      "notes": [
+        "普通闲聊实测从全量 83 个、48311 schema 字符降为 5 个、1870 schema 字符；search_tools 命中后只追加候选，不恢复全量注入"
+      ]
+    }
+  ],
+  "question_reviewers": []
+}

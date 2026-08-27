@@ -1,0 +1,62 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-24",
+      "weekday": "周一",
+      "title": "主对话工具 Schema 按需注入并移除云端 Prompt 重复说明",
+      "background": "主对话 API 日志显示每轮约 21k 至 23k prompt tokens，但角色 system prompt 仅约 2.2k 字符；恒定上下文主要由每轮发送的完整工具定义产生。",
+      "root_causes": [
+        "流式与非流式发送链直接使用 ToolRegistry.get_active_tools，将 82 个工具 schema 全量发送给模型",
+        "云模型已经通过原生 function schema 获取工具定义，assembler.py 又在动态文本中注入精简工具列表，形成重复"
+      ],
+      "fixes": [
+        "新增稳定的消息领域工具路由，普通闲聊仅携带基础工具，天气、计划、日记、记忆、健康和设备等工具按本轮意图加入",
+        "StreamPreparation 只计算一次 active_tools，并让 prompt 装配与原生 function calling 共用；非流式路径使用相同选择逻辑",
+        "云模型停止重复注入文本工具列表，本地模型保留兼容说明；原生工具日志增加 schema_chars"
+      ],
+      "verification": [
+        ".\\venv_core\\Scripts\\python.exe tests\\scripts\\prompt\\verify_prompt_tool_schema_budget.py",
+        ".\\venv_core\\Scripts\\python.exe -m ruff check core\\agents\\chat_agent_components\\context_persona.py core\\agents\\chat_agent_components\\streaming_pipeline\\preparation.py core\\agents\\chat_agent_components\\streaming_pipeline\\dynamic_context.py core\\agents\\chat_agent.py core\\agents\\chat_agent_components\\context.py core\\agents\\chat_agent_components\\streaming_pipeline\\model_resolution.py core\\agents\\chat_agent_components\\streaming.py core\\agents\\chat_agent_components\\handler.py core\\agents\\chat_agent_components\\persona_system\\prompt\\assembler.py tests\\scripts\\prompt\\verify_prompt_tool_schema_budget.py"
+      ],
+      "notes": [
+        "验证环境中普通闲聊 schema 从 82 个、47898 字符降至 4 个、1457 字符，字符量减少约 97%",
+        "实际 API prompt tokens 需要服务重启后的下一轮真实对话日志确认"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "QR-20260824-PROMPT-TOOL-SCHEMA-BLOAT",
+      "title": "角色人设较短但主对话恒定 Prompt 仍超过 20k Tokens",
+      "date": "2026-08-24",
+      "category": "11_persona_character",
+      "problem": "角色 system prompt 只有约 2.2k 字符，主对话请求的 prompt_tokens 却长期保持在 21k 至 23k，工具链信息明显压过角色人设。",
+      "steps": [
+        "查看 logs/prompt_cache_stats.log 中 source=streaming.py::stream_chat_impl 的真实 API usage",
+        "对照 xiaoyou_main.log 的 PromptData TemplateLen、CompleteMessageList StaticLen 和 Native Tools 注册数量",
+        "序列化 ToolRegistry 全量原生工具 schema 并统计字符数"
+      ],
+      "expected": [
+        "普通闲聊只发送基础工具定义，领域工具仅在相关意图出现时发送",
+        "云模型不在消息文本和原生 function schema 中重复接收同一份工具说明"
+      ],
+      "actual": [
+        "普通主对话每轮注册 79 至 82 个原生工具，API prompt_tokens 约 21k 至 23k",
+        "82 个工具 schema 序列化后为 47898 字符，而普通角色静态 prompt 仅约 2187 至 2372 字符"
+      ],
+      "root_causes": [
+        "模型发送路径绕过了 context_persona 已生成的 active_tools，重新读取并发送全部启用工具",
+        "assembler.py 对云模型继续追加 get_concise_tool_prompt，重复描述原生工具"
+      ],
+      "fixes": [
+        "让流式和非流式路径复用消息级 active_tools，并在 prepare_native_tools 中只序列化本轮集合",
+        "补齐常用领域关键词路由，保留完整注册表的可达性",
+        "仅本地模型保留文本工具清单"
+      ],
+      "verification": [
+        "verify_prompt_tool_schema_budget.py 4 项通过，普通闲聊 schema 从 47898 字符降至 1457 字符",
+        "Ruff 与 py_compile 通过"
+      ]
+    }
+  ]
+}

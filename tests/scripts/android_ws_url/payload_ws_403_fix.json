@@ -1,0 +1,71 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-09",
+      "weekday": "周日",
+      "title": "修复 Android 端 WebSocket 反复 403（buildWsUrl 协议头转换 bug）",
+      "background": "Android 端 WebSocket 连接反复 403 Forbidden，日志显示 path 为 //192.168.31.225:8000/api/v1/ws（正常应为 /api/v1/ws），整个 host:port 段被当成 path 落入后端静态文件挂载点被拒。",
+      "root_causes": [
+        "WebSocketManager.buildWsUrl 用 Kotlin String.replaceFirst(\"^http\", \"ws\") 做协议头转换，但该重载是字面量匹配而非正则，\"^http\" 只匹配字面 5 个字符，不会匹配以 http 开头的字符串",
+        "由于 validateBackendUrl 强制要求 backendUrl 以 http:// 或 https:// 开头，用户存入的地址一定带 http(s):// 前缀，replaceFirst 不匹配后 wsBase 仍为 http://host",
+        "兜底逻辑把未以 ws(s):// 开头的字符串拼成 wss://http://host，OkHttp 解析后 host 段被当成 \"http\"，真正的 //host:port/api/v1/ws 全部落入 path",
+        "NetworkModule 的 baseUrlInterceptor 只修正 scheme/host/port 不修正 path，最终服务端收到畸形 path 匹配不到 /api/v1/ws 路由，落入 HTTPOnlyStaticFiles 挂载点被拒（403）"
+      ],
+      "fixes": [
+        "WebSocketManager: 提取 normalizeWsScheme 到 companion object，用 startsWith 显式分支替代有歧义的 replaceFirst，正确把 http:// 转 ws://、https:// 转 wss://、无协议头补 wss://",
+        "CompanionModelTab.kt: 顺带补上缺失的 Box 与 TextOverflow import（预先存在的编译错误，阻止测试运行）"
+      ],
+      "verification": [
+        "tests/scripts/android_ws_url/verify_ws_url_scheme_fix.py（Python 等价实现，对比新旧逻辑，9 用例全部通过）",
+        "app/src/test/java/com/aveline/ai/mobile/data/remote/api/WebSocketManagerUrlTest.kt（Kotlin 单元测试，因其他测试预先编译错误未能运行，逻辑由 Python 脚本等价覆盖）"
+      ],
+      "notes": [
+        "Kotlin String.replaceFirst 有两个重载：replaceFirst(oldValue: String, newValue: String) 字面量匹配，replaceFirst(regex: Regex, replacement: String) 正则匹配；带 ^ 锚点时必须用 Regex 版本或改用 startsWith",
+        "旧的 replaceFirst 注释里已写了 '协议相对写法 //host:port 必须先 removePrefix(//)' 的兜底，但因为 replaceFirst 本身就失效，http:// 的场景从未被正确处理"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "WS-403-001",
+      "title": "Android 端 WebSocket 反复 403（buildWsUrl 协议头转换 bug）",
+      "date": "2026-08-09",
+      "category": "08_websocket_network",
+      "problem": "Android 端 WebSocket 连接反复返回 403 Forbidden。后端日志：[WARNING] 拒绝未匹配的 WebSocket 连接（落入静态文件挂载点）: path=//192.168.31.225:8000/api/v1/ws；uvicorn 访问日志：WebSocket //192.168.31.225%3A8000/api/v1/ws?token=...&user_id=mobile_user 403。path 中包含了本应是 host:port 的 //192.168.31.225:8000 段，且 ':' 被 URL 编码成 %3A。",
+      "steps": [
+        "后端启动，监听 192.168.31.225:8000",
+        "Android 端设置后端地址为 http://192.168.31.225:8000（validateBackendUrl 强制 http(s):// 前缀）",
+        "WebSocketManager.connect() 调用 buildWsUrl 构造 ws URL",
+        "buildWsUrl 中 replaceFirst(\"^http\", \"ws\") 字面量匹配不生效，wsBase 仍为 http://192.168.31.225:8000",
+        "兜底逻辑拼成 wss://http://192.168.31.225:8000/api/v1/ws",
+        "OkHttp 解析：scheme=wss, host=http, path=//192.168.31.225:8000/api/v1/ws",
+        "baseUrlInterceptor 修正 host=192.168.31.225, port=8000，但 path 未修正",
+        "服务端收到 path=//192.168.31.225%3A8000/api/v1/ws，匹配不到 /api/v1/ws 路由，落入静态文件挂载点返回 403"
+      ],
+      "expected": [
+        "buildWsUrl 把 http://192.168.31.225:8000 转成 ws://192.168.31.225:8000/api/v1/ws",
+        "OkHttp 解析：scheme=ws, host=192.168.31.225, port=8000, path=/api/v1/ws",
+        "服务端收到 path=/api/v1/ws，匹配 WebSocket 路由，连接成功"
+      ],
+      "actual": [
+        "buildWsUrl 把 http://192.168.31.225:8000 拼成 wss://http://192.168.31.225:8000/api/v1/ws",
+        "OkHttp 解析：host=http, path=//192.168.31.225:8000/api/v1/ws",
+        "baseUrlInterceptor 修正 host/port 但 path 仍为 //192.168.31.225:8000/api/v1/ws",
+        "服务端收到畸形 path，落入静态文件挂载点返回 403"
+      ],
+      "root_causes": [
+        "Kotlin String.replaceFirst(oldValue: String, newValue: String) 是字面量匹配，'^http' 只匹配字面 5 个字符，不匹配以 http 开头的字符串",
+        "代码作者误以为 replaceFirst 支持 ^ 正则锚点，实际需要传入 Regex 对象才支持正则",
+        "validateBackendUrl 强制 http(s):// 前缀，意味着所有用户输入都会命中这个 bug，而非只有无协议头的场景"
+      ],
+      "fixes": [
+        "提取 normalizeWsScheme 到 companion object，用 startsWith 显式分支：https:// 转 wss://、http:// 转 ws://、已有 ws(s):// 不变、无协议头补 wss://",
+        "用 internal 可见性便于单元测试覆盖",
+        "顺带修复 CompanionModelTab.kt 缺失的 Box/TextOverflow import（预先存在的编译错误）"
+      ],
+      "verification": [
+        "python tests/scripts/android_ws_url/verify_ws_url_scheme_fix.py（9 用例全部通过，旧实现复现畸形 URL，新实现 host/path 解析正确）"
+      ]
+    }
+  ]
+}

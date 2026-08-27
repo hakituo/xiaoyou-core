@@ -1,0 +1,68 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-15",
+      "weekday": "周六",
+      "title": "复习流转修复：daily 生词日志同步 + Again 重排上限 + 复习后移除已复习词",
+      "background": "用户复习时反馈四个问题：① 日志报 cannot import name 'get_daily_word_log_manager'；② 标\"不会\"的词无限循环，直到标\"会\"才不再出现（复习数从 45 叠到 100+）；③ 复习完仍提示还有 34 个待复习（与刚才复习的一模一样）；④ daily/2026/08/15.txt 为空，复习过的词没有按日期记录。",
+      "root_causes": [
+        "fsrs_scheduler.py 导入了不存在的 get_daily_word_log_manager（实际函数名 get_daily_word_log），导致标\"不会\"的词从未写入 daily 生词日志，且该异常只记 warning 不记 error",
+        "apply_progress 复习后不清理 daily 记录：标\"会\"的词仍留在昨天 daily 文件里，get_daily_words 第一阶段（拉昨天文件）每次全量返回 → 复习完再拉还是同一批",
+        "安卓端 Again 重排上限用 reviewResults.count{it.word==word} 判断，但 reviewResults 按词去重，计数恒 ≤1 → 上限失效，Again 词被无限重排直到用户标\"会\""
+      ],
+      "fixes": [
+        "fsrs_scheduler.py：修正导入名为 get_daily_word_log，日志级别 warning→error；复习后无论会/不会先 remove 旧记录（避免当天重拉复习词又出现），quality<=2 再写入当天文件（明天复习优先）",
+        "unfamiliar_word_book.py：新增 remove()（完全删除某词所有出现行，空行/分组保留，原子写回）",
+        "daily_word_log.py：新增 remove()（指定日期或最近出现日期），_get_book_for_date 懒建目录",
+        "安卓 VocabUiState 新增 redoCounts 字段，Again 重排计数独立于 reviewResults，每词最多重排 2 次；新会话/背新词会话重置 redoCounts"
+      ],
+      "verification": [
+        "verify_vocab_optimization.py 新增 check_daily_flow：临时目录验证会→移除旧记录不写今天、不会→移除旧记录+写今天，全部通过",
+        "ruff 检查通过，GetDiagnostics 无报错",
+        "需重启后端 + 重新构建安卓端后生效"
+      ],
+      "notes": [
+        "用户确认现有 daily 历史数据（08/14.txt 34 词）为脏数据，不清理，后续重背即可",
+        "复习进度本身已持久化在 output/user_data/vocab_progress.json（每次提交都保存），本次修复不影响已有 FSRS 进度"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "QR-20260815-VOCAB-REVIEW-LOOP",
+      "title": "复习\"不会\"词无限循环、复习完仍提示待复习、daily 日志不同步",
+      "date": "2026-08-15",
+      "category": "15_chat_agent",
+      "problem": "复习会话里标\"不会\"的词被无限重排直到标\"会\"；复习完重新拉取仍是同一批 34 个词；daily/2026/08/15.txt 为空，复习过的词未按日期记录。",
+      "steps": [
+        "进入复习，对某词选 Again（不会）",
+        "该词不断回到队尾再次出现，直到选 Good 才不再出现，复习数越叠越多",
+        "复习完返回，重新拉取复习列表仍是刚才那一批词",
+        "查看 daily/2026/08/15.txt 为空"
+      ],
+      "expected": [
+        "Again 的词每轮最多重排 2 次，之后交给 FSRS 短间隔调度",
+        "复习过（会）的词从待复习列表移除，不再出现",
+        "标\"不会\"的词写入当天 daily 文件，明天复习时优先出现"
+      ],
+      "actual": [
+        "Again 词无限重排（上限失效），复习数从 45 叠到 100+",
+        "复习完仍返回同一批词（昨天 daily 文件的词从未被移除）",
+        "daily 文件无任何写入（导入名错误导致同步静默失败）"
+      ],
+      "root_causes": [
+        "fsrs_scheduler.py 导入不存在的 get_daily_word_log_manager",
+        "apply_progress 未在复习后移除 daily 旧记录，也缺少\"会\"词的 mark_known 流转",
+        "安卓端重排计数基于按词去重的 reviewResults，导致重排上限恒不触发"
+      ],
+      "fixes": [
+        "修正导入名并升级错误日志级别",
+        "复习后统一 remove 旧记录，quality<=2 额外写入当天文件",
+        "安卓端用独立 redoCounts 计数重排次数"
+      ],
+      "verification": [
+        "verify_vocab_optimization.py check_daily_flow 通过（临时目录隔离验证流转）"
+      ]
+    }
+  ]
+}

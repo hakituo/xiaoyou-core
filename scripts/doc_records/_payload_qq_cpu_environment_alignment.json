@@ -1,0 +1,62 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-25",
+      "weekday": "周二",
+      "title": "QQ Adapter 启动环境与主程序统一为 venv_cpu",
+      "background": "主程序默认通过 venv_cpu 启动，但多个 QQ Adapter 启动入口硬编码 venv_core，导致同一次运行中的主程序与客户端依赖状态不一致。",
+      "root_causes": [
+        "QQ 启动脚本各自维护 Python 路径，没有跟随根目录 start.bat 的默认环境",
+        "venv_core 的 Torch 包元数据目录异常，Transformers 无法通过包元数据识别已经能够导入的 Torch"
+      ],
+      "fixes": [
+        "NapCat QQ、Multi QQ、QQ Official 与 PowerShell Adapter 启动入口统一优先使用 venv_cpu，仅在该环境不存在时回退到 venv_core",
+        "PowerShell 启动器从项目根目录解析并运行 clients/bots/multi_qq_adapter.py，避免相对路径指向错误目录",
+        "启动日志打印 QQ Adapter 实际使用的 Python 路径"
+      ],
+      "verification": [
+        ".\\venv_cpu\\Scripts\\python.exe tests\\scripts\\qq\\verify_qq_launcher_environment.py -> PASS",
+        ".\\venv_cpu\\Scripts\\python.exe -m ruff check tests\\scripts\\qq\\verify_qq_launcher_environment.py -> All checks passed",
+        "venv_cpu 实测 torch=2.13.0+cpu、transformers.is_torch_available()=True，websockets 与 onnxruntime 导入通过",
+        "start_adapter.ps1 PowerShell 语法解析通过"
+      ],
+      "notes": [
+        "本次未修改 venv_cpu 或 venv_core；venv_core 的 Torch 元数据异常保留为独立环境维护事项"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "QR-20260825-QQ-CPU-ENV",
+      "title": "QQ Adapter 与主程序使用不同虚拟环境导致 Transformers 误报缺少 PyTorch",
+      "date": "2026-08-25",
+      "category": "09_build_test_env",
+      "problem": "主程序使用 venv_cpu 启动时，QQ 表情包语义检索终端仍打印 Transformers 未发现 PyTorch，造成 CPU 环境缺少 Torch 的误判。",
+      "steps": [
+        "通过根目录 start.bat 启动主程序",
+        "通过 QQ 启动脚本启动独立 Adapter",
+        "触发表情包语义检索并观察 meme_search 后的 Transformers 告警"
+      ],
+      "expected": [
+        "QQ Adapter 与主程序优先使用同一个 venv_cpu",
+        "Transformers 能识别 venv_cpu 中的 CPU 版 Torch"
+      ],
+      "actual": [
+        "QQ Adapter 启动入口硬编码 venv_core",
+        "venv_core 虽能导入 Torch 2.11.0+cu128，但 Torch dist-info 元数据异常，Transformers 将其判定为不可用"
+      ],
+      "root_causes": [
+        "QQ 启动脚本没有复用主程序的默认环境优先级",
+        "venv_core 遗留多个异常 Torch 元数据目录，pip show torch 无法识别安装"
+      ],
+      "fixes": [
+        "全部 QQ 启动入口统一为 venv_cpu 优先、venv_core 回退",
+        "增加静态验证脚本防止后续启动环境再次分叉"
+      ],
+      "verification": [
+        "四个 QQ 启动入口的环境优先级检查通过",
+        "venv_cpu 中 Torch、Transformers、WebSocket 与 ONNX Runtime 实际导入通过"
+      ]
+    }
+  ]
+}

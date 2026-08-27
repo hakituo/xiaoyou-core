@@ -1,0 +1,60 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-18",
+      "weekday": "周二",
+      "title": "修正 Android 聊天页伴侣详情左滑入口与富文本手势归属",
+      "background": "上一轮按 Compose consumed 状态区分表格横滑后，设备上普通聊天区域仍无法稳定左滑进入伴侣详情。",
+      "root_causes": [
+        "Compose 的 consumed 状态也会被 clickable 和 LazyColumn 使用，无法可靠代表表格横向滚动",
+        "原有入口只允许从屏幕右半边起手，用户从大部分聊天区域左滑都会没有反应"
+      ],
+      "fixes": [
+        "新增显式横向内容手势状态，仅由表格、代码块和宽公式在触摸期间声明所有权",
+        "聊天页不再依据通用 consumed 状态拦截伴侣详情手势",
+        "除最左侧百分之十二的侧边栏保护区外，聊天区域均可左滑进入伴侣详情",
+        "扩充静态验证，覆盖富文本手势声明、状态下发和入口范围"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_frontend\\verify_chat_markdown_rendering.py：PASS",
+        "git diff --check：PASS（仅换行格式提示）",
+        "遵循项目规则未由 Codex 启动 Gradle，设备交互验证交由 Android Studio"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "ANDROID-COMPANION-GESTURE-OWNERSHIP-001",
+      "title": "聊天页普通区域左滑仍无法进入伴侣详情",
+      "date": "2026-08-18",
+      "category": "02_android_frontend",
+      "problem": "富文本横向滚动接入后，设备上从聊天内容区域左滑仍可能完全不触发伴侣详情。",
+      "steps": [
+        "进入 Android 聊天主页",
+        "从非表格的聊天内容区域向左滑",
+        "观察伴侣详情是否打开"
+      ],
+      "expected": [
+        "除左边缘侧边栏保护区外，普通聊天区域均能左滑打开详情",
+        "表格、代码块和宽公式内部横滑只滚动内容"
+      ],
+      "actual": [
+        "通用 consumed 状态可能将普通点击或列表事件误判为富文本横滑",
+        "右半屏起手限制使其他区域的左滑没有反应"
+      ],
+      "root_causes": [
+        "父子手势使用隐式消费标志仲裁，语义不明确",
+        "页面级手势的起手区域限制过窄"
+      ],
+      "fixes": [
+        "以 CompositionLocal 下发显式手势状态",
+        "横向富文本区域在按下至抬起期间声明所有权",
+        "页面入口扩展到左侧保护区之外的整个聊天区域"
+      ],
+      "verification": [
+        "verify_chat_markdown_rendering.py 静态回归检查通过",
+        "Android Studio 安装后需确认普通区域左滑、表格横滑及重复开关面板"
+      ]
+    }
+  ]
+}

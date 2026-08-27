@@ -1,0 +1,27 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-25",
+      "weekday": "周二",
+      "title": "短语词书规模复核并补充 Oxford 官方来源",
+      "background": "首批开放短语源出现四六级 2744/3482 条而雅思托福仅 205/158 条的明显失衡，需要用出版社原始资料校准规模与主来源。",
+      "root_causes": [
+        "开放源保留大量表达变体，四六级条目数显著高于出版社考试词组书的核心规模。",
+        "开放源的 IELTS/TOEFL 文件只是未完成的考试倾向补充，不是完整词书。"
+      ],
+      "fixes": [
+        "以清华大学出版社可验证的四级约 1000 条、六级约 1200 条作为四六级最终清洗规模基准。",
+        "归档 Oxford Phrase List 750 条、OPAL 学术写作约 370 条和学术口语约 250 条官方 PDF 原件。",
+        "明确雅思/托福以 Oxford 通用与功能短语加 Pearson 2469 条学术搭配为主干，205/158 条开放清单仅作补充。",
+        "扩展 verify_phrase_sources.py，校验三份 Oxford PDF 的文件头和 SHA-256。"
+      ],
+      "verification": [
+        "D:\\AI\\xiaoyou-core\\venv_core\\Scripts\\python.exe tests/scripts/study/verify_phrase_sources.py"
+      ],
+      "notes": [
+        "Oxford 与 Pearson 原件允许官方页面下载供学习，但未授予开放再分发许可证，继续只保存在 Git 忽略的本机数据区。"
+      ]
+    }
+  ],
+  "question_reviewers": []
+}

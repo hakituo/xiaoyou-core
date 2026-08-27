@@ -1,0 +1,76 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-25",
+      "weekday": "周二",
+      "title": "Nightly 按 scope/global 分阶段编排并校正模型路由与 Prompt Cache",
+      "background": "2026-08-25 的 05:00 fallback 按设计触发，但实际日志显示 6 个记忆 scope 被当成 6 个用户，导致日记、计划、数字健康和核心记忆整理被整套重复执行；当日数字健康空建议因此被重复写入 limits={}。用户同时要求核对 config 中的模型分工与 Prompt Cache 结构。",
+      "root_causes": [
+        "NightlyAnalysisService 对每个 scope 回调的 execute_async_tasks 同时包含 scope 任务和全局任务，全局任务被 scope 数量成倍放大",
+        "_task_executed_today 只存于内存且调用后无条件设为 True，无法在重启后去重，也会把失败任务误标完成",
+        "消息分析使用滚动 24 小时而不是 target_date 自然日，冷启动扫描又会遗漏 plain private_xxx_weighted.json",
+        "JournalPlanService 未显式传入 plan_generator 路由，实际落到 journal_model；偏好语义合并将规则和动态条目全放在 user prompt，前缀不稳定"
+      ],
+      "fixes": [
+        "将 nightly 拆成每个记忆 scope 的蒸馏/人物档案阶段，以及每个 target_date 仅一次的日记/计划/数字健康/睡眠标记/核心记忆阶段",
+        "新增 memory/nightly/run_state.py，持久化 completed_scopes、scope_errors 和 global_completed，支持重启与部分失败后断点补跑",
+        "调度器只在 process_all_users 真正完成时标记当日已执行；异步超时会取消旧协程并返回失败标记，避免与下一轮补跑重叠",
+        "数字健康 baseline 为空时不再写入 limits={}，已有限额仍保持用户/既有配置优先",
+        "分析窗口改为 target_date 本地自然日，磁盘扫描改为所有 *_weighted.json",
+        "JournalPlanService 显式使用 character_daily_models.plan_generator；日记与偏好合并使用 journal_model，蒸馏与人物档案使用 memory_models.distillation",
+        "偏好语义合并 Prompt 迁入统一 prompt 目录，改为稳定 system prompt + 动态 user prompt；蒸馏、人物档案、日记和计划既有调用也均已确认为 system/user 分离"
+      ],
+      "verification": [
+        ".\\venv_core\\Scripts\\python.exe tests\\scripts\\nightly\\verify_nightly_orchestration.py -> 通过（单次执行、断点续跑、自然日、冷扫描、模型路由与 prompt 结构）",
+        ".\\venv_core\\Scripts\\python.exe tests\\scripts\\verify_nightly_task_timeout_fix.py -> 6/6 通过",
+        ".\\venv_core\\Scripts\\python.exe tests\\scripts\\memory\\verify_llm_merge_preferences.py -> 30/30 通过",
+        ".\\venv_core\\Scripts\\python.exe -m pytest tests\\journal_plan -q --basetemp .\\.codex_test_tmp\\nightly_journal_plan_20260825 -> 12 passed",
+        ".\\venv_core\\Scripts\\python.exe -m ruff check <本次 Python 变更> -> All checks passed"
+      ],
+      "notes": [
+        "原 05:00 fallback 日志来自分支顺序：04:09 检测睡眠后，05:09 同时满足 1 小时延迟与 fallback。已改为睡眠延迟优先，fallback 仅在未累计足够睡眠时长时兜底",
+        "日记/偏好合并模型为 cloud:siliconflow:Pro/MiniMaxAI/MiniMax-M2.5；计划为 cloud:deepseek:qqbot1:deepseek-v4-pro；蒸馏/人物档案为 cloud:deepseek:qqbot2:deepseek-v4-pro"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "QR-20260825-NIGHTLY-SCOPE-GLOBAL-REPEAT",
+      "title": "Nightly 将记忆 scope 当成用户导致全局任务重复执行",
+      "date": "2026-08-25",
+      "category": "07_memory_system",
+      "problem": "05:00 fallback 后 nightly 对 6 个记忆 scope 完整执行 6 轮，日记、计划、数字健康和 MEMORY.md 整理均被重复调用；数字健康空建议连续写入空限额。",
+      "steps": [
+        "在夜间调度时间窗内让 weighted_memory_manager 存在 private、mobile、shared、aveline、ling 等多个 scope",
+        "触发 NightlyProcessor.process_all_users",
+        "对照 nightly_processor.log 中每个 scope 的 execute_async_tasks 与数字健康 limits 写入次数"
+      ],
+      "expected": [
+        "蒸馏和人物档案按记忆 scope 执行",
+        "日记、用户计划、数字健康和核心记忆整理每个 target_date 仅执行一次",
+        "重启或局部失败后只补跑未完成部分"
+      ],
+      "actual": [
+        "6 个 scope 触发 6 套全局任务",
+        "_task_executed_today 不持久化且无条件标完成",
+        "当日空 baseline 被重复写成 limits={}"
+      ],
+      "root_causes": [
+        "scope 分析回调与全局夜间业务共用同一 execute_async_tasks",
+        "缺少按 target_date 和阶段记录的持久化幂等状态",
+        "空数字健康建议未在落盘前过滤"
+      ],
+      "fixes": [
+        "拆分 scope/global 阶段并新增 run_state.json 进度账本",
+        "失败不再标记当日完成，超时协程取消后由下一轮补跑",
+        "空 baseline 改为 skipped_empty_baseline，不写文件",
+        "统一 target_date 自然日窗口与冷启动 scope 扫描"
+      ],
+      "verification": [
+        "verify_nightly_orchestration.py 验证 3 scope 一次 + global 一次，并验证部分失败只重试失败 scope",
+        "verify_nightly_task_timeout_fix.py 6/6 通过",
+        "journal_plan 回归 12 passed，相关 Ruff 通过"
+      ]
+    }
+  ]
+}

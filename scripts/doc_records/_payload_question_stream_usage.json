@@ -1,0 +1,36 @@
+{
+  "questions": [
+    {
+      "id": "Q-04llm-20260818-stream-usage",
+      "title": "prompt_cache_stats.log 只有 sync 记录、0 条 stream 记录（流式 usage 未命中埋点）",
+      "category": "04_llm_model",
+      "date": "2026-08-18",
+      "problem": "P0 阶段给 openai_compat 加了 prompt 缓存命中率埋点（含 S/A/B/C/D 五级分级），但 logs/prompt_cache_stats.log 连续 2 天只有 mode=sync 条目，0 条 mode=stream。代码上 DeepSeekClient._build_payload 已在 stream=True 时注入 stream_options.include_usage=true，parse_sse_stream 已能提取 usage，client.stream_chat 的 usage 分支已调 log_prompt_cache_usage。怀疑后端进程（uvicorn/fastapi）运行的是老版本代码，改动未生效。",
+      "steps": [
+        "不重启后端，连续进行日常聊天若干次或触发 nightly",
+        "查看 logs/prompt_cache_stats.log，过滤 mode=stream",
+        "结果：0 条，全部记录仍为 mode=sync"
+      ],
+      "expected": [
+        "stream 模式下每次流式请求结束，最后一个 SSE chunk 携带 usage（含 prompt_cache_hit_tokens / prompt_cache_miss_tokens）",
+        "parse_sse_stream 提取到 usage 后，log_prompt_cache_usage 写入 JSONL 日志，出现 mode=stream 条目"
+      ],
+      "actual": [
+        "mode=stream 条目始终为 0，埋点不生效",
+        "无法评估日常聊天与 nightly 蒸馏的真实缓存命中率，与 DeepSeek 开放平台控制台数据无法对账"
+      ],
+      "root_causes": [
+        "后端（uvicorn/fastapi）未重启，deepseek_client.py / stream_parser.py / client.py 仍加载旧版本",
+        "若重启后仍为 0，需排查 SSE last chunk 被 pending_json 错误合并、finish 先于 usage 返回、或 CloudRouter 将模型路由到非 DeepSeek provider 导致 stream_options 注入无效"
+      ],
+      "fixes": [
+        "重启后端（uvicorn），确认新代码被重新装载",
+        "必要时加调试打印，确认 parse_sse_stream 实际接收到的 last chunk 是否包含 usage / client.stream_chat 是否走到 usage 分支"
+      ],
+      "verification": [
+        "重启后端后触发一次 deepseek 流式对话或一次 nightly 蒸馏",
+        "logs/prompt_cache_stats.log 中 Select-String mode=stream 应出现至少 1 条"
+      ]
+    }
+  ]
+}

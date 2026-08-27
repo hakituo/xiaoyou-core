@@ -1,0 +1,67 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-24",
+      "weekday": "周一",
+      "title": "删除 UIE C 盘重复缓存并建立严格字段准确率基准",
+      "background": "UIE-mini 已迁移到项目 models 目录，需要清理用户目录重复模型，并用与生产一致的首 span 语义评估实际字段准确率。",
+      "root_causes": [
+        "旧验证脚本只判断目标字段是否非空，复合时间句即使首个 span 错误也会被计为成功",
+        "UIE-mini 对不同 schema 字段的零样本能力差异显著，单一总体可用结论会掩盖餐次、活动和情绪字段的系统性失败"
+      ],
+      "fixes": [
+        "删除 C:/Users/29917/.paddlenlp/taskflow/information_extraction/uie-mini 的 7 个重复缓存文件，释放 215358385 字节",
+        "新增 benchmark_uie_accuracy.py，使用 32 个固定样本并按生产代码只使用首个 span 的规则计分",
+        "基准按起床、睡觉、食物、餐次、学习、活动、健康和情绪八类分别输出准确率"
+      ],
+      "verification": [
+        "C 盘 UIE 缓存删除后 Test-Path=False，D 盘项目模型仍有 7 个文件",
+        ".\\venv_core\\Scripts\\python.exe tests\\scripts\\uie\\verify_uie_local_model.py -> exit 0，独立从 D 盘加载成功",
+        ".\\venv_core\\Scripts\\python.exe tests\\scripts\\uie\\benchmark_uie_accuracy.py -> exit 0，总体 13/32（40.6%）",
+        ".\\venv_core\\Scripts\\python.exe -m ruff check tests/scripts/uie/benchmark_uie_accuracy.py -> All checks passed"
+      ],
+      "notes": [
+        "分类结果：起床 75%、睡觉 100%、食物 25%、餐次 0%、学习 75%、活动 0%、健康 50%、情绪 0%",
+        "该结果是小规模固定样本基准，不等同于真实聊天分布上的统计置信区间，但足以暴露当前字段间的明显能力差异"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "QR-20260824-UIE-ACCURACY",
+      "title": "UIE 非空验证虚高且多类字段实际准确率为零",
+      "date": "2026-08-24",
+      "category": "04_llm_model",
+      "problem": "既有 UIE 验证把字段非空视为成功，无法识别首 span 错选、部分实体截断和关键类别完全漏抽。",
+      "steps": [
+        "构造八类字段各四个固定样本",
+        "调用当前 Paddle UIE-mini 后端并保留全部 span",
+        "按照生产 _uie_first_text 只检查第一个 span 是否包含期望文本",
+        "分别汇总每类和总体准确率"
+      ],
+      "expected": [
+        "验证口径与正式记录路径一致",
+        "错误 span、部分实体和空结果均不能计为正确",
+        "结果能够支持是否继续保留 UIE 的工程判断"
+      ],
+      "actual": [
+        "总体准确率 13/32（40.6%）",
+        "餐次、活动和情绪均为 0/4",
+        "复合睡眠句的起床字段首 span 错选晚上10点，食物字段把番茄炒蛋截断为番茄"
+      ],
+      "root_causes": [
+        "UIE-mini 对开放式活动、情绪及餐次 schema 的零样本泛化不足",
+        "生产逻辑只取第一个 span，模型返回多个候选时没有结合 intent 或语义排序",
+        "旧验证脚本只检查非空，没有判断文本正确性"
+      ],
+      "fixes": [
+        "新增严格准确率基准并固化首 span 评分规则",
+        "保留分字段结果，为后续缩减 UIE 使用范围或移除模型提供证据"
+      ],
+      "verification": [
+        "benchmark_uie_accuracy.py 完成 32 个样本并返回退出码 0",
+        "本地模型验证在删除 C 盘缓存后仍返回退出码 0"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-25",
+      "weekday": "周二",
+      "title": "角色日程运行时改为动态发现全部模板角色",
+      "background": "共享确定性算法已能接收任意 role_id，但 CharacterDailyEngine 仍遍历 KNOWN_ROLES 常量，导致模板中新增或未列入常量的角色无法在运行时生成和推进日程。",
+      "root_causes": [
+        "候选生成器以模板字典为输入，但主循环另行维护固定角色列表，形成两套角色真源",
+        "当天状态只在日期切换时生成，新增模板角色重启后仍需等待第二天"
+      ],
+      "fixes": [
+        "新增 DailyPlanGenerator.role_ids 与 CharacterDailyEngine.managed_role_ids，直接返回已加载模板键",
+        "计划生成、活动同步和活动切换统一遍历 managed_role_ids，不再使用 KNOWN_ROLES 作为运行时门槛",
+        "新增 _ensure_daily_plans，在新一天生成全部角色，并在同一天只补齐缺失模板角色",
+        "保留 KNOWN_ROLES 仅兼容旧验证脚本和外部导入；Peer Chat 与 Active Care 继续使用各自独立白名单"
+      ],
+      "verification": [
+        "计划改造定向 pytest：38 passed、29 warnings",
+        "新增 future_role 回归测试，确认任意模板角色在同一天可自动补齐",
+        "验证脚本实际为 aveline、ling、yeye、xiaolu、rushuang、mianmian、kafka 全部生成计划",
+        "Ruff：All checks passed"
+      ],
+      "notes": [
+        "新增日程角色现在只需增加完整 YAML 模板并重启，不需要修改 engine.py 角色列表",
+        "角色能生成日程不代表自动获得 Peer Chat、QQ 账号或 Active Care 发信权限，这些能力仍需显式配置以避免身份串用"
+      ]
+    },
+    {
+      "date": "2026-08-25",
+      "weekday": "周二",
+      "title": "角色周末额外候选迁移到 YAML 模板",
+      "background": "动态角色发现修复后，算法文件仍保留两个角色的周末额外活动字典，虽然不阻断其他角色，却要求修改 Python 才能维护角色偏好。",
+      "root_causes": [
+        "周末角色偏好没有纳入 RoleScheduleTemplate 配置模型"
+      ],
+      "fixes": [
+        "RoleScheduleTemplate 新增 rest_day_extras 映射并由 YAML 加载器解析",
+        "移除 daily_plan.py 中按角色 ID 编写的周末特例字典",
+        "保留 _build_effective_pool 旧调用签名兼容，实际额外候选从模板读取"
+      ],
+      "verification": [
+        "新增任意 future_role 的 YAML 风格周末候选测试",
+        "最终计划改造定向 pytest：38 passed、29 warnings",
+        "Ruff 与全部模板角色验证脚本通过"
+      ],
+      "notes": [
+        "后续角色的普通日程和周末偏好都只需配置 YAML"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "QR-20260825-CHARACTER-DAILY-DYNAMIC-ROLES",
+      "title": "共享角色计划算法仍被运行时固定角色列表限制",
+      "date": "2026-08-25",
+      "category": "11_persona_character",
+      "problem": "YAML 已存在角色模板且 DailyPlanGenerator 支持任意 role_id，但未写入 KNOWN_ROLES 的角色不会获得当日计划。",
+      "steps": [
+        "在角色模板中增加一个新的 role_id",
+        "重启 CharacterDailyEngine 并执行当日 tick",
+        "检查 daily_state.json 中该角色是否出现"
+      ],
+      "expected": [
+        "全部已加载模板角色自动生成并推进计划",
+        "当天新增模板角色重启后立即补齐，不必等待日期切换",
+        "增加普通日程角色不需要修改 Python 固定列表"
+      ],
+      "actual": [
+        "主循环只遍历 KNOWN_ROLES，模板集合与运行时角色集合可能不一致",
+        "当前验证中模板加载 7 个角色，而旧常量只包含 6 个"
+      ],
+      "root_causes": [
+        "模板字典和 KNOWN_ROLES 同时承担角色发现职责",
+        "计划补齐逻辑与新一天状态重置耦合"
+      ],
+      "fixes": [
+        "以 DailyPlanGenerator.role_ids 作为唯一计划角色来源",
+        "提取 _ensure_daily_plans 并在每轮检查中幂等补齐缺失角色",
+        "将 Peer Chat/Active Care 权限边界与日程角色发现明确分离"
+      ],
+      "verification": [
+        "future_role 动态角色单元测试通过",
+        "全部 7 个当前模板角色行为验证通过",
+        "定向 pytest 38 项与 Ruff 全部通过"
+      ]
+    }
+  ]
+}

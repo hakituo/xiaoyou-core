@@ -1,0 +1,52 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-17",
+      "weekday": "周一",
+      "title": "Active Care 全类型输出增加日历事实发送前校验",
+      "background": "普通 curious_question 虽收到权威日历 Prompt，模型仍可能违背软约束并输出错误相对节日日期。",
+      "root_causes": [
+        "此前确定性校验只覆盖 reminder，普通 MDP 动作仅依赖 Prompt 软约束。"
+      ],
+      "fixes": [
+        "所有 Active Care 类型发送前统一核对今天、明天等相对节日断言。",
+        "发现错误断言时移除所在短句，保留其余自然上下文，避免改成正确日期后继续复读节日话题。",
+        "事实校验不修改 MDP 动作和选题，只约束最终可发送文本。"
+      ],
+      "verification": [
+        "venv_core 与 venv_cpu 分别验证 2026-08-17 的明天七夕会被拦截，2026-08-18 的明天七夕保持不变",
+        "venv_core\\Scripts\\python.exe -m py_compile core\\services\\active_care\\core\\executor.py"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "AC-20260817-CALENDAR-OUTPUT-GUARD",
+      "title": "普通 Active Care 动作绕过节日日历硬校验",
+      "date": "2026-08-17",
+      "category": "01_active_care",
+      "problem": "普通 curious_question 会忽略 Prompt 中的权威日历锚点，继续发送错误的相对节日日期。",
+      "steps": [
+        "让历史中保留关于节日日期的纠正上下文。",
+        "触发 MDP 选择的普通 curious_question。",
+        "观察模型是否仍输出与权威农历日期冲突的今天或明天断言。"
+      ],
+      "expected": [
+        "所有 Active Care 类型在发送前都必须通过确定性日历事实校验。"
+      ],
+      "actual": [
+        "旧修复仅校验 reminder，普通主动消息仍能直接发出错误日期。"
+      ],
+      "root_causes": [
+        "把 Prompt 日历锚点误当成足够可靠的硬约束。"
+      ],
+      "fixes": [
+        "在统一发送路径增加确定性日历事实守卫。",
+        "错误节日断言所在短句直接移除，避免继续重复该话题。"
+      ],
+      "verification": [
+        "tests\\scripts\\active_care\\verify_active_care_context_and_cleanup.py"
+      ]
+    }
+  ]
+}

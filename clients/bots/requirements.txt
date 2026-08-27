@@ -1,0 +1,5 @@
+websockets
+aiohttp
+pillow>=9.5.0,<11.0.0
+python-telegram-bot>=21.0
+qq-botpy>=1.0.0

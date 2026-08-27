@@ -1,0 +1,23 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-25",
+      "weekday": "周二",
+      "title": "Nightly 睡眠触发优先于 05:00 Fallback",
+      "background": "进一步整理触发分支时发现，04:09 已检测睡眠、05:09 已满足一小时延迟，但旧代码因 fallback 分支在前而把触发来源记为 fallback。",
+      "root_causes": [
+        "_sleep_aware_scheduler_loop 先判断 05:00 fallback，后判断睡眠延迟，当两者同时满足时丢失真实 sleep 触发来源"
+      ],
+      "fixes": [
+        "单轮只读取一次睡眠状态，先处理已满一小时的 sleep 触发，再判断 fallback",
+        "fallback 保留为真正兜底：服务 5 点才启动、或尚未累计足够睡眠时长时仍会执行"
+      ],
+      "verification": [
+        ".\\venv_core\\Scripts\\python.exe tests\\scripts\\nightly\\verify_nightly_orchestration.py -> sleep 延迟触发顺序检查通过"
+      ],
+      "notes": [
+        "这个调整不改变 05:09 的实际执行时间，只让触发语义和日志来源正确"
+      ]
+    }
+  ]
+}

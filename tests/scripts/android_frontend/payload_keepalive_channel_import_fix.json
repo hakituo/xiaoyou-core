@@ -1,0 +1,24 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-18",
+      "weekday": "周二",
+      "title": "修复 Android 守护通知改造遗漏通知渠道导入",
+      "background": "守护通知自恢复改造统一了主通知构造器并移除了一个看似不再使用的导入，但文件后半段的无障碍断线提醒仍依赖 CHANNEL_MESSAGES，导致 Kotlin 编译失败并产生连带 Builder 方法未解析错误。",
+      "root_causes": [
+        "AvelineForegroundServiceV2 文件后半段仍使用 CHANNEL_MESSAGES，修改时只检查了主通知附近代码"
+      ],
+      "fixes": [
+        "恢复 AvelineNotificationManager.Companion.CHANNEL_MESSAGES 导入",
+        "扩展通知自恢复验证脚本，强制检查断线提醒所需渠道导入"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_keepalive\\verify_notification_self_restore.py",
+        "venv_core\\Scripts\\ruff.exe check tests\\scripts\\android_keepalive\\verify_notification_self_restore.py"
+      ],
+      "notes": [
+        "setContentTitle 未解析是 NotificationCompat.Builder 构造器因渠道常量缺失而产生的连带错误"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-25",
+      "weekday": "周二",
+      "title": "拆分 NightlyTaskRunner 与 PeopleProfileExtractor God Class",
+      "background": "人物蒸馏门控接入后，memory/nightly/task_runner.py 已增长到 829 行，core/character/people/extractor.py 达到 1123 行；两个入口同时承载编排、I/O、Prompt 转换、LLM 调用、JSON 解析和持久化，继续追加会扩大回归风险。",
+      "root_causes": [
+        "NightlyTaskRunner 同时实现事件循环桥接、scope/global 编排、日记计划数字健康业务和完整蒸馏算法",
+        "PeopleProfileExtractor 同时实现状态文件、JSONL 扫描、批次门控、外部人物 CRUD、角色演化和 LLM 重试",
+        "历史私有方法被验证脚本直接调用，导致职责迁移时需要明确兼容门面"
+      ],
+      "fixes": [
+        "将 NightlyTaskRunner 收缩为 212 行薄门面；新增 distillation_service.py、distillation_codec.py、global_tasks.py 分别承担蒸馏执行、文本转换和每日全局业务",
+        "将 PeopleProfileExtractor 收缩为 278 行流程门面；新增 conversation_source.py、signal_gate.py、external_profile_service.py、role_update_service.py",
+        "保留原有 Prompt/解析/状态等兼容方法为静态或实例委托，现有调用方无需迁移",
+        "新增结构验证，限制 TaskRunner 不超过 300 行、Extractor 不超过 350 行，并禁止门面重新出现 JSONL 扫描、业务 JSON 解析和事实持久化"
+      ],
+      "verification": [
+        ".\\venv_core\\Scripts\\python.exe -m tests.scripts.nightly.verify_nightly_responsibility_split -> 全部通过",
+        ".\\venv_core\\Scripts\\python.exe -m tests.scripts.nightly_prompt_cache.verify_batch_distillation -> 15/15 通过",
+        ".\\venv_core\\Scripts\\python.exe -m tests.scripts.nightly_prompt_cache.verify_people_profile_signal_gate -> 全部通过",
+        ".\\venv_core\\Scripts\\python.exe tests\\scripts\\test_people_profiles\\verify_people_profiles.py -> 53/53 通过",
+        ".\\venv_core\\Scripts\\ruff.exe check <拆分涉及 Python 文件> -> All checks passed"
+      ],
+      "notes": [
+        "重构不修改模型路由、Prompt 内容、人物门控条件、增量水位和失败重试语义",
+        "共享 LLM 重试入口继续保留在 Extractor 门面，以维持错误诊断脚本的 traceback/upstream error 覆盖"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "QR-20260825-NIGHTLY-PEOPLE-GOD-CLASS",
+      "title": "Nightly 与人物提取入口持续膨胀且职责混杂",
+      "date": "2026-08-25",
+      "category": "07_memory_system",
+      "problem": "人物信号门控直接继续写入既有大文件，使 NightlyTaskRunner 达到 829 行、PeopleProfileExtractor 达到 1123 行，编排层与业务实现层没有稳定边界。",
+      "steps": [
+        "统计 memory/nightly/task_runner.py 与 core/character/people/extractor.py 行数和方法列表",
+        "检查 TaskRunner 是否直接调用日记、计划、数字健康、蒸馏 scheduler",
+        "检查 Extractor 是否直接扫描 JSONL、解析两类 JSON 并创建 KnownFact"
+      ],
+      "expected": [
+        "入口类只负责编排和兼容转发",
+        "I/O、门控、Prompt/解析、外部人物与角色演化职责相互独立",
+        "重构后原有行为验证继续通过"
+      ],
+      "actual": [
+        "两个入口文件均包含多类业务实现，任何小改动都需要在超大文件内定位",
+        "门控逻辑接入后仍继续增加入口类方法和依赖"
+      ],
+      "root_causes": [
+        "早期门面类逐步吸收实现细节但未设置规模和职责回归检查",
+        "兼容私有方法缺少委托层，导致实现天然堆积在入口类"
+      ],
+      "fixes": [
+        "按执行、Codec、全局编排和人物子领域拆成 7 个兄弟模块",
+        "入口保留兼容委托，不要求调用方同步大规模迁移",
+        "新增门面规模与职责关键词验证，阻止再次膨胀"
+      ],
+      "verification": [
+        "verify_nightly_responsibility_split.py 验证门面行数、模块职责和兼容入口",
+        "批量蒸馏 15/15、人物档案 53/53、人物信号门控全部通过",
+        "相关文件 Ruff 与 py_compile 通过"
+      ]
+    }
+  ]
+}

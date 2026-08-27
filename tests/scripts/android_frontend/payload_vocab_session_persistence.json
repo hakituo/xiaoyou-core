@@ -1,0 +1,64 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-18",
+      "weekday": "周二",
+      "title": "修复 Android 背单词强化队列在 App 重启后丢失",
+      "background": "Android 背单词中途退出模块时可依赖存活的 ViewModel 继续，但杀进程或重启 App 后，首次标记不会的单词不再按本轮最多三次的规则继续出现；服务端每日错词和明日复习记录本身正常。",
+      "root_causes": [
+        "服务端只持久化长期 FSRS 复习结果，Android 端的动态卡片队列、当前位置和 Again 重排次数仅保存在 ViewModel 内存中",
+        "冷启动会直接重新拉取每日词汇，无法恢复上一轮尚未完成的强化队列"
+      ],
+      "fixes": [
+        "新增应用私有的词汇会话快照，保存动态队列、卡片索引、Again 次数和本轮结果",
+        "StudyViewModel 冷启动优先恢复有效快照，避免远端列表覆盖断点",
+        "复习与背新词入口分别续接对应模式，完整结算后清理快照",
+        "补充不调用 Gradle 的静态验证脚本"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\study\\verify_vocab_session_persistence.py",
+        "venv_core\\Scripts\\python.exe tests\\scripts\\study\\verify_vocab_optimistic_review.py --skip-test",
+        "venv_core\\Scripts\\ruff.exe check tests\\scripts\\study\\verify_vocab_session_persistence.py"
+      ],
+      "notes": [
+        "按项目规则未在沙箱运行 Gradle；需由 Android Studio 安装后执行一次真机强退恢复验证"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "ANDROID-VOCAB-20260818-SESSION-PERSISTENCE",
+      "title": "背单词未完成强化队列在 App 重启后丢失",
+      "date": "2026-08-18",
+      "category": "02_android_frontend",
+      "problem": "背单词会话中标记不会的单词会在本轮最多再次出现两次，但中途强退或重启 App 后，剩余强化轮次消失；当天错词和明日复习记录仍存在。",
+      "steps": [
+        "进入 Android 背单词模块并将某个词标记为 Again",
+        "在本轮尚未结束时强退 App",
+        "重启 App 并再次进入相同的背词入口"
+      ],
+      "expected": [
+        "恢复到退出前的下一张卡片",
+        "先前标记 Again 的单词仍按剩余次数在本轮队尾再次出现",
+        "服务端长期复习记录与本地本轮强化队列各自保持原有职责"
+      ],
+      "actual": [
+        "只要进程重启，ViewModel 中的动态队列、卡片索引和重排计数全部重置",
+        "后端虽已记录不会并安排后续日期复习，但当前会话的剩余强化轮次无法重建"
+      ],
+      "root_causes": [
+        "本轮强化状态只存在于 VocabUiState 内存中",
+        "StudyViewModel 冷启动无本地快照恢复步骤"
+      ],
+      "fixes": [
+        "用 SharedPreferences 保存可版本化的未完成会话 JSON 快照",
+        "评分后同步更新快照，完整结束或明确开始新会话时清理旧快照",
+        "冷启动先恢复，再允许用户从复习或背新词入口续背"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\study\\verify_vocab_session_persistence.py",
+        "真机执行 Again、强退、重启、续背流程"
+      ]
+    }
+  ]
+}

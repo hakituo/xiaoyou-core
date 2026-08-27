@@ -1,0 +1,107 @@
+# ============================================================
+# 小友 Core 模型路由配置
+#
+# 本文件只负责“场景 -> 模型路径”的路由决策，不放服务级运行参数。
+# 运行时模型参数（本地 GGUF、采样参数、视觉 provider 等）请放到 modeling.yaml。
+# 由 config/yaml/app.yaml 通过 imports 自动引入。
+#
+# 分类原则：
+# 1. 只要某个字段表达的是“这个场景该选哪个模型”，就应该放在这里
+# 2. 只要某个字段表达的是“模型怎么跑、多大窗口、什么采样参数”，就放 modeling.yaml
+# 3. 运行开关、超时、轮询频率、fallback 行为，仍然放各自业务配置里
+# ============================================================
+
+model_routing:
+  # ============================================================
+  # DeepSeek API Key 分配说明（5 个 key 各司其职）
+  # ============================================================
+  # default (DEEPSEEK_API_KEY)          → 默认回退（与 Aveline 共用）
+  # aveline (DEEPSEEK_API_KEY_Aveline)  → Aveline 主对话
+  # ling    (DEEPSEEK_API_KEY_Ling)     → Ling（Ling）主对话
+  # qqbot1  (DEEPSEEK_API_KEY_QQBOT1)   → 角色日程 / 睡眠判定
+  # qqbot2  (DEEPSEEK_API_KEY_QQBOT2)   → 辅助功能、压缩、自愈、蒸馏
+  # ============================================================
+
+  # 主对话模型（默认 flash，不走 pro）
+  default_chat_model: "cloud:deepseek:deepseek-v4-flash"
+  chat_models:
+    ling: cloud:deepseek:ling:deepseek-v4-flash
+    aveline: cloud:deepseek:aveline:deepseek-v4-flash
+
+  # 主动关怀/peer chat模型（Active Care）
+  active_care_models:
+    content_generation:
+      default: cloud:minimax:MiniMax-M2.5
+      ling: cloud:minimax:MiniMax-M2.5
+    decision: cloud:siliconflow:Pro/MiniMaxAI/MiniMax-M2.5
+    auto_eat: cloud:siliconflow:Pro/MiniMaxAI/MiniMax-M2.5
+    priority_analysis: cloud:siliconflow:Pro/MiniMaxAI/MiniMax-M2.5
+
+  # 日记 / 总结导出模型
+  journal_model: "cloud:siliconflow:Pro/MiniMaxAI/MiniMax-M2.5"
+
+  # 回退模型（主模型不可用时使用）
+  fallback_models:
+    active_care: cloud:deepseek:deepseek-v4-flash
+
+  # 自愈系统模型
+  auto_heal_models:
+    analysis: cloud:deepseek:qqbot2:deepseek-v4-pro
+    patch_generation: cloud:deepseek:qqbot2:deepseek-v4-flash
+
+  # 视觉理解模型
+  vision_models:
+    default: cloud:siliconflow:Qwen/Qwen3-VL-32B-Instruct
+
+  # 记忆系统辅助模型
+  # distillation: 夜间记忆蒸馏 / 历史压缩
+  memory_models:
+    distillation: cloud:deepseek:qqbot2:deepseek-v4-pro
+
+  # 角色日常系统模型
+  # plan_generator: 用于生成每日活动计划
+  # sleep_decision: 角色睡眠静默恢复判定
+  character_daily_models:
+    plan_generator: cloud:deepseek:qqbot1:deepseek-v4-pro
+    sleep_decision: cloud:deepseek:qqbot1:deepseek-v4-flash
+
+  # 对话辅助模型
+  # context_compress: 长历史压缩摘要，避免与主对话争抢配额
+  chat_auxiliary_models:
+    context_compress: cloud:deepseek:qqbot2:deepseek-v4-flash
+
+  # 供应商默认模型（只在外部只给 provider、没给具体 model 时兜底）
+  provider_default_models:
+    siliconflow: Pro/moonshotai/Kimi-K2.6
+    deepseek: deepseek-chat
+    dashscope: qwen3-max-2025-09-23
+
+  # Web 搜索供应商映射
+  # 这里不是 LLM 模型本身，而是“某个 LLM 厂商默认走哪个搜索实现”
+  web_search:
+    enabled: true
+    default_provider: serper
+    providers:
+      zhipu:
+        type: zhipu_proxy
+        model: glm-4.5-air
+      zhipu_native:
+        type: server_side
+      bocha:
+        type: client_side
+        api_url: https://api.bochaai.com/v1/web-search
+        api_key_env: BOCHA_API_KEY
+      serper:
+        type: client_side
+        api_url: https://google.serper.dev/search
+        api_key_env: SERPER_API_KEY
+    provider_mapping:
+      zhipu: zhipu_native
+      deepseek: serper
+      siliconflow: serper
+      dashscope: serper
+      ark: serper
+      minimax: serper
+      aveline: serper
+      openai: serper
+      custom: serper

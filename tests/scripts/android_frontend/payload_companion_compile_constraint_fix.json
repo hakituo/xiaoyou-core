@@ -1,0 +1,63 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-18",
+      "weekday": "周二",
+      "title": "修复 Android 伴侣控制与跟手手势的 Kotlin 编译约束错误",
+      "background": "Android Studio 编译发现状态控制 Repository 使用了表达式函数体禁止的提前 return，同时聊天页在 AwaitPointerEventScope 受限协程中调用了普通挂起函数。",
+      "root_causes": [
+        "runControlRequest 以 = try 表达式定义，却在错误响应分支使用 return",
+        "手势开始时需要等待面板加入组合树，导致受限指针协程直接调用 withFrameNanos 与 snapTo",
+        "松手吸附动画也在 AwaitPointerEventScope 内直接调用挂起函数"
+      ],
+      "fixes": [
+        "错误响应改为抛出 IllegalStateException，由既有 catch 统一映射 Result.failure",
+        "详情面板常驻组合树并默认停在屏幕右侧隐藏锚点，拖动阶段只调用同步 dispatchRawDelta",
+        "将松手后的 animateTo 吸附逻辑提交给 rememberCoroutineScope，移出受限指针协程",
+        "锚点尚未安装的首帧默认使用整屏宽度作为位移，避免隐藏面板闪现"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_frontend\\verify_companion_controls_tabs_and_pull.py：PASS",
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_frontend\\verify_navigation_wellbeing_improvements.py：PASS",
+        "venv_core\\Scripts\\python.exe -m ruff check tests/scripts/android_frontend/verify_companion_controls_tabs_and_pull.py：PASS"
+      ],
+      "notes": [
+        "未由 Codex 重跑 Gradle；等待用户在 Android Studio 重新执行 compileDebugKotlin"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "ANDROID-COMPANION-KOTLIN-COMPILE-001",
+      "title": "伴侣状态与跟手入场实现违反 Kotlin 表达式体和受限协程规则",
+      "date": "2026-08-18",
+      "category": "02_android_frontend",
+      "problem": "compileDebugKotlin 在 StatusRepositoryImpl 和 ChatScreen 报表达式函数体提前返回及受限协程调用普通挂起函数。",
+      "steps": [
+        "在 Android Studio 编译 Debug 版本",
+        "观察 compileDebugKotlin 对 StatusRepositoryImpl 第 203 行及 ChatScreen 手势代码的错误"
+      ],
+      "expected": [
+        "状态控制错误响应能够转换为 Result.failure",
+        "详情页保持跟手入场且遵守 Compose 指针输入协程限制"
+      ],
+      "actual": [
+        "表达式函数体内使用 return 被 Kotlin 编译器拒绝",
+        "AwaitPointerEventScope 内调用 withFrameNanos、snapTo 和 animateTo 被编译器拒绝"
+      ],
+      "root_causes": [
+        "没有区分普通 Compose 协程与 AwaitPointerEventScope 的受限挂起上下文",
+        "面板按条件组合迫使打开手势在指针协程中等待锚点初始化"
+      ],
+      "fixes": [
+        "用异常进入既有 Result.failure 分支",
+        "让隐藏面板预先建立锚点，拖动阶段只派发同步位移",
+        "通过外层 CoroutineScope 执行松手吸附"
+      ],
+      "verification": [
+        "verify_companion_controls_tabs_and_pull.py 静态回归通过",
+        "Android Studio compileDebugKotlin 待用户复验"
+      ]
+    }
+  ]
+}

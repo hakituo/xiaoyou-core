@@ -1,0 +1,71 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-27",
+      "weekday": "周四",
+      "title": "角色数据目录统一使用 persona meta.scope",
+      "background": "同一角色的中文配置文件名和英文角色标识分别进入不同路径解析逻辑，后台记忆自动保存会持续重建中文别名目录，手工删除后仍会再次出现。",
+      "root_causes": [
+        "主数据路径模块从角色服务的固定角色表解析 scope，而已有 scope_registry 独立扫描 persona JSON，形成两套角色真源",
+        "未识别的中文 persona slug 被 normalize_data_scope 直接当成合法目录名",
+        "缺少面向未来新角色的配置驱动回归验证和历史别名目录迁移工具"
+      ],
+      "fixes": [
+        "将 core/utils/data/scope_registry.py 设为角色持久化 scope 的唯一解析入口，以 persona JSON 的 meta.scope 为稳定标识",
+        "data_paths.py 及旧兼容导入统一委托注册表，文件名、显示名、英文名和别名全部解析到同一 {scope}_data 目录",
+        "新增配置变更自动刷新；未知 persona 不再直接生成中文目录，并输出补齐 meta.scope 的告警",
+        "新增安全迁移脚本，默认预览，执行时重命名 scope 记忆文件、合并会话索引、保留同名不同内容冲突",
+        "为当前缺少持久化标识的私人 persona 补齐 meta.scope，并按敏感内容规则保持配置不受 Git 跟踪"
+      ],
+      "verification": [
+        "persona scope 唯一标准验证：31 通过、0 失败，包含模拟未来新角色仅新增 JSON 即自动生效",
+        "目录迁移安全验证通过，覆盖预览无写入、weighted 文件改名、sessions.json 合并及冲突保留",
+        "N 角色扩展验证：6 通过、0 失败；QQ Official scope 兼容验证全部通过",
+        "Ruff 定向检查：All checks passed",
+        "实际迁移 22 个文件、0 个冲突，中文别名目录清理后标准目录文件均可见"
+      ],
+      "notes": [
+        "以后新增 persona 必须声明英文 snake_case meta.scope；同一角色的多个 persona 变体复用同一 scope",
+        "不要在业务模块新增角色名到数据目录名的硬编码映射"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "QR-20260827-PERSONA-SCOPE-DUPLICATE-DIRS",
+      "title": "Persona 中文别名与英文 scope 重复创建数据目录",
+      "date": "2026-08-27",
+      "category": "10_file_io_storage",
+      "problem": "同一 persona 同时出现中文别名数据目录与英文 scope 数据目录，删除中文目录后后台记忆保存会再次创建。",
+      "steps": [
+        "使用中文文件名 persona 建立 shared__persona__ 会话",
+        "等待记忆管理器初始化或定时保存",
+        "检查 companion_data 下的中文别名目录和英文 scope 目录",
+        "删除中文别名目录并保持旧进程运行，等待下一次保存"
+      ],
+      "expected": [
+        "一个 persona 只有一个稳定英文 scope 数据目录",
+        "中文文件名与英文名只作为别名解析，不参与目录命名",
+        "新增角色只需配置 meta.scope，不修改 Python 白名单"
+      ],
+      "actual": [
+        "不同入口分别使用中文 slug 和英文 role scope，形成两套目录",
+        "旧进程的自动保存继续按中文 slug 重建被删除目录"
+      ],
+      "root_causes": [
+        "data_paths 与 scope_registry 各自维护角色解析逻辑",
+        "normalize_data_scope 接受未注册中文 slug 作为动态 scope"
+      ],
+      "fixes": [
+        "以 persona meta.scope 和 scope_registry 作为唯一持久化解析标准",
+        "所有 data_paths 兼容入口委托统一注册表",
+        "新增安全目录合并工具和未来新角色回归验证"
+      ],
+      "verification": [
+        "当前角色中英文 slug 路由与 memory user_id 验证 31 项全部通过",
+        "迁移工具无损与冲突保留验证通过",
+        "实际目录迁移 22 个文件且无冲突"
+      ]
+    }
+  ]
+}

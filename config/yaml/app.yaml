@@ -1,0 +1,414 @@
+# ============================================================
+# 小友 Core 主配置入口
+#
+# 这是项目的统一非敏感配置入口，但不再把所有内容硬塞进一个文件。
+# 现在采用“主入口 + 分域子配置”的结构：
+#
+# - app.yaml
+#   - 放系统/服务/运行时总开关
+#   - 通过 imports 挂载拆分出去的子配置
+# - sections/modeling.yaml
+#   - 放模型本体参数：provider、本地模型路径、采样参数、视觉模型
+# - sections/model_routing.yaml
+#   - 放业务场景路由：主对话 / Active Care / 自愈 / 角色日常等模型选择
+#
+# 配置优先级：环境变量 (.env) > YAML 配置 > 代码默认值
+# 敏感信息（API Key、令牌）放在 .env，不要写在这里。
+#
+# 新人入门：
+# 1. 改系统行为，看本文件
+# 2. 改“模型怎么跑”，看 sections/modeling.yaml
+# 3. 改“哪个场景用哪个模型”，看 sections/model_routing.yaml
+# ============================================================
+
+imports:
+  - "sections/modeling.yaml"
+  - "sections/model_routing.yaml"
+
+# 系统配置 (System Configuration)
+system:
+  dashscope_api_key: "${DASHSCOPE_API_KEY}"
+  use_local_models_only: false
+
+# Telegram 由主程序直接托管，不需要另开 adapter 终端。
+# Bot Token、Master 用户 ID 和代理等敏感/本机值继续放在 .env。
+telegram:
+  enabled: false
+  enable_voice: true
+  enable_vision: true
+  strip_markdown: false
+  http_base_url: "http://127.0.0.1:8000"
+  ws_url: "ws://127.0.0.1:8000/api/v1/ws"
+  http_timeout_seconds: 30
+  session_timeout_minutes: 30
+
+data_ops:
+  human_digest_enabled: false
+  taxonomy_version: "tax_v1"
+  human_digest_version: "human_digest_v1"
+  human_digest_include_device_context: true
+  topic_judgement_mode: "posthoc"
+  conversation_defer_analysis: true
+  rule_analysis_worker_enabled: true
+  rule_analysis_worker_count: 2
+  rule_analysis_queue_size: 512
+  rule_analysis_batch_size: 32
+  ai_shadow_worker_enabled: true
+  ai_shadow_worker_count: 1
+  ai_shadow_queue_size: 256
+  ai_shadow_batch_size: 8
+  ai_shadow_timeout_ms: 1200
+  ai_shadow_strategy: "auto"
+  fusion_worker_enabled: true
+  fusion_worker_count: 1
+  fusion_queue_size: 256
+  fusion_batch_size: 16
+  fusion_override_min_confidence: 0.75
+  fusion_supplement_min_confidence: 0.5
+  fusion_allow_override: false
+  rule_only_degrade_enabled: true
+  rule_only_degrade_threshold_ratio: 0.8
+
+# 用户配置
+user:
+  display_name: "Master"
+
+# 调度器配置
+scheduler:
+  use_cpp: true  # 保持开启，TTS 等任务可以用
+  use_cpp_for_llm: true  # 使用 C++ 调度器加载 GGUF 模型
+  llm_backend: "cpp"  # 使用 C++ 后端
+  allow_cpp_llm_worker: true  # 启用 C++ LLM Worker
+  worker_count: 4
+  cpp:
+    host: "127.0.0.1"
+    port: 8080
+
+life_simulation:
+  active_care_enabled: true
+  # 允许发送主动关怀(active_care)消息的角色白名单。
+  # 仅列表中的角色会触发晚安/起床/主动关怀消息；其余角色会被跳过。
+  # 可在此控制"哪些角色可以发主动消息"，例如只保留 aveline 与Ling：
+  #   active_care_enabled_roles: ["aveline", "ling"]
+  # 留空、省略或配置读取失败时，回退到代码默认值
+  # (aveline, ling, yeye, rushuang)。
+  active_care_enabled_roles: ["aveline", "ling"]
+  active_care_daily_limit: 30
+  active_care_min_gap_seconds: 600
+  active_care_default_next_check_seconds: 300
+  active_care_startup_delay_seconds: 180  # 启动后延迟多久执行第一次主动关怀检查(秒)，默认3分钟
+  active_care_model_hint: "cloud:siliconflow:stepfun-ai/Step-3.5-Flash"
+  active_care_require_active_client: false
+  active_care_enable_auto_goodnight_reduced_mode: true
+  active_care_quiet_hours:
+    enabled: true
+    allow_goodnight_probe: true
+    goodnight_probe_gap_seconds: 1800
+    goodnight_low_disturb_gap_seconds: 14400  # 4小时，8小时睡眠最多2次探针（原7200=2h会导致4次探针太多）
+  active_check_interval: 300
+  quiet_check_interval: 600
+  # 用户进程活动检测配置
+  active_care_activity_detection_enabled: true  # 是否启用进程活动检测（通过查看任务进程判断用户在做什么）
+  active_care_activity_busy_threshold: 0.60     # 忙碌判定阈值(0.0~1.0)，超过此值视为忙碌应跳过发送
+  active_care_activity_cache_ttl_seconds: 30.0  # 活动检测缓存有效期(秒)，避免频繁扫描进程
+  active_care_busy_user_next_check_seconds: 600 # 用户忙碌时下次检查间隔(秒)
+
+# 情绪模块配置
+emotion:
+  enabled: false  # 情绪模块总开关（false=完全禁用，true=启用）
+  detector_mode: "smart"  # 检测模式: smart(关键词+BERT) / legacy(LLM标签)
+  affect_prompt_enabled: true  # 是否在对话prompt中注入情绪信息
+  hardware_control_enabled: true  # 是否控制呼吸灯等硬件
+  data_dir: "data/emotions"  # 情绪历史存储目录
+
+# 自愈服务配置（目前效果不佳，已关闭）
+auto_heal:
+  enabled: false  # 是否启用自愈服务（false=关闭）
+  auto_apply: false  # 是否自动应用补丁（需要人工审批）
+  check_interval: 30.0  # 检查间隔（秒）
+  suppress_duration: 300.0  # 同一规则触发后的抑制时间（秒）
+
+# 自我改进系统配置
+# prompt_injection 关闭：自我改进指令（纠正检测/学习记录/git/debug等开发指令）
+# 不再注入到角色对话 prompt，避免浪费 tokens（这些指令是给开发助手的，角色 LLM 不需要）
+self_improvement:
+  enabled: true              # 自我改进系统总开关（后台学习/纠正记录仍保留）
+  prompt_injection: false    # 关闭：不在角色对话 prompt 中注入自我改进指令
+  core_memory: true          # MEMORY.md 核心记忆管理仍启用（偏好/经验等数据仍记录）
+  correction_detection: true # 后台纠正检测仍启用（只是不注入 prompt）
+
+dual_role:
+  peer_private_chat_enabled: true
+  peer_chat_enabled: true
+  peer_chat_daily_limit: 6              # 全局上限（所有角色合计，不再 per-role）
+  peer_chat_min_gap_seconds: 5400       # 与 character_daily.peer_chat.min_gap_seconds 对齐
+  peer_chat_decision_model_hint: ""
+  peer_chat_content_model_hint: ""
+  peer_chat_max_rounds: 8
+
+# 学习配置（词库/教学/薄弱点追踪等）
+# enabled 必须为 true，否则 vocab_manager 返回 None，/vocab/daily 返回空数组
+study:
+  enabled: true
+  study_root: "D:\\AI\\Study"
+  tutor_enabled: true
+  daily_briefing_enabled: true
+  weakness_tracking: true
+  review_intervals_days: "1,3,7,14"
+  daily_study_goal_minutes: 120
+  active_care_briefing: true
+
+# 用户学习生活计划的中途复盘与动态重排
+journal_plan:
+  planning:
+    # 自动计划只同步主计划与 Active Care MDP，不批量创建 Workspace 硬提醒。
+    weekday:
+      max_items: 6
+      capacity_minutes: 240
+      windows:
+        - { key: "morning", start: "08:00", end: "12:00" }
+        - { key: "afternoon", start: "14:00", end: "18:00" }
+        - { key: "evening", start: "19:00", end: "22:30" }
+    weekend:
+      max_items: 5
+      capacity_minutes: 180
+      windows:
+        - { key: "late_morning", start: "09:30", end: "12:00" }
+        - { key: "afternoon", start: "14:30", end: "18:00" }
+        - { key: "evening", start: "19:30", end: "22:00" }
+    holiday:
+      max_items: 4
+      capacity_minutes: 150
+      windows:
+        - { key: "late_morning", start: "10:00", end: "12:00" }
+        - { key: "afternoon", start: "15:00", end: "18:00" }
+        - { key: "evening", start: "19:30", end: "21:30" }
+    holiday_month_days: ["01-01", "05-01", "10-01"]
+    holiday_dates: []                    # 可追加 YYYY-MM-DD 的调休/法定假日
+    max_carryover_count: 2               # 同一事项最多跨日滚动次数
+    max_carryover_items: 2               # 每日最多接收多少个昨日未完成项
+    fallback_core_minutes: 75
+    fallback_wrapup_minutes: 20
+  checkpoint_reassessment:
+    enabled: true
+    checkpoint_hours: [12, 18]            # 中午和傍晚各复盘一次
+    overdue_grace_minutes: 20             # 超过这个宽限时间仍未动的定时项视为明显落后
+    remaining_load_ratio_threshold: 1.15  # 剩余任务预计时长超过剩余时间 115% 时触发压缩
+    max_replanned_items: 6                # 单次自动重排最多保留多少个剩余项
+
+# 角色日常系统配置（Character Daily Life Engine）
+# 角色有独立的日常生活节奏，peer chat 由角色日常引擎驱动
+character_daily:
+  enabled: true                        # 是否启用角色日常引擎
+  check_interval_seconds: 120          # 主循环检查间隔（秒）
+  check_interval_jitter: 0.2           # 检查间隔随机抖动比例（±20%）
+  peer_chat:
+    min_gap_seconds: 5400              # 全局最小间隔 1.5 小时
+    daily_soft_limit: 4                # 软上限：超过后概率降低
+    daily_hard_limit: 6                # 硬上限：绝对不允许超过
+    base_probability: 0.08             # 每个检查周期的基础触发概率
+    eligible_hours: [9, 22]            # 允许聊天的小时范围 [start, end)
+    urgent_interrupt_probability: 0.15 # 异步聊天走"紧急打断"路径的概率（对方忙但有急事）
+    retry_after_fail_seconds: 300      # 剧本生成失败后隔多久可重试（5 分钟）
+  # 兼容旧配置结构；角色每日计划代码固定忽略此开关，不会调用 LLM。
+  llm_plan:
+    enabled: false                       # 已废弃：无论值为何都使用共享确定性算法
+    # model 已迁移到 sections/model_routing.yaml → character_daily_models.plan_generator
+    fallback_to_template: true           # 已废弃兼容字段
+  sleep_runtime:
+    enabled: true                        # 是否启用角色睡眠运行时系统
+    poll_seconds: 30                     # 睡眠运行时轮询间隔（秒）
+    # decision_model 已迁移到 sections/model_routing.yaml → character_daily_models.sleep_decision
+  # 被动回复时的睡眠/忙碌处理（用户发消息时角色正在睡觉/忙碌）
+  reply_policy:
+    enabled: true                        # 是否启用休息时间回复调节
+    do_not_disturb:
+      delay_min_seconds: 30              # 不可打扰活动（睡觉/午睡）强制唤醒后的延迟下限
+      delay_max_seconds: 120             # 不可打扰活动强制唤醒后的延迟上限
+    busy:
+      delay_min_seconds: 5               # 忙碌活动（学习/做饭）强制打断后的延迟下限
+      delay_max_seconds: 20              # 忙碌活动强制打断后的延迟上限
+    soft_delay_quick_min_seconds: 8      # 快回档：发呆/刷手机/看书/打游戏
+    soft_delay_quick_max_seconds: 18
+    soft_delay_normal_min_seconds: 18    # 中档：整理/散步/兴趣活动/买东西
+    soft_delay_normal_max_seconds: 35
+    soft_delay_slow_min_seconds: 28      # 慢回档：做饭/家务/运动/正餐
+    soft_delay_slow_max_seconds: 55
+    soft_delay_recovery_min_seconds: 20  # 恢复档：sleep_recovery
+    soft_delay_recovery_max_seconds: 40
+    force_reply_threshold: 6             # 硬上限：累计 N 条后 100% 唤醒（递增概率，睡得浅 2-3 条就醒）
+    force_reply_cooldown_seconds: 600    # 累积消息超时重置（10 分钟没新消息就清空）
+    reply_window_seconds: 120            # 回复窗口期（秒）：BUSY 回复后窗口期内继续聊不走延后处理
+                                         # 让用户能趁角色"被打断"的间隙自然延续对话
+                                         # DND 强制唤醒后不享受窗口期（避免被刷屏消耗睡眠）
+    proactive_reply_window_seconds: 300  # 主动关怀同 persona 刚发来消息后的回接窗口（秒）
+    plan_transition_notice_seconds: 300  # 下一个计划 5 分钟内要开始时，提示自然收尾或顺延安排
+    activity_transition_farewell_enabled: true  # 活动切换告别：从可聊天切到忙碌/睡觉时，若用户最近在聊天，主动发告别消息
+    activity_transition_user_active_seconds: 300  # 判断"用户在聊天"的窗口（最近 N 秒内发过消息）
+    activity_transition_farewell_cooldown_seconds: 60  # 同一活动切换的去重冷却（避免 tick 间隔内重复发）
+
+# 服务器配置
+server:
+  port: 8000
+  host: "0.0.0.0"
+  debug_mode: false
+  max_content_length: 16777216  # 16MB
+  max_requests_per_minute: 600
+  max_ip_requests_per_minute: 400
+  ws_skip_merge_wait_platforms: "qq"
+  allowed_origins: "https://ai.qishihao.icu,http://localhost:8000,http://127.0.0.1:8000,http://localhost:3000,http://127.0.0.1:3000"
+
+
+# WebSocket配置
+websocket:
+  port: 8999
+  heartbeat_interval: 30  # 秒
+  timeout: 60  # 秒
+  max_connections: 10
+  max_concurrent_queries: 5  # 添加并发查询限制
+
+# 日志配置
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  console_level: "INFO"  # 控制台显示 info/警告/错误；完整细节仍写入 logs
+  file: "flask_app.log"
+
+# Debug 日志开关（统一管理，默认全部关闭，调试时按需开启）
+# 环境变量覆盖：XIAOYOU_DEBUG__<开关名>=true，如 XIAOYOU_DEBUG__AUTO_EAT=true
+debug:
+  log_full_prompt: false  # 是否在后端日志中输出完整的注入prompt
+  api_call_log: false  # 是否记录每次 LLM API 调用到 logs/api_calls_simple.log
+  auto_eat: false  # 自动进食模块（进食检查、冷却状态、LLM选食过程）
+  life_simulation: false  # 生命模拟核心（状态保存、情绪影响、每日总结、仪式触发）
+  life_stats: false  # 生命统计数据（CPP调度器加载、皮质醇调整）
+  active_care: false  # 主动关怀（私聊模式检测、心跳检查、上下文分析、晚安检测）
+  active_care_decision: false  # 主动关怀决策（Bandit探索、JITAI启发式、LLM推荐）
+  active_care_executor: false  # 主动关怀执行器（QQ适配器、模型配置、睡眠检测）
+  active_care_ws: false  # WebSocket 实时晚安/唤醒检测调试文件（写入 logs/active_care_debug.log，默认关闭避免长期堆积）
+  server_debug: false  # 桌面端 server 进程调试日志（写入 logs/server_debug.log，默认关闭）
+  peer_chat: false  # 互聊调度（心跳、用户活跃标记）
+  peer_script: false  # 互聊剧本（聊天记录、剧本延迟、日记写入）
+  character_daily: false  # 角色日常系统（活动计划生成、活动切换、peer chat触发）
+  streaming: false  # 流式输出（Web搜索判断、think标签清理）
+  auto_heal: false  # 自愈服务（配置读取、回调注销、错误处理）
+  metacognition: false  # 元认知（策略选择、注入记录）
+  core_memory: false  # 核心记忆（NOT-to-save条目跳过）
+  data_paths: false  # 数据路径（目录删除、scope解析、JSON解析）
+  search_history: false  # 聊天历史搜索（scope目录获取、记忆摘要回退）
+  tool_registry: false  # 工具注册（每个工具 import/注册结果、失败原因）
+  model_manager: false  # 模型管理器（云端模型候选、去重与注册摘要，不输出 API Key）
+
+# 对话历史配置
+history:
+  short_term_capacity: 60   # 短期记忆容量（内存中保留的最大条数，超出修剪阈值时触发修剪）
+  long_term_capacity: 100000 # 长期记忆容量（基本不限制）
+  trim_threshold: 60        # 短期记忆修剪触发阈值，条数超过此值时触发修剪
+  # directory 已废弃，历史记录统一存储到 companion_data/user/history
+  cleanup_interval_seconds: 300
+  archive_interval_seconds: 1800
+  retention_days: 30
+  auto_archive_enabled: true
+
+# 内存管理配置
+memory:
+  pruning_threshold: 0.3
+  long_term_db: "long_term_memory.db"
+
+# 内存监控看门狗配置
+memory_watchdog:
+  enabled: true  # 是否启用内存监控看门狗（已清理屎山：主循环只用 psutil，深度分析走按需 API）
+  check_interval: 60.0  # 检查间隔（秒），默认60秒
+  growth_threshold_mb: 300.0  # 增长告警阈值（MB）
+  growth_threshold_percent: 10.0  # 增长告警阈值（百分比）
+
+# 对话上下文预算配置
+chat:
+  context_budget:
+    cloud_max_history_messages: 60
+    cloud_max_history_chars: 12000
+  # 上下文压缩配置（用于压缩长历史消息以节省token）
+  context_compress:
+    enabled: true
+    # api_model 已迁移到 sections/model_routing.yaml → chat_auxiliary_models.context_compress
+    max_summary_chars: 900
+    min_truncate_chars_to_compress: 800
+    timeout_seconds: 30
+    max_tokens: 160
+  # 学习模式配置
+  study_session_compress:
+    enabled: true
+    recent_window: 4
+    max_summary_chars: 600
+
+# 语音配置
+voice:
+  enabled: true
+  default_engine: "volcano"
+  default_voice: "S_IbG6m9272"
+  tts:
+    provider: "volcano"
+    model: "S_IbG6m9272"
+    api_key: "${VOLC_API_KEY_MEIMEI}"
+    appid: "${VOLC_APPID}"
+    voice_map:
+      Ling: "S_LvHb6zN62"
+      Aveline: "S_HbG6m9272"
+      七濑澪: "S_HbG6m9272"
+      七濑 澪: "S_HbG6m9272"
+      罗欢: "S_XLOc6zN62"
+    key_map:
+      Ling:
+        api_key: "${VOLC_API_KEY_WANGLING}"
+        appid: "${VOLC_APPID}"
+      罗欢:
+        api_key: "${VOLC_API_KEY_LUOHUAN}"
+        appid: "${VOLC_APPID}"
+
+# 缓存配置
+cache:
+  size: 1000  # LRU缓存大小
+  ttl: 3600  # 缓存过期时间（秒）
+
+# 本地配置，不使用外部API
+api:
+  # qianwen_api_key已移除，系统完全使用本地模型
+
+# 限制配置
+limits:
+  max_tokens: 0 # 全局最大生成长度默认限制 (0=使用模型默认或动态传参)
+  max_text_length: 4096
+  message_timeout: 300 # 消息处理超时时间(秒)
+  default_speed: 1.0
+  reference_audio: "ref_audio/female/ref_calm.wav"
+  auto_tts_in_message: false
+  gpt_sovits:
+    gpt_model_path: "models/voice/GPT/流萤-e10.ckpt"
+    sovits_model_path: "models/voice/SoVITS/Aveline_Violet_Mix.pth"
+
+# 静态文件路径
+paths:
+  static_dir: "./static/"
+  templates_dir: "./templates/"
+
+# 跨域配置
+cors:
+  enabled: true
+  allowed_origins: ["*"]  # 生产环境应该限制为特定域名
+
+# 环境特定配置
+environments:
+  development:
+    debug_mode: true
+    logging_level: "DEBUG"
+    short_term_capacity: 60
+
+  production:
+    debug_mode: false
+    logging_level: "WARNING"
+    cors_enabled: true
+
+  testing:
+    debug_mode: true
+    testing: true
+    logging_level: "DEBUG"
+    websocket_max_connections: 2

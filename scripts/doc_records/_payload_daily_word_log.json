@@ -1,0 +1,40 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-05",
+      "weekday": "周三",
+      "title": "word_quiz 新增 source=daily 数据源，支持按日期组织每日新背单词",
+      "background": "用户反馈只读 unfamiliar_word.txt 不够用——他已经不看这个长期生词本了，正在学新单词，每天会把新背的不会的词写进当天日期对应的文件。希望 AI 也能看到这些按日期组织的文件并抽查。两个数据源并存：旧的长期生词本 + 新的每日日志。",
+      "root_causes": [
+        "现有 UnfamiliarWordBook 只支持单文件（unfamiliar_word.txt），无法表达'按日期组织'的多个文件",
+        "用户当前学习场景是每天背新词并写入当天日期文件，原架构没有这种按日期分片的概念"
+      ],
+      "fixes": [
+        "新增 core/tools/study/english/daily_word_log.py：DailyWordLogManager 类，管理 data/study_data/English/Words/daily/YYYY/MM/DD.txt 路径下的每日单词日志",
+        "DailyWordLogManager 复用 UnfamiliarWordBook 处理单文件（每个日期文件一个实例），格式完全一致：每行 'word' 或 'word count'，空行作为分组分隔保留",
+        "lazy 创建策略：不预生成空文件，第一次 mark_unknown 写入新词时才自动 mkdir + 创建当天的文件",
+        "跨日期查询：get_recent_dates(days) 返回最近 N 天日期列表（含今天，降序），list_dates 遍历磁盘已有日期文件降序返回",
+        "三种 quiz 策略：high_count 跨日期按 count 降序、同 count 内随机；new 优先未测验词；random 完全随机。可通过 days 调整范围（默认 7 天）或 date 指定某天",
+        "mark_unknown 策略：未指定 date 时在所有历史日期里找最近一次出现该词的那天 +1（避免重复追加）；指定 date 时只改那个文件；任何日期都没有则追加到今天的文件（自动创建）",
+        "mark_known 同样支持 date 参数，找不到时视为已掌握不追加",
+        "stats 额外返回 dates_with_words/days_covered/total_history_dates/earliest_date/latest_date 字段，方便 AI 知道用户从哪天开始背、背了几天",
+        "core/tools/study_tools.py 的 WordQuizInput 新增 source/days/date 三个参数，WordQuizTool._run 透传给 service",
+        "core/services/study/dispatch.py 的 _handle_word_quiz 按 source 分流：'daily' 走 DailyWordLogManager，'unfamiliar'（默认）走原 UnfamiliarWordBook，保持向后兼容",
+        "core/services/study/catalog.py 的 word_quiz 元数据新增 source/days/date inputs",
+        "core/services/study/persona/study_persona_profile.py 的生词测验提示词补充两个数据源说明，AI 在用户说'考我最近背的'/'今天新学的'时用 source=daily，未明确时优先 daily（因为用户当前在学新的）"
+      ],
+      "verification": [
+        "tests/scripts/study/verify_daily_word_log.py（17 项检查全过：日期路径转换/ensure_today_file 自动建目录/list_dates 降序/带 date 字段的读取/最近 N 天范围过滤/high_count 跨多天按 count 降序/指定 date 抽某天/new 优先未测验词/mark_unknown 已存在词找最近日期 +1/多日期取最近/mark_unknown 新词追加到今天/mark_unknown 指定 date 只改那个文件/mark_known 递减/stats 多字段/ToolDispatcher source=daily 端到端/空目录返回空）",
+        "旧 verify_unfamiliar_word_book.py 12 项测试无回归",
+        "ruff 检查所有新增/修改文件 0 错误"
+      ],
+      "notes": [
+        "用户背完新单词后自己写入当天的 daily 文件（每行一个单词或'word count'），AI 不负责写入新词，只读取和抽查",
+        "测验时用户说不认识会自动 +1 写回对应日期文件，写回策略是'最近一次出现该词的那天'，避免单词在多个日期文件里重复计数",
+        "日期格式兼容 'YYYY/MM/DD' 和 'YYYY-MM-DD' 两种写法，内部统一用 '/'",
+        "每日文件目录是 data/study_data/English/Words/daily/YYYY/MM/DD.txt，与 unfamiliar_word.txt 在同一父目录下",
+        "active_care 推送的每日测验默认还是走 source=unfamiliar（旧路径），如需让主动关怀也走 daily，需另外调整 active_care 配置"
+      ]
+    }
+  ]
+}

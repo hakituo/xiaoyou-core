@@ -1,0 +1,146 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-13",
+      "weekday": "周四",
+      "title": "背单词模块优化：词书换 ECDICT + 前端复习体验修复",
+      "background": "原 CET4 词书 83% 词汇仅单义、漏收 run/set/well 等基础词、gloom 等词查不到被兜底为占位文案；复习取词不按 daily 文件给、结算页同词重复、Again 词无限重排、例句不显示、学科标签 [经][医] 污染词性。",
+      "root_causes": [
+        "旧词书来源为考纲压缩版，多义被砍，基础词标记在 zk/gk 而非 cet4",
+        "get_word_info 对词书查不到的词伪造『用户标记为待强化』兜底",
+        "get_daily_words 第一阶段丢词（查不到即丢弃）、第二阶段把今天刚复习的词又拉入",
+        "submitReview 对 Again 词未按词去重，结算页明细与正确率按重复提交计数",
+        "FSRS Again 把 next_review 设极短，下一轮立即到期 → 一直学到会为止的体感"
+      ],
+      "fixes": [
+        "换用 ECDICT 重建词书（zk∪gk∪cet4，5361 词），多义完整",
+        "build_cet4_wordbook.py 重写释义解析：剥离 [经][医][化] 等领域标签、空词性去重",
+        "移除 get_word_info 假词条兜底，查不到返回 None",
+        "get_daily_words 第一阶段强制保留文件词、第二阶段排除今天 last_review 的词",
+        "安卓复习会话按单词去重（LinkedHashMap），正确率基于唯一词数",
+        "复习答案面补例句区，词性改带底色标签"
+      ],
+      "verification": [
+        "venv_core 运行 tests/scripts/study/verify_vocab_optimization.py 通过：词书干净、overview 正常",
+        "词书验证 bank/light/run/bear/well 等多义完整、无 [经] 残留"
+      ],
+      "notes": [
+        "study/vocab 模块此前未登记进架构文档 CAPABILITY_MAP，本次一并补充"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "QR-20260813-VOCAB-TAG",
+      "title": "词书释义被 [经][机][医][化] 学科标签污染词性",
+      "date": "2026-08-13",
+      "category": "15_chat_agent",
+      "problem": "ECDICT 的 translation 行首含 [经][机][医][化][网络] 等学科/语域标签，被当成了词性 type 显示在安卓端。",
+      "steps": [
+        "打开 CET4 词书某词（如 bank/medical）复习",
+        "答案面查看词性列",
+        "看到 [经] [医] 等方括号标签而非 n./v./adj."
+      ],
+      "expected": [
+        "只显示真正词性 n./v./adj./adv.，学科标签不显示"
+      ],
+      "actual": [
+        "type 显示为 [经] [机] [医] 等，UI 绿字标签内容错误"
+      ],
+      "root_causes": [
+        "build_cet4_wordbook.py 的 parse_translations 只识别英文词性，把方括号标签整块当 head 保留"
+      ],
+      "fixes": [
+        "重写 parse_translations：剥离方括号标签、只取 POS_PREFIX_RE 命中的真实词性",
+        "空词性翻译行按纯文本去重，避免冗余同义行"
+      ],
+      "verification": [
+        "python build_cet4_wordbook.py 后扫描全表残留方括号 type = 0",
+        "venv_core 运行 verify_vocab_optimization.py 通过"
+      ]
+    },
+    {
+      "id": "QR-20260813-VOCAB-DAILY",
+      "title": "复习取词不按 daily 文件给、只给 16 个且词对不上",
+      "date": "2026-08-13",
+      "category": "15_chat_agent",
+      "problem": "昨天 daily/2026/08/12.txt 有 22 个生词，但复习列表只给 16 个且不少词不在该文件里。",
+      "steps": [
+        "某天把 22 个生词写入 daily/2026/MM/DD.txt",
+        "次日进入复习模式"
+      ],
+      "expected": [
+        "复习列表应包含昨天文件里的 22 个词，并补充 FSRS 到期旧词"
+      ],
+      "actual": [
+        "列表主体是被 FSRS 阶段拉入的刚学词，文件词被去重/丢弃，总数偏少"
+      ],
+      "root_causes": [
+        "get_daily_words 第一阶段查不到词书就 continue 丢弃",
+        "第二阶段把所有 next_review<=now 的词拉入，挤占列表"
+      ],
+      "fixes": [
+        "第一阶段查不到词书也按文件原样加入（兜底释义）",
+        "第二阶段排除今天 last_review 过的词"
+      ],
+      "verification": [
+        "verify_vocab_optimization.py 覆盖取词链路"
+      ]
+    },
+    {
+      "id": "QR-20260813-VOCAB-SUMMARY",
+      "title": "结算页本轮明细同词重复、正确率按重复提交算",
+      "date": "2026-08-13",
+      "category": "02_android_frontend",
+      "problem": "Again 重排让同一词多次提交，结算页『本轮明细』同一单词显示多遍，会/不会计数与正确率也因此重复计算。",
+      "steps": [
+        "复习中把某词点 Again",
+        "复习完成后打开结算页"
+      ],
+      "expected": [
+        "每个词只出现一次，正确率基于去重后的唯一词数"
+      ],
+      "actual": [
+        "同一词出现 N 次（Again 几次就几次），正确率被拉低"
+      ],
+      "root_causes": [
+        "submitReview 每次提交都 reviewResults + item，未按词去重",
+        "accuracy 展示用后端按总提交统计的值"
+      ],
+      "fixes": [
+        "StudyVocabReviewManager 增加 dedupeResults（LinkedHashMap 按词去重保留最后结果）",
+        "VocabSessionSummary 正确率改为基于 reviewResults 唯一词数"
+      ],
+      "verification": [
+        "Android Studio 编译验证 + 真机查看结算页不重复"
+      ]
+    },
+    {
+      "id": "QR-20260813-VOCAB-AGAIN",
+      "title": "Again 词背完又被安排复习，一直学到会为止",
+      "date": "2026-08-13",
+      "category": "15_chat_agent",
+      "problem": "点 Again（1m）的词本轮重排后，下一轮复习又立刻出现，体感『任何一个单词软件都不会让你一直学到会为止』。",
+      "steps": [
+        "复习中把词点 Again",
+        "本轮结束后再次进入复习"
+      ],
+      "expected": [
+        "Again 词按 FSRS 间隔（通常隔更久）再出现，不在下一轮立刻冒出来"
+      ],
+      "actual": [
+        "Again 把 next_review 设为极短（~1 分钟），下一轮 get_daily_words 立即拉回"
+      ],
+      "root_causes": [
+        "FSRS Again 间隔过短 + get_daily_words 第二阶段未排除刚复习的词"
+      ],
+      "fixes": [
+        "get_daily_words 第二阶段排除今天 last_review 的词",
+        "前端 Again 本轮最多重排 1 次（redoCount<2）"
+      ],
+      "verification": [
+        "verify_vocab_optimization.py 覆盖取词逻辑"
+      ]
+    }
+  ]
+}

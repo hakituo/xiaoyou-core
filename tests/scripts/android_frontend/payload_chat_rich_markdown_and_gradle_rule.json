@@ -1,0 +1,65 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-18",
+      "weekday": "周二",
+      "title": "增强 Android 聊天富文本并限制 Codex 沙箱 Gradle 构建",
+      "background": "Android 聊天主页需要接近 ChatGPT 的 Markdown 正文排版、真实数学公式和宽表格浏览能力，同时 Codex 启动的 Gradle 进程曾与 Android Studio 争用 Configuration Cache 锁。",
+      "root_causes": [
+        "原有 LaTeX 逻辑只识别分隔符并以等宽文本展示，没有执行数学公式排版",
+        "表格使用等权重列强制压入屏幕宽度，没有独立横向滚动",
+        "聊天页父级左滑手势未检查横向子组件是否已消费拖动",
+        "Codex 与 Android Studio 并行运行 Gradle 时会竞争项目 .gradle 配置缓存锁"
+      ],
+      "fixes": [
+        "接入离线原生 AndroidMath 公式渲染，支持行内和块级 LaTeX",
+        "为宽表格、代码块和块级公式增加独立横向滚动",
+        "在最终指针事件阶段检查子组件消费状态，避免横向浏览误开伴侣详情",
+        "在 AGENTS.md 与项目规则真源中禁止 Codex 默认从沙箱运行 Android Gradle 构建"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_frontend\\verify_chat_markdown_rendering.py：PASS",
+        "git diff --check：通过",
+        "Android Kotlin 编译改由用户在 Android Studio 执行"
+      ],
+      "notes": [
+        "Codex 启动并占用锁的 PID 37480 及关联 PID 2536 已结束",
+        "规则要求后续 Android 编译默认交由 Android Studio，除非用户在当前任务明确授权 Codex 代为构建"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "ANDROID-GRADLE-CODEX-LOCK-001",
+      "title": "Codex Gradle 构建阻塞 Android Studio Configuration Cache",
+      "date": "2026-08-18",
+      "category": "09_build_test_env",
+      "problem": "Codex 启动 Android Gradle 编译后长时间占用项目 Configuration Cache，Android Studio 构建等待锁并超时。",
+      "steps": [
+        "在 Codex 中启动 gradlew Android 编译任务",
+        "任务仍运行时在 Android Studio 中执行构建",
+        "Android Studio 等待 configuration-cache.lock 并超时"
+      ],
+      "expected": [
+        "Codex 不与 Android Studio 并行争用项目 Gradle 缓存",
+        "Android 编译默认由 Android Studio 完成"
+      ],
+      "actual": [
+        "Codex Gradle PID 37480 持有 Configuration Cache 锁",
+        "Android Studio 构建进程无法取得锁"
+      ],
+      "root_causes": [
+        "缺少禁止 Codex 默认执行 Android Gradle 构建的项目级规则",
+        "任务中断后 Gradle 子进程仍继续运行"
+      ],
+      "fixes": [
+        "结束 Codex 启动的 Gradle 持锁进程及关联客户端进程",
+        "在 AGENTS.md 与 .trae/rules/project_rules.md 增加 Android Gradle 构建约束"
+      ],
+      "verification": [
+        "确认 PID 37480 已结束",
+        "确认关联 PID 2536 已结束"
+      ]
+    }
+  ]
+}

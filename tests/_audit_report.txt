@@ -1,0 +1,92 @@
+============================================================
+tests/ 目录健康审计
+============================================================
+
+[废弃目录复活]
+  OK  无问题
+
+[根目录散落 .py]
+  OK  无问题
+
+[一次性 verify_*.py 蔓延]
+  OK  无问题
+
+[scripts/ 顶层白名单]
+  OK  无问题
+
+[__pycache__ 残留]
+  OK  无问题
+
+[重复文件名]
+  OK  无问题
+
+[超大文件]
+  WARN 超大文件 1033 行: character_daily\test_message_deferral.py（建议拆分）
+  WARN 超大文件 1527 行: unit\test_context_overflow.py（建议拆分）
+
+[无 assert 的 test_*.py]
+  WARN 无 assert 的 test_*.py: benchmark\test_siliconflow_speed.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: integration\test_vision_image.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: scheduler\test_concurrent_generation.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: tools\test_feed_food_tool_persona_scope.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_active_care_dynamic.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_active_care_snooze_false_triggers.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_auto_eat_llm.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_aveline_full.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_background_consult_intent.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_bayes_classifier.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_concurrent_image_chat.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_context_timing.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_cpp_scheduler_enhancements.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_cpp_scheduler_llm_config.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_dashscope_fix.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_deepseek_search_e2e.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_deepseek_streaming.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_deepseek_thinking_mode.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_dll_loading.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_emoji_conversation.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_emoji_injector.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_emotion_config.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_emotion_detector.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_emotion_tricky.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_image_models_fix.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_integration_chat_timing.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_intent_router.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_life_sleep_wake_route.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_local_llm_perf.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_memory_deduplication.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_openai_sse_robustness.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_physiology_tool.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_priority_analysis_compare.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_priority_analysis_full.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_priority_analysis_models.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_priority_analysis_timeout.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_prompt_sleep_context.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_qq_adapter_import.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_qwen3_tts_cloud.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_qwen3_tts_quick.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_reminder_tool.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_reply_policy_support.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_scheduler_py.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_sensitive_mode.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_short_term_persistence.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_siliconflow_vision.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_special_days.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_ssl_retry.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_startup_time.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_strip_emojis.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_stt.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_study_mode_api.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_telegram_adapter.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_topic_extraction_regex.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_trigger.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_websocket_streaming.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_web_search_preprocess.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_web_search_tool.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_ws_connection.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_zhipu_auto_search.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_zhipu_client.py（pytest 会收集但不实际验证）
+  WARN 无 assert 的 test_*.py: unit\test_zhipu_proxy_search.py（pytest 会收集但不实际验证）
+
+============================================================
+共发现 65 个潜在问题

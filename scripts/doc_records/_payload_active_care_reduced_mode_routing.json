@@ -1,0 +1,65 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-24",
+      "weekday": "周一",
+      "title": "修复学习低打扰串线为晚安及 BERT 误唤醒",
+      "background": "用户在 22:29 和 22:34 明确表示正在背单词，系统却写入晚安低打扰，nightly 随后误报用户开始睡觉；普通文本又被零样本 BERT 识别为 WAKEUP_NOW，导致睡眠状态反复切换。",
+      "root_causes": [
+        "WebSocket 即时入口只判断 enter_reduced，没有按 reason/label 区分 focus 与 sleep，并把所有低打扰意图都调用成 set_sleep_mode",
+        "WAKEUP_NOW 与其他零样本状态共用 0.40 阈值，未要求文本包含明确的当前起床陈述",
+        "nightly 只读取 reduced_mode_active 与 reduced_mode_label，因此上游错误写入 sleep 后会被忠实地当成用户入睡"
+      ],
+      "fixes": [
+        "即时入口按 reason/label 严格分流：goodnight/sleep 才进入晚安低打扰，focus/focus 交给统一状态管理器写入专注状态",
+        "StateManager 新增 apply_transition_intent，允许入口复用已识别意图而不重复运行 BERT",
+        "WAKEUP_NOW 改为高精度规则确认；零样本 BERT 单独给出的唤醒标签不再改变状态，并扩充明确起床陈述覆盖"
+      ],
+      "verification": [
+        ".\\venv_core\\Scripts\\python.exe -m tests.scripts.active_care.verify_reduced_mode_routing",
+        ".\\venv_core\\Scripts\\python.exe -m tests.scripts.active_care.verify_shared_sleep_and_usage_event",
+        ".\\venv_core\\Scripts\\python.exe -m tests.scripts.security_p0.verify_p0_01_no_exec_debug",
+        ".\\venv_core\\Scripts\\python.exe -m tests.scripts.security_p0.verify_p0_02_active_care_no_exec",
+        ".\\venv_core\\Scripts\\python.exe -m ruff check core/interfaces/websocket/adapters/handlers/chat/active_care.py core/services/active_care/state/mode_state.py core/services/active_care/state/manager.py tests/scripts/active_care/verify_reduced_mode_routing.py"
+      ],
+      "notes": [
+        "当前问题是状态路由与零样本置信度校准问题，不需要更换 BERT 模型"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "QR-20260824-ACTIVE-CARE-MODE-CROSSTALK",
+      "title": "学习低打扰被写成晚安且普通文本误触发唤醒",
+      "date": "2026-08-24",
+      "category": "01_active_care",
+      "problem": "用户正在背单词时，Active Care 将学习专注意图写成 sleep，nightly 因而误判用户开始睡觉；随后无起床语义的普通文本又被 BERT 识别为 WAKEUP_NOW。",
+      "steps": [
+        "发送“我在背单词”或“还在背单词呢，不过今天修了你很多东西”",
+        "观察 SLEEP_STATE 写入晚安低打扰",
+        "等待 nightly 轮询并观察“检测到用户开始睡觉”",
+        "发送无起床语义的普通文本并观察状态可能退出"
+      ],
+      "expected": [
+        "背单词只进入 focus 低打扰，不应写入 sleep",
+        "只有明确的当前起床陈述可以退出晚安低打扰"
+      ],
+      "actual": [
+        "所有 enter_reduced 都调用 set_sleep_mode，导致 focus 被覆盖成 sleep",
+        "WAKEUP_NOW 仅凭 0.40 以上零样本相似度即可退出睡眠状态"
+      ],
+      "root_causes": [
+        "即时入口没有区分低打扰子类型",
+        "高影响唤醒状态缺少词法和陈述语气确认"
+      ],
+      "fixes": [
+        "按 reason/label 路由学习与晚安状态",
+        "禁止 BERT WAKEUP_NOW 单独改状态，保留明确起床规则"
+      ],
+      "verification": [
+        "新增 5 项回归验证覆盖 focus 不调用睡眠、晚安正常生效、误唤醒被拦截、明确起床仍有效及 focus 状态落盘",
+        "真实 ONNX BERT 复测两条背词消息为 focus、普通文本为 none"
+      ]
+    }
+  ]
+}

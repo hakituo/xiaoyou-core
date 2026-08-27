@@ -1,0 +1,70 @@
+# ============================================================
+# 小友 Core 模型本体配置
+#
+# 这一层只管“模型本身怎么跑”：
+# - 默认 LLM provider / 本地 GGUF 路径
+# - 推理采样参数 / 上下文窗口 / KVSwap
+# - 视觉模型 provider 与默认参数
+#
+# 不负责“哪个场景用哪个模型”。
+# 场景路由请看同目录下的 model_routing.yaml。
+# ============================================================
+
+model:
+  # LLM Provider Configuration
+  llm:
+    provider: "deepseek"  # 默认主对话走云端 DeepSeek
+  default: "deepseek"
+  # persona_model_map 已移除，统一在 model_routing.chat_models 中配置
+  # 避免在“模型参数”和“业务路由”两层重复维护
+
+  # 本地文本模型（当 provider=local 或需要本地回退时使用）
+  path: "models/llm/Qwen2.5-7B-Instruct-abliterated-v2.Q4_K_M.gguf"
+  summary_model_path: null  # CPU Offload 模型路径（如 "./models/Qwen-7B-Chat-Int4"）
+  vision_path: "models/vision/Qwen2-VL-2B"
+
+  # 上下文窗口与 GPU 卸载策略（RTX 5070 8GB VRAM）
+  # n_gpu_layers: 999 表示尽量全部卸载到 GPU，让 LLM 全速运行
+  # TTS 可以放在 CPU 跑，总比 LLM 跨 CPU/GPU 反复切换更稳
+  n_ctx: 4096
+  n_gpu_layers: 999
+  max_context_size: 4096
+  max_batch_size: 512
+
+  # KVSwap 配置（长对话时把 KV 状态落盘/回载）
+  kv_swap_enabled: true
+  kv_swap_trigger_tokens: 2048
+
+  # 视觉模型配置（使用 SiliconFlow 的 Qwen3-VL-32B-Instruct）
+  vision:
+    provider: "siliconflow"
+    model: "Qwen/Qwen3-VL-32B-Instruct"
+    api_key: "${SILICONFLOW_API_KEY}"
+    base_url: "https://api.siliconflow.cn/v1/chat/completions"
+    max_new_tokens: 1024
+
+  # 生成参数
+  generation:
+    temperature: 1.1  # 调高温度以释放 Stheno 的创造力 (1.0-1.2)
+    min_p: 0.05       # 稍微放开 Min P (0.1 -> 0.05)
+    repetition_penalty: 1.1
+    top_p: 0.95       # 稍微放开 Top P (0.9 -> 0.95)
+    top_k: 40
+    max_new_tokens: 0
+
+  first_token_timeout: 10  # 首个 token 超时（秒）
+  llm_preload_on_startup: false  # 关闭启动预加载，降低空闲内存占用
+
+  # 模型加载选项
+  load_options:
+    auto_dtype: true       # 自动选择 fp16 / bf16 / fp32
+    quantization: true     # 优先尝试量化加载
+    nf4_quantization: true # 强制使用 NF4 4bit
+    quantization_config:
+      load_in_4bit: true
+      bnb_4bit_quant_type: "nf4"
+      bnb_4bit_compute_dtype: "float16"
+      bnb_4bit_use_double_quant: true
+    model_parallel: true
+    max_memory_ratio: 0.9
+    timeout: 300

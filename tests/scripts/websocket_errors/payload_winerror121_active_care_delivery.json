@@ -1,0 +1,73 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-24",
+      "weekday": "周一",
+      "title": "修复 WinError 121 断连噪音与 Active Care 双 QQ 消息丢失",
+      "background": "用户反馈 WebSocket 出现 WinError 121，且整个下午几乎没有收到主动消息。运行日志显示 Active Care 持续生成消息，但 QQ 适配器在多个时间段没有收到对应 proactive_message。",
+      "root_causes": [
+        "QQ 目标构建后仍把逻辑 shared__scope__* 当作广播与离线队列键，消息进入 QQ 重连永远不会清空的队列",
+        "双 QQ 多角色共用主人 user_id，实时广播和离线重放未按 client_id 选择目标角色，错误角色可能代收后忽略消息",
+        "QQ 客户端协议 ping_timeout 仅 10 秒，服务端 Uvicorn 也沿用较短默认值，短时事件循环阻塞会放大重连风暴",
+        "离线重放没有检查 send_with_retry 的 False 返回值，失败消息仍可能被移出队列"
+      ],
+      "fixes": [
+        "ConversationRouter 在 QQ 路由中保留 private_{master_qq_id} 作为真实传输 ID",
+        "WebSocket 广播与离线重放按 qq_{role_id}_{session_id} 定向，其他角色消息继续留在队列",
+        "离线重放只有明确发送成功才移除消息，失败时恢复到队首等待下一次重连",
+        "QQ 客户端与 Uvicorn WebSocket 心跳超时统一放宽到 60 秒",
+        "将 WinError 121 data transfer failed 转换为无堆栈的可恢复断连信息日志"
+      ],
+      "verification": [
+        "venv_cpu 执行 tests\\scripts\\websocket_errors\\verify_winerror121_active_care_delivery.py 返回 exit 0",
+        "venv_cpu 执行 clients\\bots\\tests\\test_session_heartbeat.py，6 passed",
+        "目标 Python 文件 Ruff 检查通过",
+        "目标 Python 文件 py_compile 检查通过"
+      ],
+      "notes": [
+        "2026-08-24 12:00 至 18:59 的 QQ 日志统计到 56 次 Connection failed、92 次 Reconnecting in",
+        "14:41 至 18:22 多条 Active Care 消息被存入 shared__scope__aveline 或 shared__scope__ling 离线队列，而 QQ 真实连接注册为 private_123456789"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "WS-20260824-WIN121-ACTIVE-CARE-DELIVERY",
+      "title": "WinError 121 重连期间 Active Care 消息进入错误离线队列",
+      "date": "2026-08-24",
+      "category": "08_websocket_network",
+      "problem": "WebSocket 长连接反复出现传输超时，Active Care 后端记录为已分发，但 QQ 端在下午多个时段没有收到主动消息。",
+      "steps": [
+        "对齐 active_care_messages.log、xiaoyou_main.log 与 qq_adapter.log 的同一时间戳",
+        "统计 QQ 连接失败、重连和 proactive_message 接收记录",
+        "检查 ConversationRouter、Aveline proactive_messaging、WebSocket broadcast 与 offline_queue",
+        "模拟双角色共用主人 ID 且只有一个角色重连的离线重放"
+      ],
+      "expected": [
+        "逻辑人格会话与真实传输 ID 分离，离线消息能在 QQ 重连后被找到",
+        "只有目标角色连接能取走主动消息，发送失败不会丢队列",
+        "短时 Windows 调度或网络抖动不触发密集重连，真实断连仍能自动恢复"
+      ],
+      "actual": [
+        "消息被存到 shared__scope__* 队列，真实 private_* 连接重连时无法读取",
+        "多角色广播只要任一连接发送成功就被视为送达，即使目标角色没有收到",
+        "10 秒协议 ping 超时导致同一下午出现大量连接失败与重连"
+      ],
+      "root_causes": [
+        "ConversationRouter 提前返回 persona 会话时没有把 original_conversation_id 更新为真实 QQ user_id",
+        "广播和离线队列只按主人 user_id 路由，缺少角色 client_id 维度",
+        "离线重放忽略布尔发送结果，协议心跳容忍度不足"
+      ],
+      "fixes": [
+        "保留 private_* 传输 ID 并按角色 client_id 定向广播和重放",
+        "失败重放保留消息，心跳超时统一为 60 秒",
+        "精确降级 WinError 121 日志，不吞掉其他 WebSocket 异常"
+      ],
+      "verification": [
+        "verify_winerror121_active_care_delivery.py 覆盖传输 ID、角色筛选、失败保留、心跳与日志降级",
+        "test_session_heartbeat.py 6 项全部通过",
+        "Ruff 与 py_compile 通过"
+      ]
+    }
+  ]
+}

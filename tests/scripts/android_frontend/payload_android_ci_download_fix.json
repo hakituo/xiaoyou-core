@@ -1,0 +1,56 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-17",
+      "weekday": "周一",
+      "title": "修复 Android CI 在海外构建机下载 Gradle 超时",
+      "background": "Gradle Wrapper 纳入仓库后，GitHub Actions 已能启动 gradlew，但全新 Ubuntu runner 在单元测试步骤运行约 10 秒后退出，lint 同样无法启动。",
+      "root_causes": [
+        "仓库为中国大陆本地环境配置腾讯 Gradle 镜像，但 GitHub 托管 runner 从海外访问该镜像不稳定",
+        "Wrapper 的 networkTimeout 仅为 10000 毫秒，与 CI 单元测试步骤约 10 秒后退出的时间一致"
+      ],
+      "fixes": [
+        "仅在 GitHub Actions 中把腾讯镜像主机替换为 Gradle 官方发行源，不改变本地 Wrapper 配置",
+        "仅在 CI 中把 Wrapper 网络超时从 10 秒提高到 60 秒",
+        "扩展 Android CI 完整性验证脚本，检查 CI 专用下载源和超时配置"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_frontend\\verify_android_ci_integrity.py"
+      ],
+      "notes": [
+        "未运行本地 Android 构建；实际海外下载链路将在相关改动推送后由 GitHub Actions 验证"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "ANDROID-CI-002",
+      "title": "Android CI 启动 Wrapper 后在 10 秒网络超时",
+      "date": "2026-08-17",
+      "category": "09_build_test_env",
+      "problem": "GitHub Actions 已成功检出包含 gradle-wrapper.jar 的仓库并启动 Gradle 命令，但单元测试步骤约 10 秒后退出，后续构建被跳过。",
+      "steps": [
+        "GitHub Actions 在全新 Ubuntu runner 检出 Android 工程",
+        "执行 ./gradlew :app:testDebugUnitTest",
+        "Wrapper 尝试从腾讯镜像下载 Gradle 8.14.3 完整发行包"
+      ],
+      "expected": [
+        "GitHub runner 成功下载并校验 Gradle 发行包，然后进入 Android 单元测试"
+      ],
+      "actual": [
+        "Gradle 命令在与 networkTimeout=10000 对应的约 10 秒后退出"
+      ],
+      "root_causes": [
+        "海外 GitHub runner 访问面向中国大陆本地环境选择的腾讯镜像不稳定",
+        "10 秒网络超时不足以覆盖全新 runner 首次下载 Gradle 完整发行包"
+      ],
+      "fixes": [
+        "在 CI 工作流中临时将下载源切换为 services.gradle.org/distributions",
+        "在 CI 工作流中临时把 networkTimeout 调整为 60000 毫秒"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_frontend\\verify_android_ci_integrity.py"
+      ]
+    }
+  ]
+}

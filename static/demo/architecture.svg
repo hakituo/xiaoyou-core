@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg width="1500" height="1180" viewBox="0 0 1500 1180" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .title { font: 700 28px Arial, sans-serif; fill: #111827; }
+      .subtitle { font: 600 15px Arial, sans-serif; fill: #111827; }
+      .text { font: 13px Arial, sans-serif; fill: #111827; }
+      .small { font: 11px Arial, sans-serif; fill: #374151; }
+      .group-label { font: 700 16px Arial, sans-serif; fill: #111827; }
+      .box { fill: #ffffff; stroke: #94a3b8; stroke-width: 1; rx: 8; ry: 8; }
+      .arrow { stroke: #64748b; stroke-width: 1.5; fill: none; marker-end: url(#arrowhead); }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="1500" height="1180" fill="#ffffff"/>
+<text x="750" y="40" text-anchor="middle" class="title">Xiaoyou Core 系统架构</text>
+<text x="750" y="68" text-anchor="middle" class="small">分层架构：客户端 → 接口层 → 核心层 → 记忆/调度层 → 存储层</text>
+<rect x="40" y="90" width="1420" height="120" fill="#e3f2fd" stroke="#1e88e5" stroke-width="2" rx="14" ry="14"/>
+<text x="750" y="114" text-anchor="middle" class="group-label">客户端层 Clients</text>
+<rect x="60" y="130" width="180" height="60" class="box"/>
+<text x="150" y="165" text-anchor="middle" class="text">Web (React + Vite)</text>
+<rect x="270" y="130" width="180" height="60" class="box"/>
+<text x="360" y="165" text-anchor="middle" class="text">Android (Kotlin)</text>
+<rect x="480" y="130" width="180" height="60" class="box"/>
+<text x="570" y="165" text-anchor="middle" class="text">iOS (Swift)</text>
+<rect x="690" y="130" width="180" height="60" class="box"/>
+<text x="780" y="165" text-anchor="middle" class="text">Electron 桌面</text>
+<rect x="900" y="130" width="180" height="60" class="box"/>
+<text x="990" y="165" text-anchor="middle" class="text">QQ 机器人</text>
+<rect x="1110" y="130" width="180" height="60" class="box"/>
+<text x="1200" y="165" text-anchor="middle" class="text">Telegram 机器人</text>
+<rect x="1280" y="130" width="180" height="60" class="box"/>
+<text x="1370" y="165" text-anchor="middle" class="text">Obsidian</text>
+<rect x="40" y="230" width="1420" height="120" fill="#e8f5e9" stroke="#43a047" stroke-width="2" rx="14" ry="14"/>
+<text x="750" y="254" text-anchor="middle" class="group-label">接口层 Interface / Routers</text>
+<rect x="110" y="270" width="260" height="60" class="box"/>
+<text x="240" y="305" text-anchor="middle" class="text">/api/v1/ 业务路由</text>
+<rect x="430" y="270" width="260" height="60" class="box"/>
+<text x="560" y="305" text-anchor="middle" class="text">/api/admin/ 运维路由</text>
+<rect x="750" y="270" width="260" height="60" class="box"/>
+<text x="880" y="305" text-anchor="middle" class="text">/api/v1/ws WebSocket</text>
+<rect x="1070" y="270" width="260" height="60" class="box"/>
+<text x="1200" y="305" text-anchor="middle" class="text">/v1 OpenAI Compatible</text>
+<rect x="40" y="370" width="1420" height="520" fill="#fff8e1" stroke="#fb8c00" stroke-width="2" rx="14" ry="14"/>
+<text x="750" y="394" text-anchor="middle" class="group-label">核心层 Core</text>
+<rect x="70" y="410" width="260" height="180" fill="#e1f5fe" stroke="#039be5" stroke-width="2" rx="14" ry="14"/>
+<text x="200" y="434" text-anchor="middle" class="subtitle">核心引擎 core_engine</text>
+<rect x="90" y="450" width="220" height="24" class="box"/>
+<text x="200" y="467" text-anchor="middle" class="text">EventBus</text>
+<rect x="90" y="476" width="220" height="24" class="box"/>
+<text x="200" y="493" text-anchor="middle" class="text">LifecycleManager</text>
+<rect x="90" y="502" width="220" height="24" class="box"/>
+<text x="200" y="519" text-anchor="middle" class="text">ModelManager</text>
+<rect x="90" y="528" width="220" height="24" class="box"/>
+<text x="200" y="545" text-anchor="middle" class="text">ConfigManager</text>
+<rect x="90" y="554" width="220" height="24" class="box"/>
+<text x="200" y="571" text-anchor="middle" class="text">ServiceRegistry</text>
+<rect x="350" y="410" width="340" height="230" fill="#e8f5e9" stroke="#43a047" stroke-width="2" rx="14" ry="14"/>
+<text x="520" y="434" text-anchor="middle" class="subtitle">服务层 services / 25+</text>
+<rect x="370" y="450" width="150" height="26" class="box"/>
+<text x="445" y="468" text-anchor="middle" class="text">AvelineService</text>
+<rect x="530" y="450" width="150" height="26" class="box"/>
+<text x="605" y="468" text-anchor="middle" class="text">ActiveCare</text>
+<rect x="370" y="480" width="150" height="26" class="box"/>
+<text x="445" y="498" text-anchor="middle" class="text">Workspace</text>
+<rect x="530" y="480" width="150" height="26" class="box"/>
+<text x="605" y="498" text-anchor="middle" class="text">Scheduler</text>
+<rect x="370" y="510" width="150" height="26" class="box"/>
+<text x="445" y="528" text-anchor="middle" class="text">Immune</text>
+<rect x="530" y="510" width="150" height="26" class="box"/>
+<text x="605" y="528" text-anchor="middle" class="text">AutoHeal</text>
+<rect x="370" y="540" width="150" height="26" class="box"/>
+<text x="445" y="558" text-anchor="middle" class="text">LifeSimulation</text>
+<rect x="530" y="540" width="150" height="26" class="box"/>
+<text x="605" y="558" text-anchor="middle" class="text">Study</text>
+<rect x="370" y="570" width="150" height="26" class="box"/>
+<text x="445" y="588" text-anchor="middle" class="text">Journal</text>
+<rect x="530" y="570" width="150" height="26" class="box"/>
+<text x="605" y="588" text-anchor="middle" class="text">Daily</text>
+<rect x="370" y="600" width="150" height="26" class="box"/>
+<text x="445" y="618" text-anchor="middle" class="text">DataOps</text>
+<rect x="530" y="600" width="150" height="26" class="box"/>
+<text x="605" y="618" text-anchor="middle" class="text">SelfImprovement</text>
+<rect x="710" y="410" width="220" height="110" fill="#f3e5f5" stroke="#8e24aa" stroke-width="2" rx="14" ry="14"/>
+<text x="820" y="434" text-anchor="middle" class="subtitle">Agent 层 agents</text>
+<rect x="730" y="450" width="180" height="24" class="box"/>
+<text x="820" y="467" text-anchor="middle" class="text">ChatAgent</text>
+<rect x="730" y="482" width="180" height="24" class="box"/>
+<text x="820" y="499" text-anchor="middle" class="text">PersonaSystem / Prompt</text>
+<rect x="710" y="540" width="720" height="120" fill="#fff3e0" stroke="#ef6c00" stroke-width="2" rx="14" ry="14"/>
+<text x="1070" y="564" text-anchor="middle" class="subtitle">模块层 modules</text>
+<rect x="730" y="585" width="120" height="55" class="box"/>
+<text x="790" y="617" text-anchor="middle" class="text">LLM</text>
+<rect x="870" y="585" width="120" height="55" class="box"/>
+<text x="930" y="617" text-anchor="middle" class="text">Vision</text>
+<rect x="1010" y="585" width="120" height="55" class="box"/>
+<text x="1070" y="617" text-anchor="middle" class="text">Voice</text>
+<rect x="1150" y="585" width="120" height="55" class="box"/>
+<text x="1210" y="617" text-anchor="middle" class="text">Image</text>
+<rect x="1290" y="585" width="120" height="55" class="box"/>
+<text x="1350" y="617" text-anchor="middle" class="text">Memory Module</text>
+<rect x="950" y="410" width="480" height="110" fill="#eceff1" stroke="#546e7a" stroke-width="2" rx="14" ry="14"/>
+<text x="1190" y="434" text-anchor="middle" class="subtitle">工具层 tools / 24+</text>
+<rect x="970" y="450" width="82" height="24" class="box"/>
+<text x="1011" y="467" text-anchor="middle" class="text">Study</text>
+<rect x="970" y="482" width="82" height="24" class="box"/>
+<text x="1011" y="499" text-anchor="middle" class="text">...</text>
+<rect x="1062" y="450" width="82" height="24" class="box"/>
+<text x="1103" y="467" text-anchor="middle" class="text">Daily/Diary</text>
+<rect x="1062" y="482" width="82" height="24" class="box"/>
+<text x="1103" y="499" text-anchor="middle" class="text">...</text>
+<rect x="1154" y="450" width="82" height="24" class="box"/>
+<text x="1195" y="467" text-anchor="middle" class="text">Reminder</text>
+<rect x="1154" y="482" width="82" height="24" class="box"/>
+<text x="1195" y="499" text-anchor="middle" class="text">...</text>
+<rect x="1246" y="450" width="82" height="24" class="box"/>
+<text x="1287" y="467" text-anchor="middle" class="text">Status/Food</text>
+<rect x="1246" y="482" width="82" height="24" class="box"/>
+<text x="1287" y="499" text-anchor="middle" class="text">...</text>
+<rect x="1338" y="450" width="82" height="24" class="box"/>
+<text x="1379" y="467" text-anchor="middle" class="text">Search</text>
+<rect x="1338" y="482" width="82" height="24" class="box"/>
+<text x="1379" y="499" text-anchor="middle" class="text">...</text>
+<rect x="70" y="610" width="260" height="100" fill="#fce4ec" stroke="#d81b60" stroke-width="2" rx="14" ry="14"/>
+<text x="200" y="634" text-anchor="middle" class="subtitle">情绪系统 emotion</text>
+<rect x="90" y="650" width="220" height="24" class="box"/>
+<text x="200" y="667" text-anchor="middle" class="text">13 种情绪检测/计算/存储</text>
+<rect x="350" y="660" width="340" height="100" fill="#e8eaf6" stroke="#3f51b5" stroke-width="2" rx="14" ry="14"/>
+<text x="520" y="684" text-anchor="middle" class="subtitle">人物档案 people</text>
+<rect x="370" y="700" width="300" height="44" class="box"/>
+<text x="520" y="727" text-anchor="middle" class="text">Profile Storage / Multi-Version Persona</text>
+<rect x="40" y="910" width="680" height="120" fill="#f3e5f5" stroke="#8e24aa" stroke-width="2" rx="14" ry="14"/>
+<text x="380" y="934" text-anchor="middle" class="group-label">记忆层 Memory</text>
+<rect x="80" y="950" width="150" height="60" class="box"/>
+<text x="155" y="985" text-anchor="middle" class="text">WeightedMemory</text>
+<rect x="240" y="950" width="150" height="60" class="box"/>
+<text x="315" y="985" text-anchor="middle" class="text">VectorSearch</text>
+<rect x="400" y="950" width="150" height="60" class="box"/>
+<text x="475" y="985" text-anchor="middle" class="text">KeywordIndex</text>
+<rect x="560" y="950" width="150" height="60" class="box"/>
+<text x="635" y="985" text-anchor="middle" class="text">Distillation</text>
+<rect x="740" y="910" width="720" height="120" fill="#ffebee" stroke="#e53935" stroke-width="2" rx="14" ry="14"/>
+<text x="1100" y="934" text-anchor="middle" class="group-label">调度层 Scheduler</text>
+<rect x="780" y="950" width="200" height="60" class="box"/>
+<text x="880" y="985" text-anchor="middle" class="text">C++ Scheduler</text>
+<rect x="1000" y="950" width="200" height="60" class="box"/>
+<text x="1100" y="985" text-anchor="middle" class="text">Global Task Scheduler</text>
+<rect x="1220" y="950" width="200" height="60" class="box"/>
+<text x="1320" y="985" text-anchor="middle" class="text">Bio System</text>
+<rect x="40" y="1050" width="1420" height="100" fill="#f5f5f5" stroke="#757575" stroke-width="2" rx="14" ry="14"/>
+<text x="750" y="1074" text-anchor="middle" class="group-label">存储层 Storage</text>
+<rect x="120" y="1085" width="300" height="45" class="box"/>
+<text x="270" y="1112" text-anchor="middle" class="text">JSON Files</text>
+<rect x="460" y="1085" width="300" height="45" class="box"/>
+<text x="610" y="1112" text-anchor="middle" class="text">ChromaDB</text>
+<rect x="800" y="1085" width="300" height="45" class="box"/>
+<text x="950" y="1112" text-anchor="middle" class="text">SQLite</text>
+<rect x="1140" y="1085" width="300" height="45" class="box"/>
+<text x="1290" y="1112" text-anchor="middle" class="text">Redis L2 Cache</text>
+<path d="M 150 190 L 150 230" class="arrow"/>
+<path d="M 360 190 L 360 230" class="arrow"/>
+<path d="M 570 190 L 570 230" class="arrow"/>
+<path d="M 780 190 L 780 230" class="arrow"/>
+<path d="M 990 190 L 990 230" class="arrow"/>
+<path d="M 1200 190 L 1200 230" class="arrow"/>
+<path d="M 1370 190 L 1370 230" class="arrow"/>
+<path d="M 240 350 L 240 370" class="arrow"/>
+<path d="M 560 350 L 560 370" class="arrow"/>
+<path d="M 880 350 L 880 370" class="arrow"/>
+<path d="M 1200 350 L 1200 370" class="arrow"/>
+<path d="M 400 890 L 400 910" class="arrow"/>
+<path d="M 1100 890 L 1100 910" class="arrow"/>
+<path d="M 400 1030 L 400 1050" class="arrow"/>
+<path d="M 1100 1030 L 1100 1050" class="arrow"/>
+<path d="M 750 850 L 750 1050" class="arrow"/>
+</svg>

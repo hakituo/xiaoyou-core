@@ -1,0 +1,60 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-18",
+      "weekday": "周二",
+      "title": "C++ LLM 单槽位上下文裁剪与结构化错误返回修复",
+      "background": "本地 GGUF 模型的 C++ Worker 已成功初始化，但长 persona 提示进入推理后报 Prompt too long for context，失败响应随后又因 dict 被当作字符串拼接而触发 TypeError。",
+      "root_causes": [
+        "C++ llama.cpp 开启会话缓存后会将 n_ctx 按序列数量均分，Python 入口却仍按完整 n_ctx 计算提示预算",
+        "快速 token 估算器对部分文本可能明显低估，原裁剪缺少面向中英文混合提示的保守下界",
+        "C++ 失败监控线程向队列写入结构化错误字典，流消费端未区分字典和文本就执行 stop_buffer += text"
+      ],
+      "fixes": [
+        "新增共享的 C++ cache size 与单序列上下文计算函数，配置构建和推理裁剪使用同一规则",
+        "新增保守 token 估算并按真实 slot context 预留、裁剪提示及限制生成 token",
+        "流消费端优先识别并原样返回结构化错误，仅对文本执行停止词缓冲"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\llm\\verify_cpp_prompt_slot_and_error_payload.py",
+        "venv_core\\Scripts\\python.exe -m ruff check core\\services\\scheduler\\utils\\resource_utils.py core\\services\\scheduler\\client\\cpp_config_builder.py core\\services\\scheduler\\inference\\inference_utils.py core\\services\\scheduler\\inference\\cpp_llm_handler.py tests\\scripts\\llm\\verify_cpp_prompt_slot_and_error_payload.py"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "QR-20260818-CPP-PROMPT-SLOT",
+      "title": "C++ LLM 长提示超过单序列上下文后错误处理再次崩溃",
+      "date": "2026-08-18",
+      "category": "03_cpp_scheduler",
+      "problem": "C++ Worker 就绪后，本地模型对长 conversation prompt 报 Prompt too long for context，并在 Python 流处理阶段继续触发 can only concatenate str (not dict) to str。",
+      "steps": [
+        "通过 start_venv_core.bat 以 local provider 启动",
+        "发送会构建约 6881 字符 persona 与用户消息的聊天请求",
+        "观察 C++ LLM 任务失败及 cpp_llm_handler.py 的 stop_buffer 拼接异常"
+      ],
+      "expected": [
+        "Python 在提交前按 C++ 实际单序列槽位裁剪提示",
+        "后端失败时结构化错误可原样返回且不产生二次异常"
+      ],
+      "actual": [
+        "Python 按完整 n_ctx 预算，但 C++ 缓存模式下单请求只获得约一半上下文",
+        "结构化错误字典被作为字符串写入停止词缓冲"
+      ],
+      "root_causes": [
+        "Python 与 C++ 的上下文容量口径不一致",
+        "快速 token 估算缺少保守下界",
+        "流队列允许文本和字典两种载荷，但消费端只实现了文本分支"
+      ],
+      "fixes": [
+        "统一 C++ cache 与 slot context 计算",
+        "用保守 token 估算在提交前裁剪提示",
+        "增加结构化错误载荷分支"
+      ],
+      "verification": [
+        "tests/scripts/llm/verify_cpp_prompt_slot_and_error_payload.py",
+        "Ruff：相关 5 个 Python 文件全部通过"
+      ]
+    }
+  ]
+}

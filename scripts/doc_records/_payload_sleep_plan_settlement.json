@@ -1,0 +1,68 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-25",
+      "weekday": "周二",
+      "title": "修复旧晚安信号将新计划全部显示为完成",
+      "background": "夜间处理生成用户当天计划后，Active Care 仍反复读取此前的晚安信号，并把新计划整批结算为 skipped；计划 Markdown 又把 skipped 输出为已勾选，导致 Android 看起来全部完成。",
+      "root_causes": [
+        "晚安意图入口没有判断同一信号是否已经处理，每轮检查都会重复调用睡眠结算",
+        "睡眠结算始终读取执行时当天计划，没有禁止旧信号修改在其后生成的计划",
+        "skipped 与 completed 都输出为 Markdown [x]，Android 的布尔模型因此将两者合并为已完成"
+      ],
+      "fixes": [
+        "以 last_goodnight_ts 和 last_low_disturbance_exit_ts 建立晚安信号幂等屏障，同一或更旧信号不再重复进入和结算",
+        "睡眠结算显式接收 sleep_ts，并拒绝修改 generated_at 晚于睡眠信号的计划",
+        "skipped 改为 Markdown 未勾选状态；Android 兼容将历史 [x] 加跳过标记解析为未完成",
+        "将 2026-08-25 被误标的 19 项计划恢复为 pending，并重新同步 Study Daily"
+      ],
+      "verification": [
+        ".\\venv_core\\Scripts\\python.exe -m tests.scripts.journal.verify_sleep_plan_settlement",
+        ".\\venv_core\\Scripts\\python.exe -m pytest tests/journal_plan/test_plan_checkpoint_service.py tests/journal_plan/test_sleep_plan_settlement.py -q --basetemp .tmp/pytest-sleep-plan-suite",
+        ".\\venv_core\\Scripts\\python.exe -m ruff check core/services/journal/plan_checkpoint_service.py core/services/active_care/core/sleep_session_manager.py core/services/journal/plan_service.py tests/journal_plan/test_sleep_plan_settlement.py tests/scripts/journal/verify_sleep_plan_settlement.py"
+      ],
+      "notes": [
+        "本修复不采用凌晨固定归前一天的时间阈值，结算安全性由信号幂等和计划生成时间共同保证",
+        "Android Gradle 单测按项目规则未在 Codex 沙箱运行，已补 PlanMarkdownCodecTest 供 Android Studio 验证"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "QR-20260825-SLEEP-PLAN-ALL-CHECKED",
+      "title": "夜间生成的用户计划被旧晚安信号全部勾选",
+      "date": "2026-08-25",
+      "category": "12_diary_journal",
+      "problem": "用户当天计划生成后很快在 Android 中全部显示为勾选，但用户并未完成这些任务。",
+      "steps": [
+        "用户发送晚安并进入晚安低打扰",
+        "夜间处理在稍后生成当前日期的新计划",
+        "Active Care 下一轮仍从历史中识别同一条晚安并调用睡眠结算",
+        "打开 Android 学习计划页面查看 checkbox"
+      ],
+      "expected": [
+        "同一条晚安只触发一次睡眠结算",
+        "睡眠信号不能修改在其后才生成的计划",
+        "跳过和完成在客户端中具有不同显示语义"
+      ],
+      "actual": [
+        "2026-08-25 05:27 生成 19 项计划，05:36 被同一条 02:01 晚安信号全部标记为 skipped",
+        "后端把 skipped 写成 [x] 加跳过标记，Android 仅依据 [x] 显示为已完成"
+      ],
+      "root_causes": [
+        "晚安意图入口缺少已处理信号屏障",
+        "睡眠结算缺少计划 generated_at 与 sleep_ts 的因果顺序检查",
+        "Markdown 传输格式把 skipped 和 completed 压缩成同一个 checkbox 布尔值"
+      ],
+      "fixes": [
+        "增加晚安信号幂等判断并将 sleep_ts 传给计划结算",
+        "拒绝结算晚于 sleep_ts 生成的计划",
+        "skipped 使用未勾选 Markdown，并兼容解析历史错误格式"
+      ],
+      "verification": [
+        "新增回归测试覆盖旧信号不得清空新计划、重复晚安不得二次处理、skipped 不得输出为 [x]",
+        "计划相关 pytest 5 项通过，Ruff 通过，今日 19 项数据确认均为 pending"
+      ]
+    }
+  ]
+}

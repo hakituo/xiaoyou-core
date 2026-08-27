@@ -1,0 +1,28 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-05",
+      "weekday": "周三",
+      "title": "daily 单词日志改为后端启动时预创建今天的文件",
+      "background": "用户反馈：'AI 第一次写时自动建' 这个设计不合理——AI 主要职责是查看和抽查，记录是用户自己做的，不应该让 AI 的写入操作来触发文件创建。应该后端启动时就建好今天的空文件，用户直接往里写单词即可。同时用户问'可以看前几天背的吗'，确认需要支持看历史日期（原实现已支持，默认 7 天）。",
+      "root_causes": [
+        "原 daily_word_log.py 用 lazy 创建策略，mark_unknown 新词追加时才 ensure_today_file，与'AI 主要读取、用户主要写入'的职责划分矛盾",
+        "未在 lifespan 启动序列里调用 ensure_today_file"
+      ],
+      "fixes": [
+        "core/lifecycle/lifespan.py 在月度总结补跑检查之后新增调用 get_daily_word_log().ensure_today_file()，后端启动时自动创建今天的空文件（幂等，已存在不覆盖）",
+        "core/tools/study/english/daily_word_log.py 的 ensure_today_file 方法注释改为'后端启动时调用'，mark_unknown 新词追加路径保留 ensure_today_file 作为跨天后后端未重启的兜底",
+        "core/services/study/persona/study_persona_profile.py 提示词补充：每日日志默认看最近 7 天，AI 可用 date 参数指定某一天、用 days 扩大范围；明确'后端启动时已预创建今天的空文件'，AI 主要职责是读取和抽查"
+      ],
+      "verification": [
+        "tests/scripts/study/verify_daily_word_log.py 17 项测试全过（无回归）",
+        "ruff 检查 0 错误"
+      ],
+      "notes": [
+        "AI 看前几天背的：默认看最近 7 天（days=7），可指定 days=14 看两周，或用 date='2026/08/03' 指定某一天",
+        "用户记录方式：直接在 data/study_data/English/Words/daily/YYYY/MM/DD.txt 里写单词（每行一个或 'word count'），后端启动时今天的文件已建好",
+        "AI 记录的单词（测验时用户说不认识）会自动 +1 写回对应日期文件，写回策略是'最近一次出现该词的那天'"
+      ]
+    }
+  ]
+}

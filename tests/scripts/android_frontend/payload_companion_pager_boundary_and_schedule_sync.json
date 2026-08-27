@@ -1,0 +1,66 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-18",
+      "weekday": "周二",
+      "title": "修复伴侣详情 Pager 右滑穿透与日程旧缓存误报",
+      "background": "在人设等非首个 Tab 右滑时，外层面板抢先退出到聊天页；同时角色持久化计划和当前活动均存在，日程页却因旧生命状态缓存缺少 daily_plan 而提示没有生成日程。",
+      "root_causes": [
+        "PullableDismissPanel 的 anchoredDraggable 在所有 Companion Tab 上始终启用，绕过了 HorizontalPager 的页面边界",
+        "新增 daily_plan 字段后，StatusRepository 的一分钟旧缓存仍可能返回只有 activity 的 LifeStatus",
+        "日程空态把暂未同步错误表述为没有生成"
+      ],
+      "fixes": [
+        "外层详情拖拽仅在 Pager 上一次手势已稳定停在状态页时启用",
+        "从其他 Tab 右滑必须逐页移动并松手，稳定到状态页后下一次右滑才能退出详情",
+        "打开伴侣详情及稳定进入日程页时强制刷新当前角色状态和日程",
+        "日程字段暂未同步时显示同步中与当前活动，不再否定已经存在的角色计划"
+      ],
+      "verification": [
+        "持久化 daily_state.json 核验：2026-08-18 六个角色均有 28 至 34 个日程槽，aveline 当前活动为 walking",
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_frontend\\verify_companion_controls_tabs_and_pull.py：PASS",
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_frontend\\verify_navigation_wellbeing_improvements.py：PASS"
+      ],
+      "notes": [
+        "未由 Codex 运行 Gradle；Android Studio 编译与真机连续右滑手势待用户验证"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "ANDROID-COMPANION-PAGER-BOUNDARY-002",
+      "title": "伴侣详情非首个 Tab 右滑直接退出且日程缓存误报为空",
+      "date": "2026-08-18",
+      "category": "02_android_frontend",
+      "problem": "在人设页右滑没有进入模型页而是直接退出到聊天；角色当前显示正在散步且持久化计划存在，日程页却提示没有生成。",
+      "steps": [
+        "打开伴侣详情并切换到人设页",
+        "向右滑动一次，观察是否逐页进入模型",
+        "进入日程页并对照状态页当前活动"
+      ],
+      "expected": [
+        "一次右滑只切换一个内层 Tab",
+        "必须稳定停在状态页后再次右滑才退出到聊天",
+        "日程页展示当前角色已存在的完整 DailyPlan"
+      ],
+      "actual": [
+        "外层 anchoredDraggable 在人设页直接消费右滑并退出详情",
+        "旧缓存有 activity 但没有新增 daily_plan，空态错误宣称没有生成日程"
+      ],
+      "root_causes": [
+        "外层退出手势没有根据 Pager 稳定页启停",
+        "进入详情和日程没有绕过旧生命状态缓存"
+      ],
+      "fixes": [
+        "用 settledPage 和 isScrollInProgress 锁定每次手势的层级所有权",
+        "打开详情和进入日程时调用 forceRefreshLifeStatus",
+        "修正日程同步中的空态文案"
+      ],
+      "verification": [
+        "本地 daily_state.json 六个角色计划均存在",
+        "verify_companion_controls_tabs_and_pull.py 静态回归通过",
+        "真机手势与日程渲染待 Android Studio 构建后验证"
+      ]
+    }
+  ]
+}

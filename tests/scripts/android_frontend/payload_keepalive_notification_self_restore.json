@@ -1,0 +1,66 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-18",
+      "weekday": "周二",
+      "title": "修复 Android 无障碍守护通知被划除后不再出现",
+      "background": "Android 无障碍服务依赖前台服务降低宿主进程被回收的概率，但较新 Android 和部分厂商系统允许用户划除 ongoing 通知；旧实现只设置 ongoing，没有通知移除后的恢复入口。",
+      "root_causes": [
+        "前台守护通知只有 setOngoing(true)，没有 deleteIntent",
+        "已有 NotificationListenerService 只采集外部通知，没有处理本应用守护通知被移除的事件"
+      ],
+      "fixes": [
+        "给守护通知绑定前台服务 deleteIntent，被划除后立即以同一通知 ID 恢复",
+        "AvelineNotificationService 增加 onNotificationRemoved 厂商系统兜底",
+        "恢复前检查无障碍系统开关或常驻模式，二者均关闭时不拉起",
+        "恢复通知静默且只提醒一次，避免反复响铃",
+        "统一 updateNotification 使用保活通知构造器，防止覆盖并丢失恢复动作"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_keepalive\\verify_notification_self_restore.py",
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_keepalive\\verify_wakelock_and_battery_whitelist.py",
+        "venv_core\\Scripts\\ruff.exe check tests\\scripts\\android_keepalive\\verify_notification_self_restore.py"
+      ],
+      "notes": [
+        "通知自恢复不能绕过 Android 无障碍授权；系统真正关闭授权时仍需用户在设置中重新开启",
+        "按项目规则未在沙箱运行 Gradle，需 Android Studio 安装后执行真机划除验证"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "ANDROID-A11Y-20260818-NOTIFICATION-RESTORE",
+      "title": "无障碍守护通知被划除后永久消失",
+      "date": "2026-08-18",
+      "category": "02_android_frontend",
+      "problem": "Aveline 无障碍已开启且前台守护服务正在运行，但用户轻扫通知后守护通知不再出现，宿主进程随后更容易被厂商系统回收。",
+      "steps": [
+        "在系统设置开启 Aveline 无障碍服务",
+        "确认 Aveline 后台守护通知已出现",
+        "在通知栏划除该通知并继续后台使用"
+      ],
+      "expected": [
+        "守护通知被移除后立即以同一通知 ID 重新出现",
+        "恢复过程不重复响铃",
+        "用户真正关闭无障碍与常驻模式后不再恢复"
+      ],
+      "actual": [
+        "通知只设置 ongoing，没有任何移除回调或恢复 PendingIntent",
+        "部分系统允许划除 ongoing 通知，划除后不会重新发布"
+      ],
+      "root_causes": [
+        "createForegroundNotification 未设置 deleteIntent",
+        "AvelineNotificationService 未实现 onNotificationRemoved"
+      ],
+      "fixes": [
+        "用 PendingIntent.getForegroundService 绑定通知划除恢复动作",
+        "通知监听服务精确匹配本应用守护通知 ID 后兜底恢复",
+        "恢复函数统一校验无障碍系统开关与常驻模式"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_keepalive\\verify_notification_self_restore.py",
+        "真机划除守护通知后确认立即静默重现"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-17",
+      "weekday": "周一",
+      "title": "修复 Android 设置页阻塞侧边栏顶层路由切换",
+      "background": "Android 侧边栏在学习、生活、商城和数字健康之间切换正常，但进入设置后再次点击任一顶层栏目仍停留在设置页，只能先按系统返回键退出设置。",
+      "root_causes": [
+        "设置项使用独立的 onSettingsClick 直接压栈，没有复用其他顶层栏目统一的 popUpTo、saveState 和 restoreState 策略",
+        "从设置页切换栏目时，导航组件保存并恢复了包含设置页的整段返回栈，恢复后的栈顶仍是设置页"
+      ],
+      "fixes": [
+        "删除设置页专用导航回调，让侧边栏全部顶层栏目统一调用 onNavigate(item.route)",
+        "新增独立静态回归脚本，防止设置再次绕过顶层导航返回栈策略"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_frontend\\verify_drawer_top_level_navigation.py",
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_frontend\\verify_navigation_wellbeing_improvements.py",
+        "gradlew.bat :app:compileDebugKotlin --no-daemon --stacktrace",
+        "gradlew.bat :app:transformDebugClassesWithAsm --no-daemon --stacktrace"
+      ],
+      "notes": [
+        "首次 ASM 验证遇到可再生中间目录 META-INF 在快照阶段缺失；停止残留 Gradle、删除精确的 transformDebugClassesWithAsm 中间目录后，同名任务重新执行成功"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "ANDROID-NAV-SETTINGS-001",
+      "title": "Android 进入设置后侧边栏无法切换其他顶层栏目",
+      "date": "2026-08-17",
+      "category": "02_android_frontend",
+      "problem": "进入 Android 设置页后，从侧边栏点击学习、生活、商城、数字健康或消息，界面仍停留在设置页。",
+      "steps": [
+        "从侧边栏进入学习等任一普通顶层栏目",
+        "打开侧边栏并进入设置",
+        "再次打开侧边栏并点击学习或其他顶层栏目"
+      ],
+      "expected": [
+        "侧边栏关闭并立即显示所选顶层栏目",
+        "所有顶层栏目使用一致的返回栈保存与恢复行为"
+      ],
+      "actual": [
+        "侧边栏关闭后仍显示设置页",
+        "只有按系统返回键先退出设置后才能正常切换"
+      ],
+      "root_causes": [
+        "设置项通过独立 onSettingsClick 只执行 navigate(SETTINGS)，绕过统一顶层导航入口",
+        "后续 popUpTo(saveState=true) 保存了包含设置页的栈段，restoreState 恢复栏目时把设置页一并恢复为栈顶"
+      ],
+      "fixes": [
+        "移除 onSettingsClick 参数及其专用导航实现",
+        "所有 DrawerItem 点击统一调用 onNavigate(item.route)"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_frontend\\verify_drawer_top_level_navigation.py",
+        "gradlew.bat :app:transformDebugClassesWithAsm --no-daemon --stacktrace"
+      ]
+    },
+    {
+      "id": "ANDROID-BUILD-ASM-SNAPSHOT-001",
+      "title": "Android ASM 转换输出快照偶发缺少 META-INF",
+      "date": "2026-08-17",
+      "category": "09_build_test_env",
+      "problem": "Gradle 任务 transformDebugClassesWithAsm 完成后读取 classesOutputDir 时报告 META-INF 不存在，构建失败。",
+      "steps": [
+        "存在残留或并发 Gradle 构建时执行 Android Debug 构建",
+        "任务进入 transformDebugClassesWithAsm 输出快照阶段"
+      ],
+      "expected": [
+        "ASM 输出目录保持稳定并完成 Gradle 增量快照"
+      ],
+      "actual": [
+        "Gradle 报 NoSuchFileException，缺失路径为 transformDebugClassesWithAsm/dirs/META-INF"
+      ],
+      "root_causes": [
+        "可再生的 ASM 中间输出处于不一致状态，或有并发 Gradle 进程同时修改同一 app/build 目录"
+      ],
+      "fixes": [
+        "停止残留 Gradle 守护进程",
+        "仅删除已校验位于 app/build/intermediates/classes/debug 下的 transformDebugClassesWithAsm 中间目录",
+        "以单进程重新执行失败任务"
+      ],
+      "verification": [
+        "gradlew.bat :app:transformDebugClassesWithAsm --no-daemon --stacktrace：BUILD SUCCESSFUL"
+      ]
+    }
+  ]
+}

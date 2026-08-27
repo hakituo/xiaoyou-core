@@ -1,0 +1,22 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-18",
+      "weekday": "周二",
+      "title": "修复 Android 设置页 Compose padding 导入缺失",
+      "background": "SettingsScreenV2 为 HorizontalPager 增加水平内边距后，缺少 padding 扩展和 dp 单位导入，导致 Kotlin 编译失败。",
+      "root_causes": [
+        "SettingsScreenV2.kt 使用 .padding(horizontal = 16.dp) 时未同步添加对应 Compose imports"
+      ],
+      "fixes": [
+        "补充 androidx.compose.foundation.layout.padding 导入",
+        "补充 androidx.compose.ui.unit.dp 导入",
+        "新增静态验证脚本防止导入再次遗漏"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_frontend\\verify_settings_screen_imports.py：PASS",
+        "未由 Codex 运行 Gradle，Android Kotlin 编译继续由 Android Studio 执行"
+      ]
+    }
+  ]
+}

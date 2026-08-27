@@ -1,0 +1,77 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-16",
+      "weekday": "星期日",
+      "title": "修复根目录 errors_20260815/16 两个问题并回归验证 errors_20260813",
+      "background": "扫描根目录 errors_*.json，聚合 3 类错误：08-13 夜间处理器启动 singleton 导入失败、08-15 WebSocket 发送时连接已关闭仍重试 3 次并刷 ERROR、08-16 人物档案提取 LLM 调用失败但日志无异常细节。",
+      "root_causes": [
+        "errors_20260813：core.utils.concurrency/__init__ 把同名函数 singleton 导入包命名空间，core.utils/__init__.py 属性访问拿到函数而非模块，sys.modules['core.utils.singleton'] 被污染导致 from core.utils.singleton import singleton 失败（08-13 重构已修复，本次回归验证通过）",
+        "errors_20260815：Starlette/uvicorn 在连接已关闭（close 已发送或响应已完成）后再次 send 会抛 RuntimeError \"Unexpected ASGI message 'websocket.send'...\"，_is_disconnect_exception 未识别该信号，导致对已关闭连接无意义重试 3 次并连发 ERROR 日志",
+        "errors_20260816：PeopleProfileExtractor._call_llm_with_prompt 的 except 分支 logger.error 未传 exc_info=True，且未记录上游 error chunk，error_collector 只能合成汇总消息（traceback 为空），无法定位是 DeepSeek 返回空还是断路器熔断等真实原因"
+      ],
+      "fixes": [
+        "core/interfaces/websocket/message_sending.py：_is_disconnect_exception 的 disconnect_signals 增加 \"unexpected asgi message\" / \"after sending 'websocket.close'\" / \"response already completed\" 识别，命中后按断开连接清理并返回 False 而非重试",
+        "core/interfaces/websocket/message_sending.py：显式 import websockets.exceptions（websockets>=11 需显式导入，否则属性访问 AttributeError）",
+        "core/character/people/extractor.py：_call_llm_with_prompt 的 except 分支 logger.error 带 exc_info=True；新增 last_upstream_error 记录上游 error chunk；\"返回空\"警告与最终失败日志携带上游错误与最后一次异常信息",
+        "新增 tests/scripts/websocket_errors/verify_debug_20260815_20260816.py 验证脚本"
+      ],
+      "verification": [
+        "venv_core python -m py_compile core/interfaces/websocket/message_sending.py core/character/people/extractor.py 通过",
+        "venv_core python -m ruff check 两个文件 All checks passed",
+        "venv_core tests/scripts/websocket_errors/verify_debug_20260815_20260816.py 10/10 通过（断开识别/回归/LLM 日志/singleton 导入）"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "QR-20260816-01",
+      "title": "WebSocket 发送时连接已关闭仍重试并刷 ERROR",
+      "date": "2026-08-16",
+      "category": "08_websocket_network",
+      "problem": "errors_20260815.json 连续 5 条 \"Failed to send message: Unexpected ASGI message 'websocket.send', after sending 'websocket.close'\" 后再报 \"Failed to send message after 3 retries\"。",
+      "steps": [
+        "客户端连接 WebSocket 后异常断开或服务端已发送 close",
+        "message_sending.send_with_retry 再次调用 send_text/send",
+        "uvicorn websockets_impl 抛 RuntimeError \"Unexpected ASGI message 'websocket.send'...\""
+      ],
+      "expected": "识别为连接断开，立即清理连接并返回 False，不再重试、不刷 ERROR 日志",
+      "actual": "_is_disconnect_exception 未匹配该信号，走普通错误分支重试 3 次并记录 4 条 ERROR",
+      "root_causes": [
+        "disconnect_signals 缺少 Starlette/uvicorn 在 close 后 send 的 RuntimeError 特征串"
+      ],
+      "fixes": [
+        "message_sending.py 增加 \"unexpected asgi message\" / \"after sending 'websocket.close'\" / \"response already completed\" 识别",
+        "显式 import websockets.exceptions 避免 websockets>=11 属性访问 AttributeError"
+      ],
+      "verification": [
+        "venv_core tests/scripts/websocket_errors/verify_debug_20260815_20260816.py 覆盖该错误串识别与原有断开识别回归"
+      ]
+    },
+    {
+      "id": "QR-20260816-02",
+      "title": "人物档案提取 LLM 调用失败但日志无异常细节",
+      "date": "2026-08-16",
+      "category": "04_llm_model",
+      "problem": "errors_20260816.json 两条 \"LLM 调用失败，已重试 2 次\"，traceback 为空，无法定位真实失败原因（回查日志实为 DeepSeek deepseek-v4-pro 流式返回空）。",
+      "steps": [
+        "夜间任务触发 PeopleProfileExtractor._call_llm_with_prompt",
+        "LLM 多次返回空内容或上游 error chunk",
+        "重试耗尽后记录汇总错误"
+      ],
+      "expected": "错误日志携带真实异常栈与上游错误信息，便于定位是 API 空响应/断路器/配置问题",
+      "actual": "except 分支 logger.error 未带 exc_info=True，error_collector 只能合成 RuntimeError(record.getMessage())，traceback 为空",
+      "root_causes": [
+        "except 分支未传 exc_info=True",
+        "上游 error chunk（error 字段）未被记录，返回空原因不可见"
+      ],
+      "fixes": [
+        "extractor.py 的 except 分支 logger.error 带 exc_info=True",
+        "新增 last_upstream_error 记录上游 error chunk，\"返回空\"警告与最终失败日志携带上游错误与最后一次异常"
+      ],
+      "verification": [
+        "venv_core tests/scripts/websocket_errors/verify_debug_20260815_20260816.py 断言 exc_info=True 与上游错误字段存在"
+      ]
+    }
+  ]
+}

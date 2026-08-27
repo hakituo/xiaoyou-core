@@ -1,0 +1,64 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-24",
+      "weekday": "周一",
+      "title": "词汇复习写入每日学习记录并关闭角色计划 LLM 生成",
+      "background": "用户已在 Android App 完成背单词，但日记仍显示当天学习 0 次；同时角色每日计划连续多日生成结果相近，继续调用 LLM 没有实际收益。",
+      "root_causes": [
+        "词汇复习只累计 words_reviewed，不产生 topics_by_subject；会话结束同步逻辑只遍历 topics_by_subject，因此没有写入 DailyManager.study.sessions",
+        "日记总结和次日计划读取学习摘要时未传目标日期，凌晨处理前一天日记时会误读当天记录",
+        "character_daily.llm_plan.enabled 开启后每天调用 LLM，但解析失败时仍回退到现有模板"
+      ],
+      "fixes": [
+        "StudySession 结束结果补充词汇评分次数、去重词数、正确次数与正确率，StudyService 将一次词汇会话分别同步到 DailyManager 和 DailyTracker",
+        "SummaryContextLoader 与 JournalPlanService 显式传入日记目标日期和昨日日期，避免凌晨跨日误读",
+        "关闭 character_daily 角色计划 LLM 开关，固定使用 character_daily.yaml 的代码模板生成"
+      ],
+      "verification": [
+        ".\\venv_core\\Scripts\\python.exe tests\\scripts\\study\\verify_vocab_journal_sync.py",
+        ".\\venv_core\\Scripts\\python.exe -m pytest tests\\unit\\test_journal_summary_context.py tests\\character_daily\\test_schedule_differentiation.py -q",
+        ".\\venv_core\\Scripts\\python.exe -m pytest tests\\unit\\test_character_daily_config_model_routing.py -q",
+        ".\\venv_core\\Scripts\\python.exe -m ruff check core\\services\\study\\session.py core\\services\\study\\service.py core\\services\\journal\\summary_context.py core\\services\\journal\\plan_service.py tests\\scripts\\study\\verify_vocab_journal_sync.py"
+      ],
+      "notes": [
+        "用户自己的每日计划和学习设计本次不调整",
+        "角色计划当前只有查看工具，没有写入工具；本次未新增角色自行修改计划的工具协议"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "QR-20260824-VOCAB-JOURNAL-ZERO",
+      "title": "App 完成词汇复习但日记学习次数仍为 0",
+      "date": "2026-08-24",
+      "category": "12_diary_journal",
+      "problem": "Android App 内完成一整轮背单词后，词汇进度已保存，日记生成时却仍写当天学习 0 次。",
+      "steps": [
+        "在 Android App 的背单词页面开始复习并提交多个单词评分",
+        "结束词汇会话，确认 vocab review 接口和会话结束接口成功",
+        "等待 nightly 生成对应日期日记并查看学习统计"
+      ],
+      "expected": [
+        "一次完成的词汇会话计入当天一次学习记录",
+        "日记读取它所总结日期的学习记录，而不是进程当前日期"
+      ],
+      "actual": [
+        "词汇评分与进度已持久化，但 daily_record.json 的 study.sessions 为空",
+        "凌晨总结前一天日记时，学习摘要未传日期并默认读取当天，最终显示学习 0 次"
+      ],
+      "root_causes": [
+        "StudyService 的会话同步仅处理 topics_by_subject，词汇评分不会产生 topic，因而整个会话被跳过",
+        "SummaryContextLoader 和 JournalPlanService 调用 get_daily_study_summary_data 时未传目标日期"
+      ],
+      "fixes": [
+        "词汇会话结束时聚合评分次数、去重单词数、正确次数、正确率，并向 DailyManager 与 DailyTracker 各写入一次会话",
+        "日记上下文按 dt 读取学习摘要，昨日学习上下文按 yesterday 读取"
+      ],
+      "verification": [
+        "verify_vocab_journal_sync.py 验证 3 次评分、2 个去重单词只写入 1 次每日学习会话，并验证指定日期读取",
+        "相关 pytest 共 16 项通过，Ruff 与 compileall 通过"
+      ]
+    }
+  ]
+}

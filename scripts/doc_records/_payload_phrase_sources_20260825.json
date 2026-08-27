@@ -1,0 +1,28 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-25",
+      "weekday": "周二",
+      "title": "四六级、雅思、托福独立短语原始来源归档",
+      "background": "现有 Words 词书中的 phrases 只是挂在单词背面的通用搭配，缺少可独立背诵的考试分级短语源。",
+      "root_causes": [
+        "现有 CET4 词书直接继承全量词典的短语字段，没有独立的考试级短语词书。",
+        "出版社完整词组书通常是付费版权内容，不能把非授权扫描件或抓取数据放进项目。"
+      ],
+      "fixes": [
+        "在 data/study_data/English/Phrases/raw 下归档 CC BY-SA 4.0 的 CET4、CET6、IELTS、TOEFL 四份短语清单，并固定上游提交与文件哈希。",
+        "从 Pearson 官方教师资源页下载 2469 条 Academic Collocation List XLSX 原件，作为本机雅思/托福学术搭配参考，并明确禁止公共再分发。",
+        "补充来源、许可证、条目数、质量限制与用途边界说明。",
+        "新增 verify_phrase_sources.py，对四份文本的条目数、重复、哈希以及 Pearson XLSX 完整性做只读验收。"
+      ],
+      "verification": [
+        "D:\\AI\\xiaoyou-core\\venv_core\\Scripts\\python.exe tests/scripts/study/verify_phrase_sources.py"
+      ],
+      "notes": [
+        "四级 2744 条、六级 3482 条；原开源源中的雅思 205 条、托福 158 条规模较小，需与 Pearson 2469 条学术搭配共同使用。",
+        "本次只完成合法原始数据落地与验收，尚未把短语接成独立 FSRS 卡片；不能把现有单词背面短语误称为短语学习功能。"
+      ]
+    }
+  ],
+  "question_reviewers": []
+}

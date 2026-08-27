@@ -1,0 +1,30 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-27",
+      "weekday": "周四",
+      "title": "中文聊天记忆 embedding 候选模型下载与统一检索评测",
+      "background": "当前记忆系统实际使用英文 all-MiniLM-L6-v2。为判断是否值得替换，下载 Qwen3-Embedding-0.6B 和 Harrier-OSS-v1-0.6B Q4，并与项目已有 bge-small-zh-v1.5 在相同中文聊天记忆检索题上对比。此次仅做候选评测，不切换正式配置或重建既有向量。",
+      "root_causes": [
+        "当前 all-MiniLM-L6-v2 的模型卡只标注英文，和项目主要中文口语检索场景不匹配",
+        "旧结论只比较少量中文同义去重句，没有覆盖带干扰项的实际检索排名，也没有衡量速度和资源占用"
+      ],
+      "fixes": [
+        "新增 tests/scripts/memory/compare_embedding_models.py，以 30 条候选记忆、27 条口语化查询统一评测 Top-1、Top-3、MRR、相似度分差、加载时间和编码吞吐",
+        "通过 ModelScope 下载 Qwen3-Embedding-0.6B 原始权重和 Harrier-OSS-v1-0.6B ONNX Q4 权重，不新增 Python 依赖",
+        "Qwen3 同时评测原生 1024 维和 MRL 截取 384 维，查询侧使用聊天记忆检索任务指令；Harrier 使用官方要求的查询指令和 last-token 导出结果",
+        "保留现有生产模型与记忆数据不变，待真实记忆语料扩大评测后再决定迁移"
+      ],
+      "verification": [
+        "venv_core python -m ruff check tests/scripts/memory/compare_embedding_models.py（通过）",
+        "venv_core python tests/scripts/memory/compare_embedding_models.py --qwen-device cpu --output logs/embedding_benchmark_latest_20260827.json（通过：MiniLM Top-1 44.4%；BGE、Harrier、Qwen3 均为 96.3%；Qwen3 平均分差最高）",
+        "venv_core python tests/scripts/memory/compare_embedding_models.py --qwen-device cuda --output logs/embedding_benchmark_qwen3_cuda_20260827.json（通过：Qwen3 57 条文本编码 0.65 秒，约 87.2 条/秒）"
+      ],
+      "notes": [
+        "本轮最适合生产的候选是项目已有 bge-small-zh-v1.5：准确率与两个 0.6B 模型持平，CPU 吞吐高一个数量级，权重约 91.8 MB",
+        "Qwen3-Embedding-0.6B 的平均正确项分差为 0.178，高于 BGE 的 0.107；若后续真实语料证明这个优势有价值，可用 384 维降低索引迁移影响，但模型本身仍需约 1.14 GB 磁盘和约 2.3 GB CPU 常驻内存",
+        "该小型受控评测用于筛选候选，不代替基于真实聊天记忆构建的盲测集"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-05",
+      "weekday": "周三",
+      "title": "word_quiz 工具改为直接读写 unfamiliar_word.txt 生词本",
+      "background": "原 WordQuizTool 虽在 UPDATES.md 中声称从 unfamiliar_word.txt 抽词并维护'不认识次数'，但实际实现走的是 VocabularyManager（CET4 词典 + SM-2 进度 JSON），从未真正读取 unfamiliar_word.txt。用户希望 AI 能直接从自己维护的生词本里抽词考他，并与文件中的计数双向同步。",
+      "root_causes": [
+        "WordQuizTool 调度路径 ToolDispatcher._handle_word_quiz 依赖 StudyService.vocab_manager（CET4 词典），选词池是 vm.dictionary / vm.get_mistakes()，与 unfamiliar_word.txt 无关",
+        "mark_unknown/mark_known 调用 vm.update_word_progress 写的是 output/user_data/vocab_progress.json，不会回写 unfamiliar_word.txt 的'不认识次数'列",
+        "UPDATES.md 2026-05-23 条目描述的功能与实际代码不符，文档与实现脱节"
+      ],
+      "fixes": [
+        "新增 core/tools/study/english/unfamiliar_word_book.py：独立的生词本读写器，专门解析 unfamiliar_word.txt（格式：每行 'word' 或 'word count'，空行作为分组分隔保留，重复词合并取较大计数）",
+        "UnfamiliarWordBook 提供 quiz/count/mark_unknown/mark_known/stats/list_words 六个方法，所有 mark 操作通过 line_index 原地更新对应行 + 原子 os.replace 写回，保证用户手动编辑的空行与分组不被破坏",
+        "缓存基于文件 mtime 自动失效，外部修改（如用户手动编辑 txt）能被下次读取检测到",
+        "stats 字段与 VocabularyManager.get_stats 对齐（total_words/struggling_words/due_words 等），保持 active_care/vocabulary.py 等调用方零改动",
+        "core/services/study/dispatch.py 的 _handle_word_quiz 改为调用 get_unfamiliar_word_book()，删除 _select_word_quiz_words 与 _format_word_quiz_entry 两个不再使用的辅助方法",
+        "WordQuizTool 的 args_schema（action/count/word/priority）保持不变，priority 取值 high_count/random/new 的语义不变，只是数据源从 CET4 切到生词本",
+        "high_count 策略优化：按 count 降序分组，同 count 内随机排序后取前 N 个，既保证优先抽高计数词又避免每次抽到完全相同的几个"
+      ],
+      "verification": [
+        "tests/scripts/study/verify_unfamiliar_word_book.py（12 项检查全过：混合格式解析/三种 priority/指定 word/mark_unknown 已存在与新词追加/mark_known 递减与下限/stats 字段/缓存失效/外部修改检测/ToolDispatcher 端到端）",
+        "真实生词本冒烟：265 词、5 个 struggling（count>=2）、max_count=5；high_count 抽到 contrast(5)/conduct(3)/controversial(2)，符合优先级预期"
+      ],
+      "notes": [
+        "VocabularyManager（CET4 词典 + SM-2 进度）保留不动，仍服务前端背单词功能（每日生词+复习）",
+        "unfamiliar_word.txt 里没有中文释义，AI 抽查时只问'认不认识'，不提供释义；如需释义可后续从 CET4 词典查",
+        "mark_unknown 遇到生词本里没有的词会追加到文件末尾（count=1），mark_known 遇到不存在的词视为已掌握不追加",
+        "active_care/vocabulary.py 的 check_daily_word_quiz 调用 run_tool('english','word_quiz',...) 自动走新路径，无需改动"
+      ]
+    }
+  ]
+}

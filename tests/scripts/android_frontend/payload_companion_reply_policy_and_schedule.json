@@ -1,0 +1,65 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-18",
+      "weekday": "周二",
+      "title": "校正 Android 伴侣活动回复语义并新增角色日程页",
+      "background": "状态页把用于角色间 Peer Chat 的 activity_chat_eligible 误写成用户消息是否可聊天，无法区分轻活动延迟回复、学习暂不回复和睡眠暂不回复；伴侣详情也缺少当前角色当天完整计划。",
+      "root_causes": [
+        "activity_chat_eligible 的业务边界是角色间 Peer Chat 门控，不是主对话 Reply Policy",
+        "Android 只读取当前活动与睡眠字段，没有消费 HARD_BUSY、SOFT_REPLY_DELAY 和 DND 的真实回复分类",
+        "CharacterDailyEngine 已维护 per-role DailyPlan，但生命状态接口和伴侣详情没有提供展示入口"
+      ],
+      "fixes": [
+        "生命状态接口按后端 Reply Policy 返回 immediate、delayed、silent 及轻活动延迟区间",
+        "状态页同时显示当前活动与真实回复方式；只有睡眠显示唤醒，只有硬忙碌学习显示打断和跳过活动",
+        "生命状态接口返回当前角色 DailyPlan，Android 映射完整 slots 时间线",
+        "在伴侣详情的状态和模型之间新增日程 Tab，按当前聊天角色展示当天活动、时间、执行状态与灵活性"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_frontend\\verify_companion_controls_tabs_and_pull.py：PASS",
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_frontend\\verify_navigation_wellbeing_improvements.py：PASS",
+        "venv_core\\Scripts\\python.exe -m compileall -q routers/v1/life.py：PASS",
+        "venv_core\\Scripts\\python.exe -m ruff check routers/v1/life.py tests/scripts/android_frontend/verify_companion_controls_tabs_and_pull.py：PASS"
+      ],
+      "notes": [
+        "未由 Codex 运行 Gradle；Android Studio Kotlin 编译及真机日程展示待用户验证"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "ANDROID-COMPANION-REPLY-POLICY-SCHEDULE-001",
+      "title": "伴侣状态误用 Peer Chat 可用性且缺少分角色日程",
+      "date": "2026-08-18",
+      "category": "02_android_frontend",
+      "problem": "状态页使用可聊天或忙碌描述时无法说明消息是即时回复、延迟回复还是暂不回复，同时看不到当前伴侣当天的日程计划。",
+      "steps": [
+        "进入任一角色聊天并打开伴侣详情状态页",
+        "观察角色处于空闲、日常活动、学习和睡眠时的状态文案",
+        "查看状态与模型之间是否有该角色的今日日程"
+      ],
+      "expected": [
+        "状态页明确写当前活动及真实回复方式",
+        "轻活动显示实际延迟区间，学习和睡眠显示暂不回复",
+        "日程页按当前聊天角色展示当天完整时间线"
+      ],
+      "actual": [
+        "旧实现把 activity_chat_eligible 直接解释为可以聊天",
+        "伴侣详情只有状态、模型、人设和记忆，没有日程页"
+      ],
+      "root_causes": [
+        "混淆 Peer Chat 活动门控与用户消息 Reply Policy",
+        "未向 Android 暴露 CharacterDailyEngine 中已存在的 per-role DailyPlan"
+      ],
+      "fixes": [
+        "接口新增 reply_policy 摘要并由状态页直接展示",
+        "接口附带当前 scope 的 daily_plan，并新增独立日程 Tab"
+      ],
+      "verification": [
+        "verify_companion_controls_tabs_and_pull.py 静态回归通过",
+        "Android Studio 编译和真机切换角色验证待用户执行"
+      ]
+    }
+  ]
+}

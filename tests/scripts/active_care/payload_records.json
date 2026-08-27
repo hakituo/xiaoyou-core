@@ -1,0 +1,91 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-17",
+      "weekday": "周一",
+      "title": "Active Care 日期事实、硬提醒一致性与模块日志降噪",
+      "background": "主动关怀会重复沿用错误的相对节日日期，到期提醒可能被近期闲聊带偏，模块独立日志同时接收了大量无关全局记录。",
+      "root_causes": [
+        "农历换算依赖未进入两个运行环境，且日记基调被当作日期事实来源。",
+        "到期提醒绕过 MDP 后缺少发送前的任务目标一致性校验。",
+        "QueueListener 的所有模块文件 handler 没有 logger 名称过滤器。"
+      ],
+      "fixes": [
+        "新增绝对日期日历锚点，限制日记基调只提供语气和节奏，并在两个虚拟环境安装 lunar-python。",
+        "仅对 reminder 硬目标事件增加任务核心词校验和安全兜底，不改变普通 MDP 主动关怀。",
+        "模块日志 handler 按登记的 logger 名称过滤；新增可预览、自动备份的通用脏记录清理脚本。",
+        "未知角色没有 persona 映射时直接跳过活动切换消息，避免误挂。"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\active_care\\verify_active_care_context_and_cleanup.py",
+        "venv_cpu\\Scripts\\python.exe tests\\scripts\\active_care\\verify_active_care_context_and_cleanup.py",
+        "venv_core\\Scripts\\python.exe scripts\\cleanup\\clean_active_care_dirty_records.py"
+      ],
+      "notes": [
+        "历史脏数据清理前已逐文件备份，清理后再次预览命中 0 项。"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "AC-20260817-CONTEXT-DATE-REMINDER",
+      "title": "Active Care 相对日期污染与硬提醒话题漂移",
+      "date": "2026-08-17",
+      "category": "01_active_care",
+      "problem": "历史、日记和记忆中的错误相对节日日期会被反复注入；到期提醒的文案可能只延续近期闲聊而遗漏任务目标。",
+      "steps": [
+        "让历史上下文出现错误的相对农历节日日期。",
+        "触发普通主动关怀或 workspace 到期提醒。",
+        "观察生成内容是否复述错误日期，或是否遗漏提醒任务核心词。"
+      ],
+      "expected": [
+        "运行时日历事实优先于历史相对日期。",
+        "普通主动关怀仍由 MDP 决策；到期提醒必须明确包含任务目标。"
+      ],
+      "actual": [
+        "旧实现会延续错误日期；硬提醒可能生成与任务无关的短句。"
+      ],
+      "root_causes": [
+        "缺少稳定的绝对日期事实锚点。",
+        "日记 tomorrow_tone 同时承载策略和时效事实。",
+        "提醒生成后没有任务目标一致性校验。"
+      ],
+      "fixes": [
+        "注入带公历日期和天数差的权威日历锚点。",
+        "限制 tomorrow_tone 不记录日期或节日事实。",
+        "在发送 reminder 前校验任务目标，偏离时使用安全兜底。"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\active_care\\verify_active_care_context_and_cleanup.py"
+      ]
+    },
+    {
+      "id": "LOG-20260817-MODULE-BROADCAST",
+      "title": "模块独立日志被全局 QueueListener 广播污染",
+      "date": "2026-08-17",
+      "category": "10_file_io_storage",
+      "problem": "每天的模块日志包含大量其他模块记录，单文件达到上万行，难以检索。",
+      "steps": [
+        "启动服务并让多个模块产生日志。",
+        "比较 active_care_schedule.log 与其他模块日志。",
+        "观察无关 logger 记录是否同时出现在每个模块文件。"
+      ],
+      "expected": [
+        "主日志保留全量记录，模块日志只包含登记到该文件的 logger。"
+      ],
+      "actual": [
+        "所有模块文件 handler 都挂在同一个 QueueListener 上且没有过滤器。"
+      ],
+      "root_causes": [
+        "模块文件 handler 未按 LogRecord.name 过滤。"
+      ],
+      "fixes": [
+        "为每个模块文件维护线程安全的 logger 名称白名单过滤器。",
+        "同一文件由多个 logger 共用时动态扩充白名单。"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\active_care\\verify_active_care_context_and_cleanup.py"
+      ]
+    }
+  ]
+}

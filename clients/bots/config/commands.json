@@ -1,0 +1,143 @@
+[
+    {
+        "intent": "CLEAR_MEMORY",
+        "patterns": [
+            "(清除|清空|删除|忘掉)(?!.*(本地|全部|所有|彻底)).*(记忆|历史|聊天记录)",
+            "(忘了|忘记).*(刚才|上文|聊天|对话)",
+            "清空当前对话记录",
+            "重置.*(会话|对话)",
+            "start over",
+            "reset chat"
+        ],
+        "description": "清除当前会话的上下文记忆"
+    },
+    {
+        "intent": "SHOW_STATUS",
+        "patterns": [
+            "(查看|看看|看下|显示).*(状态|系统|负载|占用)",
+            "显存占用.*(多少|怎么样|情况)",
+            "status",
+            "系统状态"
+        ],
+        "description": "显示系统资源占用与运行状态"
+    },
+    {
+        "intent": "SHOW_HELP",
+        "patterns": [
+            "(帮助|菜单|指令列表|功能列表|功能菜单)",
+            "help",
+            "^(怎么用|如何用|怎么使用)$",
+            "你能做什么",
+            "你会什么"
+        ],
+        "description": "显示帮助菜单"
+    },
+    {
+        "intent": "SWITCH_MODEL",
+        "patterns": [
+            "(切换|换成|切到|切成|使用).*(模型|LLM)"
+        ],
+        "description": "切换到指定的 LLM 或生图模型"
+    },
+    {
+        "intent": "SWITCH_MODEL_HINT",
+        "patterns": [
+            "(切换|换个).*(模型|LLM)",
+            "switch model",
+            "change model"
+        ],
+        "description": "提示用户如何切换模型"
+    },
+    {
+        "intent": "SWITCH_PERSONA",
+        "patterns": [
+            "(切换|换个|换成).*(人设|性格|角色)"
+        ],
+        "description": "切换人设或性格"
+    },
+    {
+        "intent": "LIST_MODELS",
+        "patterns": [
+            "(查看|列出).*(模型)",
+            "list models",
+            "show models"
+        ],
+        "description": "列出所有可用模型"
+    },
+    {
+        "intent": "LIST_VOICES",
+        "patterns": [
+            "(查看|列出).*(音频|声音|语音)",
+            "list voices",
+            "show voices"
+        ],
+        "description": "列出所有可用参考音频"
+    },
+    {
+        "intent": "TOGGLE_LATENCY",
+        "patterns": [
+            "(开启|关闭|切换).*(仿生延迟|认知延迟|延迟|latency|perf)",
+            "toggle latency",
+            "switch latency"
+        ],
+        "description": "开启或关闭仿生学认知延迟(优化首 token)"
+    },
+    {
+        "intent": "TOGGLE_REPLY_MODE",
+        "patterns": [
+            "(切换|设置|更改).*(回复模式|响应模式|群回复)",
+            "switch reply mode",
+            "reply mode"
+        ],
+        "description": "切换群聊回复模式（全部回复或仅艾特）"
+    },
+    {
+        "intent": "CLEAR_LOCAL_MEMORY",
+        "patterns": [
+            "(彻底清除|彻底删除|删除全部).*(记忆|历史|聊天记录|本地记忆)",
+            "本地.*(历史|记忆).*(全部|全都|清理|清空|删除)",
+            "clear all memory",
+            "delete all history"
+        ],
+        "description": "彻底清除本地所有历史记忆"
+    },
+    {
+        "intent": "TOGGLE_DEBUG_MODE",
+        "patterns": [
+            "(开启|关闭|进入|退出|切换).*(调试模式|debug模式|debug mode)",
+            "toggle debug mode",
+            "switch debug mode"
+        ],
+        "description": "开启或关闭无状态调试模式"
+    },
+    {
+        "intent": "TOGGLE_STUDY_MODE",
+        "patterns": [
+            "(开启|关闭|进入|退出|切换).*(学习模式|study mode)",
+            "学习模式.*(开|关|on|off)",
+            "toggle study mode"
+        ],
+        "description": "开启或关闭学习模式"
+    },
+    {
+        "intent": "TOGGLE_PRIVACY_MODE",
+        "patterns": [
+            "(开启|关闭|进入|退出|切换).*(私密模式|隐私模式|privacy mode)",
+            "(私密模式|隐私模式).*(开|关|on|off)",
+            "toggle privacy mode"
+        ],
+        "description": "开启或关闭私密模式"
+    },
+    {
+        "intent": "SHOW_MODULE_DOC",
+        "patterns": [
+            "(模块|功能).*(介绍|说明|文档|指南)",
+            "readme",
+            "docs",
+            "功能介绍",
+            "模块介绍",
+            "模块说明"
+        ],
+        "description": "显示 QQ 端功能模块介绍（README式说明）"
+    }
+]

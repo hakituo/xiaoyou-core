@@ -1,0 +1,60 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-18",
+      "weekday": "周二",
+      "title": "修复 Android 三星健康睡眠记录拆分导致的时间不一致",
+      "background": "Android 日程页同步三星健康后，起床时间已与三星健康一致，但入睡时间仍显示为同一晚最后一个子会话的开始时间，睡眠时长和得分也可能与展示记录口径不一致。",
+      "root_causes": [
+        "Samsung Health Data SDK 的一条睡眠数据记录可包含多个 SleepSession 子会话，旧逻辑把子会话打平后只选择最后一个",
+        "旧逻辑使用 session 总跨度作为睡眠时长并单独查询得分，无法保证时间、阶段和得分属于同一条睡眠记录"
+      ],
+      "fixes": [
+        "按 SDK 睡眠数据记录选择最近结束的一晚，再合并该记录内全部子会话的起止时间和睡眠阶段",
+        "使用浅睡、深睡和 REM 阶段之和作为实际睡眠时长，排除清醒阶段",
+        "睡眠得分直接取自所选睡眠记录，避免跨记录混用",
+        "补充睡眠记录选择的 Kotlin 回归测试和静态一致性验证脚本"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_frontend\\verify_samsung_sleep_consistency.py"
+      ],
+      "notes": [
+        "当前环境未完成 Gradle 定向单元测试；最终设备数据需通过 Android Studio 安装后再次同步确认"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "ANDROID-HEALTH-001",
+      "title": "三星健康同一晚多子会话导致入睡时间和时长不一致",
+      "date": "2026-08-18",
+      "category": "02_android_frontend",
+      "problem": "Aveline Android 从 Samsung Health Data SDK 同步睡眠后，起床时间与三星健康一致，但入睡时间显示为同一晚后段子会话的开始时间，实际睡眠时长也与三星健康不同。",
+      "steps": [
+        "在三星健康中确认当晚完整睡眠的起止时间和实际睡眠时长",
+        "在 Aveline Android 日程页触发三星健康同步",
+        "对比页面中的入睡时间、起床时间、阶段时长和睡眠得分"
+      ],
+      "expected": [
+        "Aveline 合并三星健康同一条睡眠记录内的全部子会话，并显示与三星健康一致的整晚起止时间",
+        "实际睡眠时长排除清醒阶段，睡眠得分与所选睡眠记录一致"
+      ],
+      "actual": [
+        "代码先把不同睡眠记录内的子会话打平，再选择结束时间最新的单个子会话",
+        "同一晚早段子会话被遗漏，因此入睡时间偏晚，阶段和时长不完整"
+      ],
+      "root_causes": [
+        "选择逻辑位于错误的数据层级，应选择完整睡眠数据记录而非单个 SleepSession",
+        "睡眠得分曾通过独立查询获取，存在与起止时间跨记录混用的风险"
+      ],
+      "fixes": [
+        "以 SDK 数据点为睡眠记录边界，选择最近结束的完整记录",
+        "合并所选记录的全部 SleepSession 子会话，并从相同记录读取睡眠得分",
+        "实际睡眠只累计浅睡、深睡和 REM 阶段"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_frontend\\verify_samsung_sleep_consistency.py"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,239 @@
+[build-system]
+requires = ["setuptools==68.2.2", "wheel==0.41.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xiaoyou-core"
+description = "小优AI助手核心模块"
+readme = "readme.md"
+requires-python = ">=3.10,<3.15"
+license = { text = "LGPLv3" }
+version = "2.3.0"
+
+authors = [
+  { name = "Xiaoyou Team", email = "team@xiaoyou.ai" }
+]
+
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# 直接依赖的权威源；requirements/*.txt 提供当前 Windows 运行环境的可复现锁定版本
+dependencies = [
+  # Web 框架与 ASGI
+  "fastapi>=0.122.0,<0.123.0",
+  "starlette>=0.40.0,<0.51.0",
+  "uvicorn>=0.38.0,<0.39.0",
+  "websockets>=11.0.3,<12.0.0",
+  "python-multipart>=0.0.20,<1.0.0",
+
+  # 异步 HTTP / IO
+  "aiohttp>=3.13.2,<4.0.0",
+  "aiofiles>=23.2.1,<25.0.0",
+  "httpx>=0.28.1,<0.29.0",
+  "requests>=2.32.5,<3.0.0",
+
+  # 配置与数据建模
+  "python-dotenv>=1.2.1,<2.0.0",
+  "pydantic>=2.12.4,<3.0.0",
+  "pydantic-settings>=2.12.0,<3.0.0",
+  "PyYAML>=6.0.3,<7.0.0",
+
+  # 认证与加密
+  "PyJWT[crypto]>=2.8.0,<3.0.0",  # 和风天气 JWT (EdDSA/Ed25519) 签名
+
+  # 日志与监控
+  "psutil>=7.1.3,<8.0.0",
+  "pynvml>=13.0.0,<14.0.0",
+  "colorama>=0.4.6,<1.0.0",
+  "structlog>=25.5.0,<26.0.0",
+  "rich>=14.2.0,<15.0.0",
+
+  # 任务调度
+  "APScheduler>=3.11.0,<4.0.0",
+  "pytz>=2024.1",
+
+  # 文件监控
+  "watchdog>=6.0.0,<7.0.0",
+
+  # 数据处理
+  "numpy>=1.26.0,<3.0.0",
+  "matplotlib>=3.10.0,<4.0.0",
+  "jieba>=0.42.1,<1.0.0",
+  "lunar-python>=1.4.8,<2.0.0",  # 农历节日动态换算（七夕等）
+  "chromadb>=1.0.0",  # 向量数据库（memory/core/vector_search.py 使用）
+
+  # 平台特定依赖（PEP 508 平台条件，避免 Linux 安装失败）
+  "pywin32==311; sys_platform == 'win32'",
+]
+
+# 可选依赖组（pip install .[组名] 安装）
+[project.optional-dependencies]
+# 开发与测试工具
+dev = [
+  "pytest>=8.0.0,<10.0.0",
+  "pytest-asyncio>=0.24.0,<1.0.0",
+  "pytest-cov>=4.0.0,<7.0.0",
+  "black>=24.0.0,<26.0.0",
+  "flake8>=7.0.0,<8.0.0",
+  "mypy>=1.8.0,<2.0.0",
+  "ruff>=0.5.0,<1.0.0",
+  "pre-commit>=3.6.0,<5.0.0",
+]
+
+# 文档构建
+docs = [
+  "sphinx==7.2.6",
+  "sphinx-rtd-theme==2.0.0",
+]
+
+# 语音处理（TTS / STT）
+voice = [
+  "soundfile>=0.12.1,<1.0.0",
+  "ffmpeg-python>=0.2.0,<1.0.0",
+  "pydub>=0.25.1,<1.0.0",
+  "gradio==6.15.1",
+  "qwen-tts>=0.1.1,<1.0.0",
+  "faster-qwen3-tts==0.2.6",
+  "librosa>=0.11.0,<1.0.0",
+  "sounddevice>=0.5.3,<1.0.0",
+  "scipy>=1.15.3,<2.0.0",
+  "resampy>=0.4.3,<1.0.0",
+  "praat-parselmouth>=0.4.7,<1.0.0",
+  "pyAudioAnalysis>=0.3.14,<1.0.0",
+  "speechrecognition>=3.14.4,<4.0.0",
+  "faster-whisper>=1.1.0,<2.0.0",
+]
+
+# 图像处理
+image = [
+  "pillow>=10.0.0,<13.0.0",
+  "opencv-python>=4.8.0,<5.0.0",
+]
+
+# 本地模型推理（GGUF / Transformers）
+models = [
+  "torch>=2.2.0",
+  "transformers>=4.46.0",
+  "accelerate>=0.25.0",
+  "bitsandbytes>=0.41.3",
+  "safetensors>=0.4.0",
+  "sentencepiece>=0.1.99",
+  "tiktoken",
+  "einops",
+]
+
+# 便利别名：本地推理全套
+local = ["xiaoyou-core[models,voice,image]"]
+
+# 工具配置
+[tool.black]
+line-length = 88
+target-version = ["py310", "py311", "py312"]
+include = "\\.pyi?$"
+
+[tool.isort]
+profile = "black"
+line_length = 88
+src_paths = [".", "core", "config"]
+skip_gitignore = true
+
+[tool.flake8]
+max-line-length = 88
+exclude = [
+    "venv_*",
+    "venv_core",
+    "__pycache__",
+    ".vs",
+    "build",
+    "output",
+    "dist",
+    "models",
+    "clients",
+    "tests"
+]
+ignore = [
+    "E203",  # whitespace before ':' (与 black 冲突)
+    "W503",  # line break before binary operator (与 black 冲突)
+]
+
+[tool.ruff]
+line-length = 88
+extend-exclude = [
+  ".vs",
+  ".mypy_cache",
+  "build",
+  "clients",
+  "cpp_modules/cpp_scheduler/build",
+  "dist",
+  "external",
+  "legacy",
+  "models",
+  "output",
+  "paper",
+  "tests",
+  "venv_*",
+  "venv_core",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+asyncio_mode = "auto"
+norecursedirs = [
+  "lib64",
+  ".git",
+  ".mypy_cache",
+  ".pytest_cache",
+  ".ruff_cache",
+  ".venv",
+  ".vs",
+  "__pycache__",
+  "build",
+  "clients",
+  "cpp_modules",
+  "dist",
+  "external",
+  "legacy",
+  "models",
+  "output",
+  "paper",
+  "venv_*",
+  "venv_core",
+  "tests/diagnostics",
+]
+
+python_files = ["test_*.py"]
+
+addopts = "-ra --ignore=lib64 -m \"not integration and not gpu and not e2e and not slow\""
+
+markers = [
+  "integration: 需要本地服务/网络/模型的集成测试（默认跳过）",
+  "gpu: 需要 GPU 与本地模型的测试（默认跳过）",
+  "e2e: 端到端测试（默认跳过）",
+  "slow: 运行时间较长的测试（默认跳过）",
+]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
+ignore_missing_imports = true
+follow_imports = "skip"
+ignore_errors = true
+exclude = '(^|[\\/])(venv_.*|venv_core|build|dist|output|models|clients|paper|cpp_modules[\\/]cpp_scheduler[\\/]build|external|legacy)([\\/]|$)'
+
+[tool.setuptools.packages.find]
+where = ["."]
+exclude = ["tests*", "examples*", "docs*", "paper*"]

@@ -1,0 +1,67 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-24",
+      "weekday": "周一",
+      "title": "修复 Active Care 双角色睡眠状态分裂与数字健康话题漂移",
+      "background": "双 QQ 决策曾各自读取 persona 状态，导致主角色识别到用户仍在睡眠而另一角色继续发送；数字健康旧客户端用量口径和通用主动聊天 prompt 也可能把硬事件带入旧会话话题。",
+      "root_causes": [
+        "睡眠与清醒事实存放在 persona 级 proactive_state.json，双角色没有用户级权威状态。",
+        "明确起床短语仍可能被 BERT 的低置信度 NONE 结果否决。",
+        "旧 Android 上报没有可验证的当天统计窗口，数字健康触发又未固定人格会话并复用了普通续聊 prompt。",
+        "决策输出解析接受模型返回的 intent，允许覆盖 MDP 已选动作。"
+      ],
+      "fixes": [
+        "新增用户级 user_sleep_state.json，所有 persona 读取状态时统一合并该真源；睡眠进入、退出和清理均立即写入用户级状态。",
+        "明确起床短语改为优先硬规则，并补齐起来了、刚起来等常用表达。",
+        "Android 上报 usage_window_start 与 usage_source；后端仅允许可验证的当天零点至今数据触发数字健康关怀，并优先聚合可信记录。",
+        "数字健康固定走 Aveline QQ 人格会话，使用独立硬事件 prompt，移除旧历史并在发送前校验目标应用及未确认的强退断言。",
+        "决策 intent 固定为上游 chosen_action，不再接受文案模型改写。"
+      ],
+      "verification": [
+        "venv_core 执行 tests\\scripts\\active_care\\verify_shared_sleep_and_usage_event.py 通过",
+        "venv_core 执行相关 Active Care 单元测试，13 passed",
+        "目标 Python 文件 Ruff 检查通过",
+        "Python compileall 检查通过；Android 按项目规则仅执行静态契约验证，未运行 Gradle"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "AC-20260824-SHARED-SLEEP-USAGE-EVENT",
+      "title": "双角色睡眠状态分裂与数字健康硬事件沿用旧话题",
+      "date": "2026-08-24",
+      "category": "01_active_care",
+      "problem": "同一用户的睡眠状态在两个 persona 之间不一致，数字健康超限关怀还可能读取错误会话池并延续无关旧话题。",
+      "steps": [
+        "让主角色记录用户进入睡眠状态，并在双 QQ 检查循环中分别执行两个 persona 的决策。",
+        "通过旧客户端同步应用用量并触发数字健康检查。",
+        "检查两个 persona 的睡眠上下文、数字健康目标 conversation_id、prompt 历史和最终消息。"
+      ],
+      "expected": [
+        "睡眠与清醒是用户级事实，所有 persona 立即得到一致状态。",
+        "数字健康只使用可信当天口径，消息固定围绕目标应用且不声称未确认的设备执行结果。"
+      ],
+      "actual": [
+        "旧实现按 persona 持久化睡眠状态，另一角色可缺失晚安事实；数字健康走通用会话和续聊 prompt，旧客户端数据也没有口径证明。"
+      ],
+      "root_causes": [
+        "把用户事实错误放入 persona 领域状态。",
+        "事件事实、会话路由、prompt 和最终发送之间缺少硬边界。",
+        "上游动作约束仅写在 prompt 中，解析器未强制执行。"
+      ],
+      "fixes": [
+        "建立用户级睡眠状态真源并在 persona 读取时覆盖旧睡眠副本。",
+        "为数字健康增加可信统计协议、Aveline 人格路由、专用 prompt 和最终目标守卫。",
+        "固定 chosen_action，并让明确起床规则优先于 BERT。"
+      ],
+      "verification": [
+        "tests\\scripts\\active_care\\verify_shared_sleep_and_usage_event.py",
+        "tests\\unit\\test_active_care_dynamic.py",
+        "tests\\unit\\test_active_care_intent_detector.py",
+        "tests\\unit\\test_life_sleep_wake_route.py",
+        "tests\\unit\\test_prompt_sleep_context.py"
+      ]
+    }
+  ]
+}

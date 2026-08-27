@@ -1,0 +1,69 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-18",
+      "weekday": "周二",
+      "title": "完善 Android 伴侣状态控制、Route 选中态与跟手进入动画",
+      "background": "伴侣详情缺少对睡眠和忙碌活动的直接控制，生命状态色彩与蓝色 Tab 下划线观感突兀；聊天页左滑进入详情只在松手过阈值后播放固定动画，没有跟随手指移动。",
+      "root_causes": [
+        "Android 状态模型只消费四项生命指标，没有读取后端已有的当前活动、聊天可用性和睡眠摘要",
+        "各 Route 分别绘制高饱和蓝色指示条，窄屏 Study 标签还可能因空间不足被挤成竖排",
+        "聊天页的左滑逻辑只记录距离与速度，直到手势结束才把详情覆盖层加入组合树"
+      ],
+      "fixes": [
+        "扩展生命状态响应并在伴侣状态页按睡眠或忙碌状态显示唤醒、打断和跳过活动按钮，复用现有生命与日程控制 API",
+        "生命指标改用低饱和统一色板；四个主要 Route 改为纯文字选中态，仅通过亮度和字重区分并强制单行",
+        "伴侣详情初始停在屏幕右侧隐藏锚点，聊天页左滑实时派发位移，松手后再按距离与速度吸附展开或收回",
+        "头像点击、左滑进入、详情页右滑退出共用 PullableDismissPanel 的同一锚点状态"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_frontend\\verify_companion_controls_tabs_and_pull.py：PASS",
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_frontend\\verify_drawer_top_level_navigation.py：PASS",
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_frontend\\verify_navigation_wellbeing_improvements.py：PASS",
+        "venv_core\\Scripts\\python.exe -m ruff check routers/v1/life.py tests/scripts/android_frontend/verify_companion_controls_tabs_and_pull.py：PASS"
+      ],
+      "notes": [
+        "遵循项目规则未由 Codex 启动 Gradle；Compose 编译和真机拖拽手感交由 Android Studio 验证"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "ANDROID-COMPANION-CONTROL-VISUAL-PULL-001",
+      "title": "伴侣状态缺少操作入口且 Route 选中态与详情入场手感不统一",
+      "date": "2026-08-18",
+      "category": "02_android_frontend",
+      "problem": "伴侣睡觉或忙碌时只能从聊天渠道发送指令，状态页不能直接处理；生命状态和 Tab 选中颜色廉价，聊天页左滑进入详情也不会随手指移动。",
+      "steps": [
+        "进入任一角色聊天并打开伴侣详情状态页",
+        "观察睡眠或忙碌活动是否有可执行操作，以及生命指标和顶部 Tab 的选中样式",
+        "返回聊天页后从非左侧边缘向左慢慢拖动"
+      ],
+      "expected": [
+        "状态页按当前状态显示唤醒、打断或跳过活动，并操作正确角色与会话",
+        "Route 使用克制的纯文字选中态且所有标签保持横向单行",
+        "详情页从右侧连续跟随手指进入，松手后自然吸附"
+      ],
+      "actual": [
+        "状态页原先只有数值展示，没有现有控制 API 的客户端入口",
+        "顶部使用高饱和蓝色短条，Study 在窄屏下可能竖排",
+        "左滑期间页面静止，松手超过阈值后才快速播放固定入场动画"
+      ],
+      "root_causes": [
+        "客户端状态 DTO 和领域模型没有承接后端活动与睡眠字段",
+        "Route 重复使用默认蓝色 SecondaryIndicator",
+        "打开手势和详情面板的 AnchoredDraggableState 相互分离"
+      ],
+      "fixes": [
+        "接入后端活动、睡眠字段及三个既有控制端点",
+        "四个 Route 统一使用无指示条、无底色的单行文字 Tab",
+        "打开和关闭详情都由同一锚点状态实时驱动"
+      ],
+      "verification": [
+        "verify_companion_controls_tabs_and_pull.py 静态回归通过",
+        "verify_navigation_wellbeing_improvements.py 既有手势回归通过",
+        "Android Studio 编译和真机交互待用户执行"
+      ]
+    }
+  ]
+}

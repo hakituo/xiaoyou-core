@@ -1,0 +1,70 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-25",
+      "weekday": "周二",
+      "title": "Nightly 人物档案改为蒸馏线索门控，普通对话不再调用详细提取",
+      "background": "当日 05:00 fallback 的 DeepSeek Pro 账单显示 62 次请求、148935 输入 token 和 66309 输出 token。按实际日志逐条还原后，其中 52 次来自 PeopleProfileExtractor，只有 10 次属于记忆蒸馏；人物提取器此前会对 172 条原始消息的 21 个批次分别执行外部人物提取与角色演化提取，并包含重试，即使绝大多数批次没有人物也照常请求。",
+      "root_causes": [
+        "PeopleProfileExtractor 在每个记忆 scope 的 nightly 回调中执行，并对全部原始聊天批次无条件调用外部人物提取和角色演化提取",
+        "记忆蒸馏只输出梗概与关键词，已付费完成的语义理解结果没有复用为人物候选门控",
+        "原始聊天可能未进入加权记忆，需要一个不调用 API 的保守兜底，不能仅依赖蒸馏元数据"
+      ],
+      "fixes": [
+        "蒸馏稳定 system prompt 新增人物线索与 Aveline/Ling 角色演化字段，并按条目写入 weighted memory 的 distillation_metadata",
+        "人物档案从每个 scope 移到 global 阶段，每个 target_date 只汇总执行一次",
+        "PeopleProfileExtractor 按蒸馏线索时间窗筛选原始聊天批次；未进入加权记忆的关系称呼和角色长期偏好由零 API 保守规则兜底",
+        "人物与角色演化都无线索时推进增量水位并直接返回 llm_batches=0；手动全量提取入口保持兼容",
+        "详细提取继续使用 config 中 memory_models.distillation，新增字段仍位于稳定 system prompt，不破坏 Prompt Cache 前缀复用"
+      ],
+      "verification": [
+        ".\\venv_core\\Scripts\\python.exe -m tests.scripts.nightly_prompt_cache.verify_people_profile_signal_gate -> 全部通过（无线索 0 次 LLM、候选时间窗、本地兜底、scope/global 接线）",
+        ".\\venv_core\\Scripts\\python.exe -m tests.scripts.nightly_prompt_cache.verify_batch_distillation -> 15/15 通过",
+        ".\\venv_core\\Scripts\\ruff.exe check <本次 Python 变更> -> All checks passed"
+      ],
+      "notes": [
+        "截图中的 Prompt Cache 命中输入为 49792 token、未命中输入为 32834 token；门控主要减少整次人物提取请求与对应输出 token，缓存优化仍继续生效",
+        "当天全部 nightly 还包含其他模型路由请求；62 次仅指 DeepSeek Pro，其中 52 次人物档案和 10 次蒸馏"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "QR-20260825-NIGHTLY-PEOPLE-PROFILE-UNGATED",
+      "title": "Nightly 无人物对话仍触发大量人物档案 LLM 请求",
+      "date": "2026-08-25",
+      "category": "07_memory_system",
+      "problem": "PeopleProfileExtractor 对当天全部原始聊天批次同时执行外部人物提取和角色演化提取，导致没有人物的普通对话也产生付费请求；当日 DeepSeek Pro 的 62 次请求中有 52 次来自该提取器。",
+      "steps": [
+        "触发含多个记忆 scope 的 nightly fallback",
+        "统计 04_llm_media.log 中 deepseek-v4-pro 的 caller_name",
+        "对照 xiaoyou_main.log 的原始消息数、分批数、外部人物提取与角色更新批次"
+      ],
+      "expected": [
+        "记忆蒸馏发现人物或角色演化线索后才调用对应详细提取",
+        "普通对话不触发人物档案 LLM",
+        "人物档案全局共享，每个目标日期仅汇总执行一次"
+      ],
+      "actual": [
+        "172 条消息形成 21 批，外部人物提取与角色演化均遍历全部批次",
+        "外部人物最终提取 0 人，但仍已支付所有请求成本",
+        "角色更新得到少量事实，无法证明全量批次扫描合理"
+      ],
+      "root_causes": [
+        "人物档案任务缺少前置候选门控",
+        "蒸馏语义结果未向人物系统提供结构化线索",
+        "人物共享任务错误挂在每个 scope 阶段"
+      ],
+      "fixes": [
+        "蒸馏输出并持久化人物线索和角色演化线索",
+        "global 阶段汇总全量 scope 元数据，只放行候选原始聊天批次",
+        "加入零 API 本地兜底，并在无线索时记录 0 次 LLM 与跳过原因"
+      ],
+      "verification": [
+        "verify_people_profile_signal_gate.py 验证普通技术对话原始 1 批、人物 0 批、角色演化 0 批、LLM 0 次",
+        "verify_batch_distillation.py 15/15 通过",
+        "相关 Python 文件 Ruff 全部通过"
+      ]
+    }
+  ]
+}

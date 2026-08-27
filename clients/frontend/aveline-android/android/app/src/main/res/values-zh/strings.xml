@@ -1,0 +1,146 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Aveline</string>
+    <string name="title_activity_main">Aveline</string>
+    <string name="package_name">com.aveline.ai</string>
+    <string name="custom_url_scheme">com.aveline.ai</string>
+    
+    <!-- 底部导航 -->
+    <string name="nav_chat">聊天</string>
+    <string name="nav_status">状态</string>
+    <string name="nav_shop">商店</string>
+    <string name="nav_settings">设置</string>
+    
+    <!-- 聊天界面 -->
+    <string name="chat_input_hint">输入消息...</string>
+    <string name="chat_send">发送</string>
+    <string name="chat_new_session">新对话</string>
+    <string name="chat_delete_session">删除对话</string>
+    <string name="chat_clear_history">清除历史</string>
+    <string name="chat_empty_message">开始和 Aveline 聊天吧</string>
+    <string name="chat_typing">正在输入...</string>
+    
+    <!-- 状态界面 -->
+    <string name="status_title">状态面板</string>
+    <string name="status_emotion">情绪状态</string>
+    <string name="status_life">生命状态</string>
+    <string name="status_health">健康</string>
+    <string name="status_hunger">饥饿</string>
+    <string name="status_happiness">快乐</string>
+    <string name="status_energy">能量</string>
+    <string name="status_connected">已连接</string>
+    <string name="status_disconnected">未连接</string>
+    <string name="status_warning">状态警告</string>
+    
+    <!-- 商店界面 -->
+    <string name="shop_title">商店</string>
+    <string name="shop_balance">余额</string>
+    <string name="shop_category_all">全部</string>
+    <string name="shop_category_food">食物</string>
+    <string name="shop_category_item">物品</string>
+    <string name="shop_category_decoration">装饰</string>
+    <string name="shop_purchase">购买</string>
+    <string name="shop_purchase_success">购买成功</string>
+    <string name="shop_purchase_failed">购买失败</string>
+    <string name="shop_insufficient_funds">余额不足</string>
+    
+    <!-- 设置界面 -->
+    <string name="settings_title">设置</string>
+    <string name="settings_connection">连接设置</string>
+    <string name="settings_backend_url">后端地址</string>
+    <string name="settings_test_connection">测试连接</string>
+    <string name="settings_save">保存</string>
+    <string name="settings_voice">语音设置</string>
+    <string name="settings_auto_tts">自动播放语音</string>
+    <string name="settings_response">响应设置</string>
+    <string name="settings_response_short">简短</string>
+    <string name="settings_response_normal">正常</string>
+    <string name="settings_response_detailed">详细</string>
+    <string name="settings_permissions">权限管理</string>
+    <string name="settings_permission_health">Health Connect</string>
+    <string name="settings_permission_usage">应用使用统计</string>
+    <string name="settings_permission_notification">通知访问</string>
+    <string name="settings_permission_granted">已授权</string>
+    <string name="settings_permission_denied">未授权</string>
+    <string name="settings_privacy">隐私设置</string>
+    <string name="settings_context_sync">上下文同步</string>
+    <string name="settings_resident_mode">常驻模式</string>
+    <string name="settings_haptic">触觉反馈</string>
+    <string name="settings_language">语言</string>
+    <string name="settings_data">数据管理</string>
+    <string name="settings_clear_history">清除聊天历史</string>
+    <string name="settings_export">导出数据</string>
+    <string name="settings_import">导入数据</string>
+    <string name="settings_about">关于</string>
+    <string name="settings_version">版本</string>
+    
+    <!-- 插件设置 -->
+    <string name="plugins_title">插件设置</string>
+    <string name="plugins_model">AI 模型</string>
+    <string name="plugins_model_cloud">云端模型</string>
+    <string name="plugins_model_local">本地模型</string>
+    <string name="plugins_response_length">响应长度</string>
+    <string name="plugins_breathing_rate">呼吸频率</string>
+    <string name="plugins_emotion">情绪设置</string>
+    <string name="plugins_emotion_auto">自动检测情绪</string>
+    <string name="plugins_emotion_manual">手动设置情绪</string>
+    
+    <!-- 记忆模块 -->
+    <string name="memory_title">记忆管理</string>
+    <string name="memory_short_term">短期记忆</string>
+    <string name="memory_long_term">长期记忆</string>
+    <string name="memory_empty">暂无记忆</string>
+    
+    <!-- 学习模块 -->
+    <string name="study_title">学习文件</string>
+    <string name="study_upload">上传文件</string>
+    <string name="study_empty">暂无学习文件</string>
+    
+    <!-- 人格模块 -->
+    <string name="persona_title">人格管理</string>
+    <string name="persona_create">创建人格</string>
+    <string name="persona_edit">编辑人格</string>
+    <string name="persona_delete">删除人格</string>
+    <string name="persona_active">当前激活</string>
+    
+    <!-- 通用 -->
+    <string name="loading">加载中...</string>
+    <string name="error">发生错误</string>
+    <string name="retry">重试</string>
+    <string name="cancel">取消</string>
+    <string name="confirm">确认</string>
+    <string name="delete">删除</string>
+    <string name="edit">编辑</string>
+    <string name="save">保存</string>
+    <string name="reset">重置</string>
+    <string name="close">关闭</string>
+    <string name="yes">是</string>
+    <string name="no">否</string>
+    <string name="ok">确定</string>
+    
+    <!-- 语言选项 -->
+    <string name="language_system">跟随系统</string>
+    <string name="language_english">English</string>
+    <string name="language_chinese">中文</string>
+    <string name="native_settings_title">系统设置</string>
+    <string name="native_settings_server">服务器连接</string>
+    <string name="native_settings_backend_hint">http://192.168.1.X:8000</string>
+    <string name="native_settings_account">账号与令牌</string>
+    <string name="native_settings_token_hint">访问令牌</string>
+    <string name="native_settings_user_id_hint">用户ID（可选）</string>
+    <string name="native_settings_user_name_hint">昵称（可选）</string>
+    <string name="native_settings_save">保存</string>
+    <string name="native_settings_test">测试连接</string>
+    <string name="native_settings_device">设备能力</string>
+    <string name="native_settings_open_app_info">打开系统权限与自检</string>
+    <string name="native_settings_open_usage">授予应用使用情况权限</string>
+    <string name="native_settings_open_notification">授予通知读取权限</string>
+    <string name="native_settings_open_health">连接健康数据</string>
+    <string name="native_settings_resident">后台常驻</string>
+    <string name="native_settings_chat">聊天管理</string>
+    <string name="native_settings_clear_chat">清空聊天记录</string>
+    <string name="native_settings_back">返回</string>
+
+    <!-- 无障碍服务 -->
+    <string name="aveline_accessibility_service_description">允许 Aveline 执行 UI 自动化操作，如点击、滑动和查找元素；启用数字健康限额后，也会用于在超额应用进入前台时自动返回桌面。仅在你信任这些操作时启用。</string>
+</resources>

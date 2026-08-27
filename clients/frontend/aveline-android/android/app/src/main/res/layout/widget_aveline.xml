@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_background"
+    android:padding="12dp">
+
+    <!-- 顶部：AI 状态栏 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="8dp">
+
+        <!-- AI 头像/情绪图标 -->
+        <ImageView
+            android:id="@+id/widget_emotion_icon"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:src="@mipmap/ic_launcher"
+            android:contentDescription="AI 状态" />
+
+        <!-- 状态信息 -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginStart="8dp">
+
+            <TextView
+                android:id="@+id/widget_ai_name"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Aveline"
+                android:textSize="14sp"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/widget_emotion_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="心情平静"
+                android:textSize="11sp"
+                android:textColor="#B0FFFFFF" />
+        </LinearLayout>
+
+        <!-- 连接状态指示器 -->
+        <View
+            android:id="@+id/widget_connection_status"
+            android:layout_width="8dp"
+            android:layout_height="8dp"
+            android:background="@drawable/widget_status_indicator" />
+    </LinearLayout>
+
+    <!-- 生命状态条 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginBottom="8dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <!-- 健康 -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginEnd="4dp">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="❤️"
+                    android:textSize="10sp" />
+                <ProgressBar
+                    android:id="@+id/widget_health_bar"
+                    style="@android:style/Widget.ProgressBar.Horizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="4dp"
+                    android:max="100"
+                    android:progress="80"
+                    android:progressDrawable="@drawable/widget_progress_health" />
+            </LinearLayout>
+
+            <!-- 幸福 -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginEnd="4dp">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="😊"
+                    android:textSize="10sp" />
+                <ProgressBar
+                    android:id="@+id/widget_happiness_bar"
+                    style="@android:style/Widget.ProgressBar.Horizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="4dp"
+                    android:max="100"
+                    android:progress="70"
+                    android:progressDrawable="@drawable/widget_progress_happiness" />
+            </LinearLayout>
+
+            <!-- 能量 -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginEnd="4dp">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="⚡"
+                    android:textSize="10sp" />
+                <ProgressBar
+                    android:id="@+id/widget_energy_bar"
+                    style="@android:style/Widget.ProgressBar.Horizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="4dp"
+                    android:max="100"
+                    android:progress="60"
+                    android:progressDrawable="@drawable/widget_progress_energy" />
+            </LinearLayout>
+
+            <!-- 饥饿 -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🍕"
+                    android:textSize="10sp" />
+                <ProgressBar
+                    android:id="@+id/widget_hunger_bar"
+                    style="@android:style/Widget.ProgressBar.Horizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="4dp"
+                    android:max="100"
+                    android:progress="50"
+                    android:progressDrawable="@drawable/widget_progress_hunger" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- 最近消息区域 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:background="@drawable/widget_message_area_bg"
+        android:padding="8dp">
+
+        <TextView
+            android:id="@+id/widget_last_message"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="点击打开聊天..."
+            android:textSize="12sp"
+            android:textColor="#E0FFFFFF"
+            android:maxLines="2"
+            android:ellipsize="end" />
+
+        <TextView
+            android:id="@+id/widget_message_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:text=""
+            android:textSize="10sp"
+            android:textColor="#80FFFFFF"
+            android:layout_marginTop="4dp" />
+    </LinearLayout>
+
+    <!-- 底部：快速操作栏（QQ/微信样式） -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="8dp">
+
+        <!-- 左侧 + 按钮 -->
+        <ImageView
+            android:id="@+id/widget_add_button"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:src="@android:drawable/ic_input_add"
+            android:padding="6dp"
+            android:background="@drawable/widget_circle_button"
+            android:contentDescription="更多"
+            android:tint="#FF6B9EFF"
+            android:layout_marginEnd="8dp" />
+
+        <!-- 中间输入框 -->
+        <TextView
+            android:id="@+id/widget_quick_input"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:background="@drawable/widget_input_rounded"
+            android:gravity="center_vertical"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:text="发送消息..."
+            android:textSize="13sp"
+            android:textColor="#80FFFFFF"
+            android:layout_marginEnd="8dp" />
+
+        <!-- 右侧发送按钮 -->
+        <ImageView
+            android:id="@+id/widget_send_button"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:src="@android:drawable/ic_menu_send"
+            android:padding="8dp"
+            android:background="@drawable/widget_send_button_bg"
+            android:contentDescription="发送"
+            android:tint="#FFFFFF" />
+    </LinearLayout>
+
+</LinearLayout>

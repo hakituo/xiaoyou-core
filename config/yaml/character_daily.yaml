@@ -1,0 +1,405 @@
+# ============================================================
+# 角色日常日程配置（Character Daily Schedule）
+#
+# 每个角色有独立的作息模板，包含：
+#   - wake_time / sleep_time: 起床和睡觉时间
+#   - time_blocks: 每天的活动时段模板
+#     - fixed: 固定活动（如吃饭、起床），按顺序执行
+#     - pool: 候选活动池，由共享确定性评分和容量算法选择组合
+#   - rest_day_extras: 可选，按 period 配置周末额外候选，不在 Python 中写角色特例
+#
+# 同角色同日期结果稳定；日期、角色和候选键的稳定哈希带来适度日间变化。
+# ============================================================
+
+aveline:
+  wake_time: "07:00"
+  sleep_time: "23:00"
+
+  rest_day_extras:
+    morning_routine:
+      - { activity: "self_care", duration: [10, 20], weight: 1.2 }
+    afternoon_activity:
+      - { activity: "creative_hobby", duration: [30, 60], weight: 1.5 }
+      - { activity: "exercising", duration: [20, 35], weight: 1.1 }
+    evening:
+      - { activity: "creative_hobby", duration: [25, 50], weight: 1.3 }
+      - { activity: "self_care", duration: [15, 25], weight: 1.1 }
+    bedtime:
+      - { activity: "self_care", duration: [10, 20], weight: 1.5 }
+
+  time_blocks:
+    - period: "morning_routine"      # 07:00-08:30
+      start: "07:00"
+      end: "08:30"
+      fixed:
+        - { activity: "waking_up", duration: [15, 30] }
+      pool:
+        - { activity: "cooking",   duration: [20, 35], weight: 3 }
+        - { activity: "breakfast", duration: [15, 25], weight: 5 }
+        - { activity: "self_care", duration: [10, 20], weight: 2 }
+        - { activity: "housework", duration: [10, 20], weight: 1 }
+
+    - period: "morning_study"        # 09:00-12:00
+      start: "09:00"
+      end: "12:00"
+      fixed: []
+      pool:
+        - { activity: "studying",  duration: [45, 90], weight: 4 }
+        - { activity: "reading",   duration: [30, 60], weight: 3 }
+        - { activity: "housework", duration: [15, 30], weight: 1 }
+
+    - period: "lunch"                # 12:00-13:00
+      start: "12:00"
+      end: "13:00"
+      fixed:
+        - { activity: "cooking", duration: [20, 35] }
+        - { activity: "lunch",   duration: [15, 25] }
+      pool: []
+
+    - period: "afternoon_rest"       # 13:00-14:00
+      start: "13:00"
+      end: "14:00"
+      fixed: []
+      pool:
+        - { activity: "napping",         duration: [20, 40], weight: 3 }
+        - { activity: "phone_scrolling", duration: [15, 30], weight: 2 }
+        - { activity: "reading",         duration: [20, 40], weight: 2 }
+
+    - period: "afternoon_activity"   # 14:00-17:30
+      start: "14:00"
+      end: "17:30"
+      fixed: []
+      pool:
+        - { activity: "studying",  duration: [45, 90], weight: 3 }
+        - { activity: "reading",   duration: [30, 60], weight: 2 }
+        - { activity: "walking",   duration: [20, 45], weight: 2 }
+        - { activity: "gardening", duration: [15, 30], weight: 1 }
+        - { activity: "creative_hobby", duration: [25, 50], weight: 1 }
+        - { activity: "exercising", duration: [20, 35], weight: 1 }
+
+    - period: "dinner"               # 17:30-19:00
+      start: "17:30"
+      end: "19:00"
+      fixed:
+        - { activity: "cooking", duration: [25, 40] }
+        - { activity: "dinner",  duration: [15, 25] }
+      pool: []
+
+    - period: "evening"              # 19:00-22:30
+      start: "19:00"
+      end: "22:30"
+      fixed: []
+      pool:
+        - { activity: "reading",         duration: [30, 60], weight: 3 }
+        - { activity: "phone_scrolling", duration: [15, 30], weight: 2 }
+        - { activity: "housework",       duration: [15, 30], weight: 1 }
+        - { activity: "creative_hobby",  duration: [20, 45], weight: 1 }
+        - { activity: "self_care",       duration: [10, 20], weight: 1 }
+        - { activity: "idle",            duration: [10, 20], weight: 2 }
+
+    - period: "bedtime"              # 22:30-23:00
+      start: "22:30"
+      end: "23:00"
+      fixed: []
+      pool:
+        - { activity: "phone_scrolling", duration: [10, 20], weight: 3 }
+        - { activity: "reading",         duration: [10, 20], weight: 2 }
+        - { activity: "self_care",       duration: [10, 18], weight: 2 }
+
+ling:
+  wake_time: "08:00"
+  sleep_time: "23:30"
+
+  rest_day_extras:
+    morning_routine:
+      - { activity: "self_care", duration: [10, 18], weight: 1.0 }
+    afternoon_activity:
+      - { activity: "shopping", duration: [20, 45], weight: 1.4 }
+      - { activity: "gaming", duration: [30, 60], weight: 1.6 }
+    evening:
+      - { activity: "gaming", duration: [35, 70], weight: 1.8 }
+      - { activity: "shopping", duration: [20, 40], weight: 1.0 }
+      - { activity: "self_care", duration: [12, 20], weight: 0.8 }
+    bedtime:
+      - { activity: "self_care", duration: [10, 15], weight: 1.0 }
+
+  time_blocks:
+    - period: "morning_routine"
+      start: "08:00"
+      end: "09:00"
+      fixed:
+        - { activity: "waking_up", duration: [15, 25] }
+      pool:
+        - { activity: "breakfast", duration: [15, 25], weight: 4 }
+        - { activity: "cooking",   duration: [15, 30], weight: 2 }
+        - { activity: "self_care", duration: [10, 18], weight: 1 }
+
+    - period: "morning_study"
+      start: "09:00"
+      end: "12:00"
+      fixed: []
+      pool:
+        - { activity: "studying",  duration: [45, 90], weight: 4 }
+        - { activity: "reading",   duration: [30, 60], weight: 3 }
+        - { activity: "idle",      duration: [10, 20], weight: 1 }
+
+    - period: "lunch"
+      start: "12:00"
+      end: "13:30"
+      fixed:
+        - { activity: "lunch", duration: [15, 25] }
+      pool:
+        - { activity: "phone_scrolling", duration: [15, 30], weight: 3 }
+        - { activity: "reading",         duration: [15, 30], weight: 2 }
+
+    - period: "afternoon_rest"
+      start: "13:30"
+      end: "14:30"
+      fixed: []
+      pool:
+        - { activity: "napping", duration: [20, 40], weight: 3 }
+        - { activity: "idle",    duration: [10, 20], weight: 2 }
+
+    - period: "afternoon_activity"
+      start: "14:30"
+      end: "18:00"
+      fixed: []
+      pool:
+        - { activity: "studying",  duration: [45, 90], weight: 3 }
+        - { activity: "walking",   duration: [20, 45], weight: 2 }
+        - { activity: "housework", duration: [15, 30], weight: 2 }
+        - { activity: "reading",   duration: [30, 60], weight: 1 }
+        - { activity: "shopping",  duration: [20, 40], weight: 1 }
+        - { activity: "gaming",    duration: [30, 55], weight: 1 }
+
+    - period: "dinner"
+      start: "18:00"
+      end: "19:30"
+      fixed:
+        - { activity: "cooking", duration: [25, 40] }
+        - { activity: "dinner",  duration: [15, 25] }
+      pool: []
+
+    - period: "evening"
+      start: "19:30"
+      end: "23:00"
+      fixed: []
+      pool:
+        - { activity: "reading",         duration: [30, 60], weight: 3 }
+        - { activity: "phone_scrolling", duration: [15, 30], weight: 3 }
+        - { activity: "housework",       duration: [15, 30], weight: 1 }
+        - { activity: "gaming",          duration: [30, 60], weight: 2 }
+        - { activity: "self_care",       duration: [10, 20], weight: 1 }
+        - { activity: "idle",            duration: [10, 20], weight: 2 }
+
+    - period: "bedtime"
+      start: "23:00"
+      end: "23:30"
+      fixed: []
+      pool:
+        - { activity: "phone_scrolling", duration: [10, 20], weight: 3 }
+        - { activity: "reading",         duration: [10, 15], weight: 2 }
+        - { activity: "self_care",       duration: [10, 15], weight: 1 }
+
+# QQ 官方机器人 · Coco（新媒体运营，熬夜冠军，上海）
+# 不接入 active_care（QQ 官方机器人发不了主动消息），仅由 character_daily + sleep_manager 推进作息
+yeye:
+  wake_time: "09:00"
+  sleep_time: "02:00"
+
+  sleep_profile:
+    chronotype: "night_owl"
+    weekday_wake_time: "09:00"
+    weekend_wake_time: "11:00"
+    weekday_sleep_time: "02:00"
+    weekend_sleep_time: "03:00"
+    sleep_inertia_tendency: 0.6
+    night_owl_tendency: 0.8
+    late_snack_tendency: 0.5
+    nap_tendency: 0.4
+    oversleep_tendency: 0.3
+    nightmare_tendency: 0.1
+    wake_by_message_sensitivity: 0.55
+    resume_sleep_tendency: 0.5
+    schedule_adjust_tendency: 0.4
+    diary_backfill_tendency: 0.05
+    silence_window_seconds: 180
+
+  time_blocks:
+    - period: "morning_routine"      # 09:00-10:00
+      start: "09:00"
+      end: "10:00"
+      fixed:
+        - { activity: "waking_up", duration: [15, 30] }
+      pool:
+        - { activity: "breakfast", duration: [15, 25], weight: 5 }
+        - { activity: "phone_scrolling", duration: [10, 20], weight: 3 }
+        - { activity: "self_care", duration: [10, 18], weight: 1 }
+
+    - period: "morning_work"         # 10:00-12:30 上班剪视频/写文案
+      start: "10:00"
+      end: "12:30"
+      fixed: []
+      pool:
+        - { activity: "studying",        duration: [60, 120], weight: 4 }
+        - { activity: "phone_scrolling", duration: [15, 30], weight: 2 }
+        - { activity: "reading",         duration: [20, 40], weight: 1 }
+
+    - period: "lunch"                # 12:30-13:30
+      start: "12:30"
+      end: "13:30"
+      fixed:
+        - { activity: "lunch", duration: [15, 25] }
+      pool:
+        - { activity: "phone_scrolling", duration: [10, 25], weight: 3 }
+
+    - period: "afternoon_rest"       # 13:30-14:30
+      start: "13:30"
+      end: "14:30"
+      fixed: []
+      pool:
+        - { activity: "napping",         duration: [15, 30], weight: 3 }
+        - { activity: "phone_scrolling", duration: [10, 20], weight: 2 }
+        - { activity: "idle",            duration: [10, 15], weight: 1 }
+
+    - period: "afternoon_work"       # 14:30-18:30
+      start: "14:30"
+      end: "18:30"
+      fixed: []
+      pool:
+        - { activity: "studying",        duration: [60, 120], weight: 4 }
+        - { activity: "reading",         duration: [25, 50], weight: 2 }
+        - { activity: "walking",         duration: [15, 30], weight: 1 }
+        - { activity: "shopping",        duration: [20, 40], weight: 1 }
+
+    - period: "dinner"               # 18:30-19:30
+      start: "18:30"
+      end: "19:30"
+      fixed:
+        - { activity: "cooking", duration: [15, 30] }
+        - { activity: "dinner",  duration: [15, 25] }
+      pool: []
+
+    - period: "evening"              # 19:30-23:30
+      start: "19:30"
+      end: "23:30"
+      fixed: []
+      pool:
+        - { activity: "gaming",          duration: [40, 90], weight: 4 }
+        - { activity: "phone_scrolling", duration: [20, 40], weight: 3 }
+        - { activity: "reading",         duration: [25, 50], weight: 2 }
+        - { activity: "creative_hobby", duration: [20, 45], weight: 1 }
+        - { activity: "self_care",       duration: [10, 20], weight: 1 }
+        - { activity: "idle",            duration: [10, 20], weight: 2 }
+
+    - period: "late_night"           # 23:30-02:00 熬夜时段
+      start: "23:30"
+      end: "02:00"
+      fixed: []
+      pool:
+        - { activity: "staying_up_late", duration: [30, 60], weight: 4 }
+        - { activity: "gaming",          duration: [40, 90], weight: 3 }
+        - { activity: "phone_scrolling", duration: [20, 40], weight: 3 }
+        - { activity: "late_snack",      duration: [10, 20], weight: 2 }
+        - { activity: "reading",         duration: [15, 30], weight: 1 }
+
+# QQ 官方机器人 · 小鹿（UI 设计师，温柔软妹，杭州）
+# 不接入 active_care，仅由 character_daily + sleep_manager 推进作息
+xiaolu:
+  wake_time: "08:00"
+  sleep_time: "23:30"
+
+  sleep_profile:
+    chronotype: "neutral"
+    weekday_wake_time: "08:00"
+    weekend_wake_time: "09:00"
+    weekday_sleep_time: "23:30"
+    weekend_sleep_time: "00:00"
+    sleep_inertia_tendency: 0.5
+    night_owl_tendency: 0.3
+    late_snack_tendency: 0.1
+    nap_tendency: 0.2
+    oversleep_tendency: 0.1
+    nightmare_tendency: 0.15
+    wake_by_message_sensitivity: 0.6
+    resume_sleep_tendency: 0.7
+    schedule_adjust_tendency: 0.15
+    diary_backfill_tendency: 0.1
+    silence_window_seconds: 180
+
+  time_blocks:
+    - period: "morning_routine"      # 08:00-09:00
+      start: "08:00"
+      end: "09:00"
+      fixed:
+        - { activity: "waking_up", duration: [15, 25] }
+      pool:
+        - { activity: "breakfast", duration: [15, 25], weight: 4 }
+        - { activity: "self_care", duration: [10, 18], weight: 2 }
+        - { activity: "phone_scrolling", duration: [10, 20], weight: 1 }
+
+    - period: "morning_work"         # 09:00-12:00 上班做设计
+      start: "09:00"
+      end: "12:00"
+      fixed: []
+      pool:
+        - { activity: "studying",        duration: [60, 120], weight: 4 }
+        - { activity: "creative_hobby", duration: [30, 60], weight: 2 }
+        - { activity: "reading",         duration: [20, 40], weight: 1 }
+
+    - period: "lunch"                # 12:00-13:00
+      start: "12:00"
+      end: "13:00"
+      fixed:
+        - { activity: "lunch", duration: [15, 25] }
+      pool:
+        - { activity: "reading",         duration: [15, 25], weight: 2 }
+        - { activity: "phone_scrolling", duration: [10, 20], weight: 2 }
+
+    - period: "afternoon_rest"       # 13:00-14:00
+      start: "13:00"
+      end: "14:00"
+      fixed: []
+      pool:
+        - { activity: "napping",         duration: [15, 30], weight: 3 }
+        - { activity: "reading",         duration: [15, 30], weight: 2 }
+        - { activity: "idle",            duration: [10, 15], weight: 1 }
+
+    - period: "afternoon_work"       # 14:00-18:30
+      start: "14:00"
+      end: "18:30"
+      fixed: []
+      pool:
+        - { activity: "studying",        duration: [60, 120], weight: 4 }
+        - { activity: "creative_hobby", duration: [30, 60], weight: 2 }
+        - { activity: "walking",         duration: [15, 30], weight: 1 }
+        - { activity: "reading",         duration: [20, 40], weight: 1 }
+
+    - period: "dinner"               # 18:30-19:30
+      start: "18:30"
+      end: "19:30"
+      fixed:
+        - { activity: "cooking", duration: [20, 35] }
+        - { activity: "dinner",  duration: [15, 25] }
+      pool: []
+
+    - period: "evening"              # 19:30-23:30
+      start: "19:30"
+      end: "23:30"
+      fixed: []
+      pool:
+        - { activity: "creative_hobby", duration: [30, 60], weight: 4 }
+        - { activity: "reading",         duration: [30, 60], weight: 3 }
+        - { activity: "phone_scrolling", duration: [15, 30], weight: 2 }
+        - { activity: "gaming",          duration: [30, 60], weight: 1 }
+        - { activity: "self_care",       duration: [10, 20], weight: 1 }
+        - { activity: "idle",            duration: [10, 20], weight: 2 }
+
+    - period: "bedtime"              # 23:00-23:30
+      start: "23:00"
+      end: "23:30"
+      fixed: []
+      pool:
+        - { activity: "reading",         duration: [10, 20], weight: 3 }
+        - { activity: "self_care",       duration: [10, 18], weight: 2 }
+        - { activity: "phone_scrolling", duration: [5, 15], weight: 1 }

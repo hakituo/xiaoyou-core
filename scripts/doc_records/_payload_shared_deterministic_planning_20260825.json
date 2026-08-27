@@ -1,0 +1,101 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-25",
+      "weekday": "周二",
+      "title": "用户与角色日程统一为共享确定性计划引擎",
+      "background": "用户 Study Daily 主计划、检查点重排与角色每日计划原本各自采用 LLM 或随机生成，结果不可稳定复现，且 Workspace 快照还存在独立生成与批量硬提醒路径。",
+      "root_causes": [
+        "用户计划和中午、傍晚重排依赖日常 LLM 调用与 JSON 解析重试",
+        "角色模板池使用 random.choices 和 random.uniform，无法保证同日同输入稳定",
+        "Journal 主计划与 Workspace 任务快照各自生成，候选事实、容量和提醒语义容易漂移",
+        "睡眠结算的 skipped 项缺少可滚动来源与次数元数据"
+      ],
+      "fixes": [
+        "新增共享确定性评分与贪心容量排程引擎，以日期、owner 和 candidate key 的稳定哈希提供小幅抖动",
+        "用户计划从到期词汇、薄弱点、昨日学习摘要、昨日未完成和睡眠结算项构建候选，并按工作日、周末、节假日策略排程",
+        "角色 fixed 与 pool YAML 模板统一转换为候选，参考同角色昨日活动做重复惩罚，同时保留睡眠槽位、聊天资格和持久化格式",
+        "检查点改用同一引擎重排 pending 与 in_progress，保留 completed、skipped 与进行中语义，不再调用 LLM",
+        "PlanItem 增加来源、分数、滚动次数、延期日期和结算原因字段；force 重生成保留手动项",
+        "Workspace 自动任务改为消费 Journal 主计划快照，自动计划不再批量创建硬提醒",
+        "补充共享引擎、用户计划、角色计划、睡眠滚动、检查点和 Workspace 快照测试及独立验证脚本"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe -m pytest tests\\planning tests\\journal_plan tests\\character_daily\\test_deterministic_daily_plan.py tests\\character_daily\\test_character_daily_plan_tool.py tests\\unit\\test_daily_plan_persistence.py -q --tb=short：36 passed",
+        "venv_core\\Scripts\\python.exe -m ruff check <本次 Python 文件与测试>：All checks passed",
+        "venv_core\\Scripts\\python.exe tests\\scripts\\planning\\verify_deterministic_planning.py：PASS，并输出用户与两个角色的确定性示例",
+        "相关目录宽跑：124 passed、21 failed；失败均位于本次未修改的消息延迟、Peer Chat 与睡眠覆盖旧接口或旧配置断言"
+      ],
+      "notes": [
+        "用户自动计划、角色每日计划和中午、傍晚重排的运行路径均不再调用 LLM；其他日记摘要、角色睡眠决策等非计划能力仍保留既有 LLM",
+        "保留旧 LLMPlanGenerator 文件以免破坏直接引用，但 CharacterDailyEngine 不再导入或实例化，旧配置误开也只记录忽略警告",
+        "未引入 OR-Tools，也未进行两套存储的数据迁移"
+      ]
+    },
+    {
+      "date": "2026-08-25",
+      "weekday": "周二",
+      "title": "补齐昨日词汇候选与检查点可滚动语义",
+      "background": "最终语义复核发现昨日摘要 vocab 尚未直接参与候选，且检查点容量塞不下的 pending 若提前标 skipped，会绕过后续睡眠结算和次日滚动。",
+      "root_causes": [
+        "实时到期词汇已接入，但昨日摘要 vocab 只被读取而未形成低优先级兜底候选",
+        "检查点把容量不足等同于用户跳过，导致状态过早终止"
+      ],
+      "fixes": [
+        "将昨日 vocab.to_review 转换为低优先级同键候选；实时 get_review_overview 候选存在时仍按更高基础分覆盖",
+        "检查点未排入窗口的事项清空失效时间但保持 pending，并记录 checkpoint_capacity；睡眠时再统一标记 sleep 以进入有限滚动"
+      ],
+      "verification": [
+        "最终计划改造定向 pytest：36 passed、29 warnings",
+        "最终相关目录宽跑：124 passed、21 failed；21 项仍全部位于计划改造范围外",
+        "Ruff、py_compile 与 tests/scripts/planning/verify_deterministic_planning.py 均通过"
+      ],
+      "notes": [
+        "此补充不改变自动计划无 LLM、无批量硬提醒的边界"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "QR-20260825-SHARED-DETERMINISTIC-PLANNING",
+      "title": "用户与角色每日计划生成逻辑分叉且依赖日常 LLM",
+      "date": "2026-08-25",
+      "category": "12_diary_journal",
+      "problem": "同一天重复生成用户或角色计划时结果可能变化，用户计划生成和检查点重排还产生额外 LLM 调用，Journal 与 Workspace 两套任务来源也可能漂移。",
+      "steps": [
+        "强制重新生成同一天的用户计划并比较项目、时间与顺序",
+        "为同一角色重复生成同一天计划并比较活动槽位",
+        "触发中午或傍晚检查点，观察计划模型调用与状态变化",
+        "比较 Study Daily plan.md 与 Workspace daily tasks 的自动生成来源"
+      ],
+      "expected": [
+        "同一日期、owner 和事实输入产生稳定计划，不同日期允许小幅变化",
+        "固定事项优先且不冲突，总时长和事项数量受到日类型容量约束",
+        "检查点只重排剩余事项，不误把未完成项目变成 completed",
+        "Journal 是用户主计划真源，Workspace 只消费快照且自动计划不批量建硬提醒"
+      ],
+      "actual": [
+        "用户生成与重排依赖 LLM、JSON 解析和失败重试",
+        "角色模板池依赖 Python random 选项与时长",
+        "Workspace 根据学习摘要另行生成任务并逐项创建提醒",
+        "睡眠 skipped 项无法可靠区分自动延期与用户主动跳过"
+      ],
+      "root_causes": [
+        "缺少跨用户与角色计划共用的候选、评分和容量排程抽象",
+        "计划项缺少来源键、滚动次数和结算原因等兼容元数据",
+        "Journal 与 Workspace 的主从边界没有在代码和文档中明确"
+      ],
+      "fixes": [
+        "实现共享稳定哈希评分与冲突感知的贪心容量排程",
+        "用户与角色分别从真实学习事实或 YAML 业务模板构建候选并复用同一引擎",
+        "检查点改为确定性剩余计划重排，睡眠结算记录 sleep 原因并限制次日滚动次数",
+        "Workspace 自动任务只镜像 Journal 主计划，保留手动 Workspace 提醒行为"
+      ],
+      "verification": [
+        "新增测试覆盖稳定性、日期变化、固定优先、无冲突、容量、重复惩罚、真实候选、手动保留、滚动上限和日类型策略",
+        "计划改造定向 pytest 36 项全部通过，Ruff 与独立验证脚本通过",
+        "宽跑发现的 21 项失败均为计划改造范围外的既有角色消息策略兼容问题，已在更新记录中如实注明"
+      ]
+    }
+  ]
+}

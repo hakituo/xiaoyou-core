@@ -1,0 +1,60 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-27",
+      "weekday": "周四",
+      "title": "Chiba人设真实聊天导入加权记忆 + 日程模板接入 + 关键词索引读锁死锁修复",
+      "background": "Chiba人设的真实聊天记录此前只落在 chat_history，未进入加权记忆；该角色也没有日程模板，消息会误路由到 aveline 的睡眠状态。另在验证检索时发现关键词搜索存在读锁内请求写锁的自死锁隐患。",
+      "root_causes": [
+        "真实聊天事件未分片成对话链写入加权记忆，检索时无法命中历史事实。",
+        "Chiba未接入 character_daily 模板与 scope 解析链路，作息/唤醒状态无法独立推进。",
+        "search_by_keyword 在持有读锁时调用 ensure_keyword_index_ready（内部无条件获取写锁），同线程读->写锁升级自死锁。",
+        "批量导入脚本在写锁外设置关键词重建标志，标志遗留导致首次搜索必然触发重建路径。"
+      ],
+      "fixes": [
+        "新增导入脚本，将真实聊天事件按 15 分钟间隔切分为对话链，写入加权记忆（分类隔离存储、真实时间戳、固定置信度权重、标注导入来源），导入后统一补生成向量嵌入。",
+        "将 ensure_keyword_index_ready 移到读锁外调用（与 hybrid_search 一致），从根源消除读->写锁升级死锁。",
+        "批量导入在写锁内完成关键词索引全量重建并清除重建标志，不再遗留脏标志。",
+        "为Chiba追加日程模板（夜猫作息，主活跃时段对齐真实聊天峰值），并接线 engine/sleep_manager/scope 解析/wake 路由/回复策略的角色识别，消息不再误路由到 aveline。"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\memory\\verify_chiba_weighted_import.py",
+        "venv_core\\Scripts\\python.exe tests\\scripts\\character_daily\\verify_chiba_schedule.py"
+      ],
+      "notes": [
+        "导入验证 4 项检查与日程验证 23 项检查全部通过；加权记忆按类别隔离存储于子目录，可检索但不注入短期对话上下文。"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "MEM-20260827-KEYWORD-RW-DEADLOCK",
+      "title": "关键词搜索在读锁内请求写锁导致自死锁",
+      "date": "2026-08-27",
+      "category": "07_memory_system",
+      "problem": "首次关键词搜索（或索引需要重建时）进程卡死，日志持续输出 ReadWriteLock: write lock waiting >5s。",
+      "steps": [
+        "导入一批加权记忆（遗留关键词重建标志），或加载后首次执行关键词搜索。",
+        "调用 search_by_keyword 触发索引就绪检查。",
+        "观察进程是否长时间无响应并打印写锁等待日志。"
+      ],
+      "expected": [
+        "关键词索引按需构建，搜索正常返回结果，不发生自死锁。"
+      ],
+      "actual": [
+        "search_by_keyword 在读锁内调用 ensure_keyword_index_ready，后者无条件获取写锁，同线程读锁未释放导致写锁等待永不满足。"
+      ],
+      "root_causes": [
+        "关键词索引就绪检查被放在读锁临界区内，而该检查本身需要写锁。",
+        "批量导入在写锁外设置重建标志，标志遗留使首次搜索必然触发重建路径。"
+      ],
+      "fixes": [
+        "将 ensure_keyword_index_ready 移到读锁外调用（与 hybrid_search_memories 的既有模式一致）。",
+        "批量导入改为在写锁内完成索引重建并清除重建标志。"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\memory\\verify_chiba_weighted_import.py"
+      ]
+    }
+  ]
+}

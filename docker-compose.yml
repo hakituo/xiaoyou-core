@@ -1,0 +1,80 @@
+services:
+  # Main Application Service
+  xiaoyou-core:
+    build: .
+    container_name: xiaoyou-core
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - REDIS_URL=redis://redis:6379/0
+      - XIAOYOU_TEXT_MODEL_PATH=/app/models/qwen
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./config:/app/config
+    depends_on:
+      - redis
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # Frontend UI Service
+  aveline-ui:
+    build:
+      context: ./clients/frontend/Aveline_UI
+      dockerfile: Dockerfile
+    container_name: aveline-ui
+    ports:
+      - "8081:80" # 将前端映射到 8081 端口
+    depends_on:
+      - xiaoyou-core
+    restart: unless-stopped
+
+  # Redis for Caching (L2 Cache)
+  redis:
+    image: redis:7-alpine
+    container_name: xiaoyou-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: always
+
+  # Prometheus for Monitoring
+  prometheus:
+    image: prom/prometheus
+    container_name: xiaoyou-prometheus
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    restart: unless-stopped
+
+  # Grafana for Visualization
+  grafana:
+    image: grafana/grafana
+    container_name: xiaoyou-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus
+    volumes:
+      - grafana-data:/var/lib/grafana
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  prometheus-data:
+  grafana-data:

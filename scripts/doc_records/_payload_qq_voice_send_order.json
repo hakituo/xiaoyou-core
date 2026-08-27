@@ -1,0 +1,61 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-24",
+      "weekday": "周一",
+      "title": "QQ 分段回复等待语音投递确认后再发送后续文字",
+      "background": "带 VOICE 标签的回复虽然在代码中先等待 TTS 生成并提交语音，但 NapCat 接收 record CQ 码后还会异步转码，后续文字可能在语音真正投递前抢先显示。",
+      "root_causes": [
+        "NapcatTransport.send_message 通过无 echo 的 WebSocket 消息提交后立即返回，只能证明请求已写入连接，不能证明 NapCat 已完成语音转码和发送",
+        "分段发送循环随后在数毫秒内提交下一段文字，文字无需转码，因此可能反超语音"
+      ],
+      "fixes": [
+        "NapcatTransport.send_message 增加 wait_for_result 模式，通过带 echo 的 action 调用等待 NapCat 返回实际发送结果",
+        "QQ 语音回调启用 wait_for_result，只有语音 action 成功确认后才返回并放行下一段文字",
+        "VoiceService 将发送回调明确返回的失败向上传递，使语音段能够按原逻辑回退为文字"
+      ],
+      "verification": [
+        ".\\venv_core\\Scripts\\python.exe tests\\scripts\\qq\\verify_voice_send_order.py",
+        ".\\venv_core\\Scripts\\python.exe tests\\scripts\\qq\\verify_voice_segments.py",
+        ".\\venv_core\\Scripts\\python.exe -m ruff check clients\\bots\\qq\\transport.py clients\\bots\\qq\\main.py clients\\bots\\qq\\voice_service.py tests\\scripts\\qq\\verify_voice_send_order.py"
+      ],
+      "notes": [
+        "现有 test_adapter_optimizations.py 中 7 项旧测试失败，失败点包含已删除模块路径和已迁移的适配器属性；与本次改动无关，另外 12 项通过"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "QR-20260824-QQ-VOICE-ORDER",
+      "title": "QQ 语音段先提交但后续文字先显示",
+      "date": "2026-08-24",
+      "category": "06_qq_message_split",
+      "problem": "同一条分段回复先包含语音段、后包含文字段时，日志显示语音段先发送，但 QQ 客户端中后续文字可能先于语音出现。",
+      "steps": [
+        "让模型返回一个 VOICE 语音段，后面紧跟普通文字段",
+        "观察适配器日志中 Voice segment sent 与 Sending chunk 的时间",
+        "同时观察 NapCat 的语音文件转换成功和最终语音发送日志"
+      ],
+      "expected": [
+        "等待 TTS 生成完成并确认语音真正投递",
+        "语音投递完成后才发送后续文字段"
+      ],
+      "actual": [
+        "适配器提交语音 CQ 码后立即认为发送成功",
+        "后续文字在数毫秒内提交，可能早于 NapCat 完成语音转码并先显示"
+      ],
+      "root_causes": [
+        "普通 send_message 没有 echo，也不等待 NapCat action 结果",
+        "await 只覆盖 TTS 生成和 WebSocket 写入，没有覆盖 NapCat 的语音转码及投递"
+      ],
+      "fixes": [
+        "为需要严格顺序的媒体消息增加 wait_for_result action 确认模式",
+        "QQ 语音发送统一启用确认模式，失败时保留文字回退"
+      ],
+      "verification": [
+        "verify_voice_send_order.py 模拟 50ms 语音确认延迟，确认事件顺序为提交语音、确认语音、提交文字",
+        "verify_voice_segments.py 原有 11 项分段规则全部通过，Ruff 检查通过"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-18",
+      "weekday": "周二",
+      "title": "修复 Android 聊天页无法打开伴侣详情",
+      "background": "为表格横向滚动增加手势仲裁后，伴侣详情点击和普通区域左滑入口失效。",
+      "root_causes": [
+        "父级把 clickable 消费的按下或抬起事件也误判成横向滚动消费，从而屏蔽普通消息区域左滑",
+        "打开回调在面板加入组合树之前等待 show()，面板没有拖拽锚点时可能无法完成",
+        "关闭过的面板重新组合时仍处于 Dismissed，需要在锚点建立后复位"
+      ],
+      "fixes": [
+        "仅当子组件消费了明确的水平位移时阻止伴侣详情左滑",
+        "打开回调先显示覆盖层，不再提前等待无锚点的 show()",
+        "PullableDismissPanel 每次重新组合后复位到 Visible，并保护首次 Dismissed 观察竞态",
+        "扩充聊天富文本静态验证脚本覆盖点击打开、重新打开和手势仲裁"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_frontend\\verify_chat_markdown_rendering.py：PASS",
+        "未由 Codex 运行 Gradle，交由 Android Studio 编译及设备交互验证"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "ANDROID-COMPANION-OPEN-REGRESSION-001",
+      "title": "聊天富文本手势仲裁导致伴侣详情无法打开",
+      "date": "2026-08-18",
+      "category": "02_android_frontend",
+      "problem": "接入横向表格手势仲裁后，聊天页无法通过头像或普通区域左滑进入伴侣详情。",
+      "steps": [
+        "进入 Android 聊天主页",
+        "点击顶部伴侣头像，或从屏幕右半区域向左滑",
+        "观察伴侣详情是否出现"
+      ],
+      "expected": [
+        "点击头像立即打开伴侣详情",
+        "普通区域左滑打开伴侣详情",
+        "仅表格、代码块和宽公式的内部横向滚动不打开伴侣详情"
+      ],
+      "actual": [
+        "普通 clickable 消费事件导致左滑被拦截",
+        "面板显示前等待无锚点状态可能导致点击入口无法打开"
+      ],
+      "root_causes": [
+        "手势消费判断粒度过粗",
+        "面板可见状态与拖拽锚点初始化顺序错误"
+      ],
+      "fixes": [
+        "只检查已消费的水平位置变化",
+        "先组合面板，再在面板内部建立锚点并恢复 Visible"
+      ],
+      "verification": [
+        "verify_chat_markdown_rendering.py 静态回归检查通过",
+        "设备交互验证由 Android Studio 安装后执行"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-18",
+      "weekday": "周二",
+      "title": "解耦 Android 783 行前台守护 Service God Class",
+      "background": "AvelineForegroundServiceV2 同时承担 Android 生命周期、通知、启动协议、WebSocket 指令、上下文同步、Samsung Health 同步、无障碍监测和 WakeLock，文件达到 783 行；通知自恢复修改还因此发生了跨区域导入遗漏。",
+      "root_causes": [
+        "前台服务持续吸收不同领域实现，没有保持生命周期薄壳边界",
+        "通知、健康、设备指令等职责共享同一导入区和状态字段，局部修改容易影响远端代码"
+      ],
+      "fixes": [
+        "将 AvelineForegroundServiceV2 收敛为 242 行生命周期与 Hilt 接线薄壳",
+        "在 services/foreground 下拆出通知控制器、Intent 协议、WebSocket 指令协调器、上下文同步器、Samsung Health 同步器、无障碍监测器和 WakeLock 控制器",
+        "保留原有外部静态入口和 Manifest Service 类名，避免调用方迁移",
+        "将通知自恢复与 WakeLock 旧验证脚本适配新边界，并新增 Service 行数和职责泄漏结构回归",
+        "同步 Android README、项目技术参考与上下文架构文档"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_keepalive\\verify_foreground_service_decomposition.py",
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_keepalive\\verify_notification_self_restore.py",
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_keepalive\\verify_wakelock_and_battery_whitelist.py",
+        "venv_core\\Scripts\\ruff.exe check tests\\scripts\\android_keepalive\\verify_foreground_service_decomposition.py tests\\scripts\\android_keepalive\\verify_notification_self_restore.py tests\\scripts\\android_keepalive\\verify_wakelock_and_battery_whitelist.py"
+      ],
+      "notes": [
+        "按项目规则未在沙箱运行 Gradle；需由 Android Studio 完成 Kotlin 编译与真机保活验证"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "ANDROID-ARCH-20260818-FOREGROUND-SERVICE-GOD-CLASS",
+      "title": "前台守护 Service 累积七类职责达到 783 行",
+      "date": "2026-08-18",
+      "category": "02_android_frontend",
+      "problem": "AvelineForegroundServiceV2 达到 783 行，通知自恢复局部修改误删了文件后半段仍需的通知渠道导入，暴露出职责耦合与变更风险。",
+      "steps": [
+        "检查 AvelineForegroundServiceV2 的字段和私有方法",
+        "观察通知、WebSocket、上下文、健康、无障碍与电源逻辑全部位于同一 Service",
+        "修改主前台通知后编译整个文件"
+      ],
+      "expected": [
+        "Service 只负责系统生命周期与子组件编排",
+        "各后台子系统拥有独立文件、状态与依赖",
+        "通知或健康逻辑的局部修改不会影响其他职责的符号解析"
+      ],
+      "actual": [
+        "七类职责共享一个 783 行文件",
+        "局部删除导入导致远端无障碍断线通知编译失败"
+      ],
+      "root_causes": [
+        "缺少前台服务职责边界和文件规模回归约束",
+        "历史功能直接继续添加到 Service 私有方法"
+      ],
+      "fixes": [
+        "建立 services/foreground 子系统并按职责拆出七个组件",
+        "原 Service 仅保留生命周期、依赖接线和 startForeground 平台调用",
+        "新增 300 行薄壳上限、250 行子组件上限及业务实现泄漏检查"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_keepalive\\verify_foreground_service_decomposition.py",
+        "Android Studio Kotlin 编译与真机通知划除恢复"
+      ]
+    }
+  ]
+}

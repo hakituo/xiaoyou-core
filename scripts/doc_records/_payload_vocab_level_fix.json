@@ -1,0 +1,64 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-15",
+      "weekday": "周六",
+      "title": "背单词词库扩容：全量考纲词书 + 分级词书 + 复习释义兜底",
+      "background": "用户手动记词复习时，inhibit/payroll/overthrow/ozone/penalty 等大量词显示\"词库未收录\"。原词书仅含 zk∪gk∪cet4 三个标签（5361 词），而用户实际在背的 daily 词里 58 个属 cet6/考研/托福/雅思/GRE 标签或 ECDICT 无标签，词书边界与用户词表不一致。",
+      "root_causes": [
+        "词书构建仅纳入 zk/gk/cet4 三个考纲标签，cet6/ky/toefl/ielts/gre 标签词与无标签词（如 payroll）被排除",
+        "复习取词 get_word_info 只查当前词书，跨级别词查不到即显示\"词库未收录\"占位",
+        "前端词书选择为文件式切换，但词书只有一本，无法按四级/六级分级背词"
+      ],
+      "fixes": [
+        "build_cet4_wordbook.py 纳入范围扩到 8 个考纲标签，每条带 tags 字段，重建全量释义总表（14947 词，含进度/daily 手动补词）",
+        "拆出 6 本分级词书（四级 5361/六级 7116/考研 7422/托福 10528/雅思 8518/GRE 12585），词书选择页按级别切换，背新词按当前词书取词",
+        "loader.py 加载全量释义总表，get_word_info/get_definition 当前词书优先、全量兜底，复习与词典搜索跨级别词均能查到释义",
+        "stats.py 词书列表排除全量总表并按固定级别顺序展示",
+        "service.search_dictionary 模糊搜索并入全量总表，去重后返回"
+      ],
+      "verification": [
+        "venv_core 运行 build_cet4_wordbook.py 重建成功（全量 14947，CET4 5361 保持不变）",
+        "venv_core 运行 tests/scripts/study/verify_vocab_optimization.py 全部通过：跨级别词兜底命中、分级词书完整、overview 正常",
+        "冒烟：inhibit/payroll/overthrow/ozone/penalty 等缺失词全部能查到释义，切换六级词书后 payroll 仍可兜底"
+      ],
+      "notes": [
+        "全量释义总表仅作复习释义兜底，不显示在词书选择列表，词书选择保持四级/六级等分级维度",
+        "用户从纸质词书手动记词的使用方式不变，app 负责复习，背新词模式范围 = 当前选中词书"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "QR-20260815-VOCAB-LEVEL",
+      "title": "词库未收录用户手动记的跨级别词（inhibit/payroll 等）导致复习无释义",
+      "date": "2026-08-15",
+      "category": "15_chat_agent",
+      "problem": "用户按纸质词书手动记词到 daily 文件后复习，约 39% 的词（58/150）显示\"词库未收录，待补充\"，无释义可复习。",
+      "steps": [
+        "在 daily/2026/MM/DD.txt 手动加入 inhibit、payroll、overthrow、ozone、penalty 等词",
+        "次日进入复习模式查看这些词",
+        "看到释义为\"词库未收录，待补充\""
+      ],
+      "expected": [
+        "手动记的词无论属于哪个考纲级别，复习时都能显示释义"
+      ],
+      "actual": [
+        "58 个词（属 cet6/考研/托福/雅思/GRE 标签或无标签）无释义"
+      ],
+      "root_causes": [
+        "词书构建仅纳入 zk∪gk∪cet4 三个标签，ECDICT 中带其他考纲标签或无标签的词被排除",
+        "get_word_info 只查当前选中词书，不跨级别兜底"
+      ],
+      "fixes": [
+        "词书构建扩到 8 个考纲标签并保留 daily/进度补词，重建全量释义总表",
+        "loader.py 增加全量总表兜底：当前词书查不到时回退全量总表",
+        "拆出四级/六级/考研/托福/雅思/GRE 分级词书，词书选择页可按级别切换"
+      ],
+      "verification": [
+        "venv_core 运行 tests/scripts/study/verify_vocab_optimization.py 通过（跨级别词兜底命中）",
+        "冒烟：10 个缺失词全部能查到释义"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+# Android 端手动构建检查
+# 自动 CI 已关闭；仅在 GitHub Actions 页面手动触发时运行。
+# 内容: 单元测试 + Debug 构建 + lint(基线模式,不影响构建成功)
+name: Android CI
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-and-build:
+    name: 单测 + Debug 构建 + lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: clients/frontend/aveline-android/android
+    permissions:
+      contents: read
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v6
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: 校验 JDK 与 Android SDK
+        run: |
+          java -version
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms" 2>/dev/null | head -5 || echo "Android platforms 未预装, 由 sdkmanager 补充"
+
+      - name: 授予 gradlew 执行权限
+        run: chmod +x gradlew
+
+      - name: 配置 CI Gradle 下载源
+        run: |
+          sed -i 's#mirrors.cloud.tencent.com/gradle/#services.gradle.org/distributions/#' gradle/wrapper/gradle-wrapper.properties
+          sed -i 's#networkTimeout=10000#networkTimeout=60000#' gradle/wrapper/gradle-wrapper.properties
+
+      - name: 运行单元测试
+        run: ./gradlew :app:testDebugUnitTest --console=plain --no-daemon
+
+      - name: 构建 Debug APK
+        run: ./gradlew :app:assembleDebug --console=plain --no-daemon
+
+      - name: 运行 lint(基线模式,失败不阻断构建)
+        if: always()
+        continue-on-error: true
+        run: ./gradlew :app:lintDebug --console=plain --no-daemon
+
+      - name: 上传 Debug APK 与 lint 报告
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-artifacts
+          path: |
+            clients/frontend/aveline-android/android/app/build/outputs/apk/debug/*.apk
+            clients/frontend/aveline-android/android/app/build/reports/
+          if-no-files-found: ignore

@@ -1,0 +1,26 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-18",
+      "weekday": "周二",
+      "title": "将 AndroidMath 固定为本地 AAR 以消除 JitPack 慢速下载",
+      "background": "Android Studio 从 JitPack 下载 4.40 MB AndroidMath AAR 时速度约 10 KB/s，影响 Gradle Sync。独立下载器通过相同代理可达到约 574 KB/s，说明瓶颈位于 Gradle/JitPack 下载链。",
+      "root_causes": [
+        "AndroidMath v1.1.0 仅通过 JitPack 远程依赖接入",
+        "Gradle Sync 每次缺少完整缓存时都需要等待 JitPack AAR 下载"
+      ],
+      "fixes": [
+        "通过本机代理完整下载 AndroidMath-v1.1.0.aar 到 android/app/libs",
+        "Gradle 依赖改为 implementation(files(\"libs/AndroidMath-v1.1.0.aar\"))",
+        "移除 settings.gradle.kts 中的 JitPack 仓库",
+        "为该固定 AAR 添加精确的 gitignore 例外，确保其他环境无需再次下载"
+      ],
+      "verification": [
+        "AAR 文件大小 4398572 字节，SHA-256 为 2FD80CA27109A7C342A9EE3D4A2F8E973D752D6C91FE5F657B099CD00BAE487A",
+        "AAR 包含 classes.jar、数学字体资源及 arm64-v8a/armeabi-v7a/x86 原生库",
+        "Android Gradle 配置中不再包含 jitpack.io 或 com.github.gregcockroft 远程坐标",
+        "未运行 Gradle 构建"
+      ]
+    }
+  ]
+}

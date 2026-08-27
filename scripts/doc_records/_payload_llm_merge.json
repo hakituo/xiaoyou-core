@@ -1,0 +1,31 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-04",
+      "weekday": "周一",
+      "title": "MEMORY.md 偏好去重三层策略 + 两个 BGE 模型职责界限划分",
+      "background": "之前用 embedding + 关键词桶两层去重，但仍可能漏判中文同义改写（MiniLM 和 BGE-small-zh 实测相似度区分度都在 0.68-0.74）。用户提出在 nightly process 里加 LLM 兜底合并，并要求明确划分两个 BGE 模型的职责界限。",
+      "root_causes": [
+        "embedding 模型对'同义改写但词汇重合低'的中文长句区分能力有限，单纯靠阈值无法识别所有重复",
+        "项目里有两个 BERT 模型（all-MiniLM-L6-v2 和 bge-small-zh-v1.5）但职责没有文档化，容易混淆"
+      ],
+      "fixes": [
+        "新增 core/services/self_improvement/core_memory_llm_merge.py：LLM 语义合并器，用 siliconflow MiniMax-M2.5（journal_model_hint）对 PREFERENCES 区做兜底合并",
+        "LLM 合并流程：构造带编号的偏好列表 → LLM 输出 JSON 格式的 merge_groups → 本地校验 indices 合法性 → 解析组间冲突（同条目只保留第一个组）→ 落盘",
+        "安全设计：LLM 只输出合并方案不直接改文件；索引越界/格式错误/无响应都安全跳过；只合并 PREFERENCES 区不碰其他区",
+        "CoreMemory 新增 llm_merge_preferences 方法，SelfImprovementService 也暴露同名入口",
+        "nightly task_runner.py 的 execute_async_tasks 里新增 memory_llm_merge 步骤，在 memory_slim 之后对所有 scope（aveline/ling/user）跑 LLM 合并",
+        "embedding_generator.py 和 bert_definitions.py 顶部加职责界限注释：all-MiniLM-L6-v2 负责记忆系统 embedding（384维，ChromaDB 向量检索+MEMORY.md 去重），bge-small-zh-v1.5 负责 DataOps 零样本分类（512维，情绪/意图/紧急度）",
+        "注释记录实测结论：两个模型对中文长句语义区分度接近，记忆去重改用'embedding + 关键词桶 + 夜间 LLM 兜底'三层策略，不依赖单一模型能力"
+      ],
+      "verification": [
+        "tests/scripts/memory/verify_llm_merge_preferences.py（30 项检查全过：正常合并/无重复/格式错误/索引越界/组间冲突/端到端落盘/LLM无响应/少于2条跳过）"
+      ],
+      "notes": [
+        "三层去重策略：(1) 实时 add_item 用 embedding 0.85 阈值 + 关键词桶 0.65 宽松阈值，(2) nightly auto_slim 按规则瘦身，(3) nightly LLM 合并兜底处理漏判的同义改写",
+        "LLM 用 journal_model_hint（cloud:siliconflow:MiniMaxAI/MiniMax-M2.5），跟日记总结共用模型路由，不额外配置",
+        "LLM 合并只对 PREFERENCES 区（用户偏好是最高频堆积且措辞变化多），其他区不处理"
+      ]
+    }
+  ]
+}

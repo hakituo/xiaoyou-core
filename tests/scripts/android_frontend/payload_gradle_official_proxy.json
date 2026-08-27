@@ -1,0 +1,25 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-18",
+      "weekday": "周二",
+      "title": "Android Gradle 改用用户代理访问官方仓库",
+      "background": "本机代理已监听 127.0.0.1:7897，Android Studio 与 Gradle 可以直接通过用户级 JVM 代理访问官方仓库，无需项目级阿里云或腾讯云镜像。",
+      "fixes": [
+        "创建用户级 C:/Users/29917/.gradle/gradle.properties，配置 HTTP/HTTPS 代理 127.0.0.1:7897",
+        "移除 Android settings.gradle.kts 中的阿里云 Maven 仓库",
+        "将 Gradle Wrapper 下载地址恢复为 services.gradle.org 官方地址",
+        "更新项目规则，Android/Gradle 使用用户代理和官方仓库，其他依赖仍保留国内镜像优先策略"
+      ],
+      "verification": [
+        "代理端口 127.0.0.1:7897 连通检查：True",
+        "Android Gradle 配置中无 maven.aliyun.com 与 mirrors.cloud.tencent.com",
+        "官方 google、mavenCentral、gradlePluginPortal、JitPack 与 services.gradle.org 地址检查通过"
+      ],
+      "notes": [
+        "未运行任何 Gradle 下载或构建任务",
+        "Android Studio 需重启或重新同步后让新 Gradle JVM 读取用户级代理"
+      ]
+    }
+  ]
+}

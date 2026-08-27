@@ -1,0 +1,62 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-24",
+      "weekday": "周一",
+      "title": "收口 Active Care 睡眠事实边界与室友生活事件共享",
+      "background": "聊天清醒信号曾被当成正式起床时间，双角色又缺少带来源的生活近况共享；同时历史失效测试会污染检验结果。",
+      "root_causes": [
+        "低打扰控制状态与正式睡眠事实共用同步方法，关键词命中会改写睡眠区间和 Daily Record。",
+        "Samsung Health 只取最近睡眠记录，后端没有区分主睡眠与午睡，短时睡眠可能覆盖当天起床。",
+        "SocialEventEngine 已存在但聊天链路没有接入，事件也未保存最先知情角色与数据来源。",
+        "两个旧测试调用已删除接口或没有有效断言，已不代表当前契约。"
+      ],
+      "fixes": [
+        "新增低打扰专用进入/退出方法；聊天中的晚安与清醒只切换低打扰，不写正式睡眠时间。",
+        "Samsung Health 成为正式睡眠区间真源，并按时长和跨夜区分 main_sleep 与 nap；午睡不更新 Daily Record 起床时间。",
+        "把睡醒、饮食事件接入共享事件池，保存 source、learned_by、certainty；Peer Chat 只把它们作为可选题材并保持转告来源。",
+        "补充测试生命周期规则，删除两个确认无独有覆盖的失效测试。"
+      ],
+      "verification": [
+        "venv_core 执行 tests\\scripts\\active_care\\verify_shared_sleep_and_usage_event.py 通过",
+        "目标 Python 文件 Ruff 检查通过",
+        "Python compileall 检查通过",
+        "按项目规则未运行 Android Gradle"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "AC-20260824-SLEEP-AUTHORITY-PEER-EVENT",
+      "title": "聊天清醒信号污染正式作息且室友生活事件缺少来源",
+      "date": "2026-08-24",
+      "category": "01_active_care",
+      "problem": "聊天中的清醒表达会被当成正式起床事实；午睡与主睡眠未区分，生活近况无法带来源地供角色自然共享。",
+      "steps": [
+        "进入晚安低打扰后发送清醒表达，检查用户级睡眠字段和 Daily Record。",
+        "依次同步主睡眠和短时白天睡眠，检查当天正式起床是否被覆盖。",
+        "向 Aveline 报告睡醒或饮食近况，检查Ling Peer Chat 上下文的来源标注。"
+      ],
+      "expected": [
+        "聊天只退出低打扰，正式睡眠区间由 Samsung Health 决定。",
+        "午睡单独记录且不覆盖主睡眠起床。",
+        "角色可以选择自然互聊或不聊，跨角色引用时保留转告来源。"
+      ],
+      "actual": [
+        "旧实现混用了控制状态和事实字段，且 SocialEventEngine 未接入聊天生活事件。"
+      ],
+      "root_causes": [
+        "状态领域边界不清，推断信号和测量事实共用写入方法。",
+        "共享事件缺少调用入口与来源协议。"
+      ],
+      "fixes": [
+        "拆分低打扰控制 API 与 Samsung Health 权威睡眠同步。",
+        "增加主睡眠/午睡分类和带来源的共享生活事件协议。",
+        "让 Peer Chat 决策自主选择事件题材，不建立强制触发。"
+      ],
+      "verification": [
+        "tests\\scripts\\active_care\\verify_shared_sleep_and_usage_event.py"
+      ]
+    }
+  ]
+}

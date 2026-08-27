@@ -1,0 +1,71 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-25",
+      "weekday": "周二",
+      "title": "背单词词书生成恢复：释义清洗、主释义覆盖与专业义折叠",
+      "background": "现有分级词书虽然可用，但文档引用的构建脚本未进入 Git，无法从 ECDICT 稳定重建；释义生成还把 vt/vi 拆成 v 加正文残片，并将专业义与普通义平铺。Sentence/CET4_1/2/3 是例句集合，不能作为词书释义来源。",
+      "root_causes": [
+        "旧 build_cet4_wordbook.py 只出现在更新记录和文档中，现存分支、历史对象均无可恢复脚本",
+        "旧解析器把 vt/vi 归一成 v，并把 t./i. 留在 translation 正文；领域标签被删除后失去普通义与专业义边界",
+        "ECDICT 的 collins/bnc/frq 是单词级数据，不提供义项级考试频率，不能据此自动加粗第一条释义",
+        "Sentence 文件含附属 translations 字段，但运行时职责是例句；把它当权威词典会造成来源越界"
+      ],
+      "fixes": [
+        "新增 scripts/study/vocabulary/build_wordbooks.py 安全入口与 wordbook_builder.py 构建核心，默认干跑，--write 时原子写入并自动备份",
+        "精确复现 CET4/CET6/考研/托福/雅思/GRE 标签范围，并合并 progress、daily、unfamiliar 中 ECDICT 可查的无标签词到全量兜底表",
+        "保留 vt/vi，清除字面量换行残片，将已识别学科/语域义写入 extended_translations；只有全专业义词才回退保留普通展示，避免空卡片",
+        "例句 enrichment 显式忽略 Sentence translations，只保留 sentences、phrases、us、uk、audio",
+        "新增 config/study/vocabulary_sense_overrides.json；仅人工核对词带 primary=true，原始释义保留在折叠扩展区",
+        "Android WordTranslation/DailyWord 接入 primary、domains、extendedTranslations；答案面仅显式 primary 加粗，更多/专业释义默认折叠"
+      ],
+      "verification": [
+        "venv_core 运行 verify_vocab_wordbook_build.py 通过：词量、唯一性、vt/vi、主释义、扩展义、Sentence 隔离与 Android 静态契约全部正常",
+        "venv_core 运行 verify_vocab_optimization.py 通过：分级词书、跨级别兜底、overview、daily 流转正常",
+        "venv_core 运行 verify_vocab_source_linkage.py 通过：daily 昨日默认源与 App/unfamiliar 联动未回归",
+        "Ruff 与 py_compile 通过；按项目规则未运行 Gradle，Android Studio/真机视觉验收待用户执行"
+      ],
+      "notes": [
+        "重建后 CET4 5361、CET6 7116、考研 7422、托福 10528、雅思 8518、GRE 12585；全量表 14948，新增 reunite 无标签兜底",
+        "5172 个词生成扩展释义，5 个高风险词有人工主释义；未核对词不会自动加粗第一条",
+        "写入前原词书保存在 Words/backups/before_sense_cleanup_20260825_212650"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "QR-20260825-VOCAB-SENSE-LAYER",
+      "title": "词书构建脚本缺失且 ECDICT 释义层级丢失",
+      "date": "2026-08-25",
+      "category": "15_chat_agent",
+      "problem": "默认词书可读取但无法按文档重建；vt/vi 被拆坏，领域义与普通义平铺，部分词头还存在缩写义碰撞。",
+      "steps": [
+        "检查文档引用的 build_cet4_wordbook.py，工作区与 Git 全历史均不存在",
+        "查看 CET4-顺序.json 中 a、account、address、conduct、issue、abandon 等词",
+        "观察 t./i. 出现在释义正文，计算机义与普通义同级展示"
+      ],
+      "expected": [
+        "词书可从明确输入稳定重建，例句库不参与释义覆盖",
+        "词性结构正确，专业义默认折叠，只有人工核对义项才突出显示"
+      ],
+      "actual": [
+        "构建脚本缺失，成品 JSON 是不可复现快照",
+        "1958 个 CET4 词头存在 t./i. 正文残片，专业义被当普通义展示"
+      ],
+      "root_causes": [
+        "旧构建脚本未被 Git 跟踪",
+        "旧解析逻辑丢失 vt/vi 与领域标签结构",
+        "词频字段只覆盖单词，无法提供义项级考试排序"
+      ],
+      "fixes": [
+        "恢复分层构建器与安全写入入口",
+        "普通义、扩展义、人工主释义三层分离",
+        "Android 仅依据 primary 显式字段加粗并折叠扩展义"
+      ],
+      "verification": [
+        "verify_vocab_wordbook_build.py、verify_vocab_optimization.py、verify_vocab_source_linkage.py 全部通过",
+        "Ruff 与 py_compile 通过；Android Gradle 未在沙箱运行"
+      ]
+    }
+  ]
+}

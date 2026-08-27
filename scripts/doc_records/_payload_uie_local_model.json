@@ -1,0 +1,72 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-24",
+      "weekday": "周一",
+      "title": "UIE-mini 模型迁移到项目目录并修正中文 span 解码",
+      "background": "项目已接入 UIE-mini，但 models/UIE/uie-mini 为空，正式运行依赖用户目录中的 PaddleNLP 缓存；同时实测中文抽取结果带有逐字空格。",
+      "root_causes": [
+        "UIE 加载器只在项目目录查找 ONNX 文件，Paddle 后端候选路径只有用户缓存目录",
+        "setup_uie_model.py 在 ONNX 转换不可用时仅保留用户缓存，没有把完整 Paddle 静态推理模型复制到项目目录",
+        "BertTokenizer.decode 会在中文 token 之间插入空格，原解码逻辑直接把该文本写入日常记录"
+      ],
+      "fixes": [
+        "将 UIE-mini 的 7 个模型文件完整复制到 models/UIE/uie-mini，并让加载器优先使用项目内 Paddle 静态模型",
+        "模型路径改为基于源码位置解析项目根目录，避免受进程工作目录影响，同时保留用户缓存作为兼容兜底",
+        "设置脚本改为下载后复制完整 Paddle 模型，并直接验证项目内 Paddle Inference 文件",
+        "清理中文及数字 token 之间的无意义空格，避免将一 碗 面 条等异常文本写入记录",
+        "新增 verify_uie_local_model.py 验证本地文件完整性、实际加载路径和基础抽取结果"
+      ],
+      "verification": [
+        ".\\venv_core\\Scripts\\python.exe tests\\scripts\\uie\\verify_uie_local_model.py -> exit 0，backend=paddle，模型路径为 D 盘项目目录",
+        ".\\venv_core\\Scripts\\python.exe tests\\scripts\\uie\\verify_uie_extraction.py -> exit 0，字段抽取 8/11，时间标准化 8/8",
+        ".\\venv_core\\Scripts\\python.exe -m ruff check core/services/data_ops/uie_extractor.py scripts/setup/setup_uie_model.py tests/scripts/uie/verify_uie_local_model.py -> All checks passed",
+        ".\\venv_core\\Scripts\\python.exe -m py_compile core/services/data_ops/uie_extractor.py scripts/setup/setup_uie_model.py tests/scripts/uie/verify_uie_local_model.py -> exit 0"
+      ],
+      "notes": [
+        "UIE-mini 仍无法稳定抽取活动内容和隐含情绪，复合睡眠句的起床时间也可能选错 span；这些属于当前模型与 schema 的能力限制，本次没有通过降低阈值放大误报",
+        "C 盘原缓存暂未删除，项目运行已不再依赖该缓存"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "QR-20260824-UIE-LOCAL-MODEL",
+      "title": "UIE 项目模型目录为空且运行依赖用户缓存",
+      "date": "2026-08-24",
+      "category": "04_llm_model",
+      "problem": "models/UIE/uie-mini 为空，但 UIE 代码仍能运行，模型来源和实际效果不透明。",
+      "steps": [
+        "检查项目 models/UIE/uie-mini 的文件数量",
+        "检查用户目录 PaddleNLP 缓存和 venv_core 的 Paddle 依赖",
+        "运行 UIE 验证脚本并记录实际后端、加载路径和失败案例"
+      ],
+      "expected": [
+        "正式运行优先使用项目 models 目录中的模型，不依赖单个 Windows 用户的缓存",
+        "中文抽取结果不包含 tokenizer 注入的逐字空格",
+        "验证结果区分后端可用与字段抽取质量"
+      ],
+      "actual": [
+        "项目目录 0 个文件，Paddle 后端从 C 盘用户缓存加载约 215 MB 模型",
+        "基础字段抽取成功 8/11，但活动、情绪、餐次失败，复合时间句存在错选",
+        "中文 span 被解码为逐字带空格的文本"
+      ],
+      "root_causes": [
+        "本地 Paddle 模型目录没有加入后端候选路径",
+        "设置脚本没有在 ONNX 不可用时复制完整 Paddle 静态模型",
+        "解码逻辑未清理中文 token 间空格",
+        "UIE-mini 对开放式活动、隐含情绪和多事件指代的零样本能力有限"
+      ],
+      "fixes": [
+        "复制模型到项目目录并设置项目内 Paddle 后端优先",
+        "修正设置脚本和路径解析",
+        "清理中文 span 空格并增加本地模型验证脚本"
+      ],
+      "verification": [
+        "本地目录包含 7 个文件，共 215358385 字节",
+        "验证日志确认加载 D:/AI/xiaoyou-core/models/UIE/uie-mini/static/inference.json",
+        "基础抽取返回今天早上7点，不再包含逐字空格"
+      ]
+    }
+  ]
+}

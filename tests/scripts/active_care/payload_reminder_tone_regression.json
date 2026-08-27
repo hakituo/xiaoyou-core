@@ -1,0 +1,58 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-17",
+      "weekday": "周一",
+      "title": "修复 Active Care 短日程双提醒与机械兜底回归",
+      "background": "到期提醒目标守卫要求模型逐字包含完整任务标题，导致自然改写被误判并替换成行政通知式固定文案；15 分钟计划同时创建开始与结束提醒，进一步造成连续催促感。",
+      "root_causes": [
+        "提醒目标校验使用完整标题子串匹配，无法识别复盘等任务核心词。",
+        "所有正时长计划都创建结束提醒，没有针对短计划限制双重打扰。",
+        "跑题兜底文案使用固定命令式措辞，缺少角色聊天感。"
+      ],
+      "fixes": [
+        "提醒目标校验改为完整标题、中文连续双字核心词及英文数字 token 的分层匹配。",
+        "短于 30 分钟的计划只创建开始提醒，30 分钟及以上才创建结束提醒。",
+        "真正跑题时改用温和问句兜底，不再发送按计划开始、先告一段落式通知。"
+      ],
+      "verification": [
+        "venv_core 与 venv_cpu 执行 tests\\scripts\\active_care\\verify_active_care_context_and_cleanup.py 均通过",
+        "venv_core 与 venv_cpu 执行 tests\\unit\\test_active_care_due_reminder_and_loop.py，均为 16 passed",
+        "目标文件 Ruff 检查通过"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "AC-20260817-REMINDER-TONE-REGRESSION",
+      "title": "提醒目标守卫把自然改写替换成机械催促",
+      "date": "2026-08-17",
+      "category": "01_active_care",
+      "problem": "短计划的开始和结束提醒连续发出，且自然措辞因未逐字复述完整标题而被固定模板替换。",
+      "steps": [
+        "创建一个标题为睡前复盘与明日计划、时长 15 分钟的计划项。",
+        "让开始提醒生成与任务无关的在吗，让结束提醒生成你那个复盘写了吗。",
+        "观察旧逻辑是否连续发送两条固定通知。"
+      ],
+      "expected": [
+        "短计划不连续发送开始和结束提醒。",
+        "提到任务核心词的自然改写应保留，真正跑题才使用温和兜底。"
+      ],
+      "actual": [
+        "旧逻辑为所有正时长任务创建双提醒，并要求完整标题逐字出现。"
+      ],
+      "root_causes": [
+        "用字符串全包含代替任务语义相关性判断。",
+        "提醒同步缺少短时长降噪策略。"
+      ],
+      "fixes": [
+        "增加任务核心词重合判断。",
+        "增加 30 分钟结束提醒门槛。",
+        "将命令式兜底改为温和问句。"
+      ],
+      "verification": [
+        "tests\\scripts\\active_care\\verify_active_care_context_and_cleanup.py"
+      ]
+    }
+  ]
+}

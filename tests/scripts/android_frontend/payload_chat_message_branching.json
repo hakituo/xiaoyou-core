@@ -1,0 +1,66 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-18",
+      "weekday": "周二",
+      "title": "Android 聊天页支持请求编辑、回复重生成和版本分支切换",
+      "background": "原聊天页只有播放、复制和删除，后端重新生成接口还会覆盖最后一条回复，无法保留并选择历史请求或回复版本。",
+      "root_causes": [
+        "Android Room 消息表是线性列表，没有父节点、同级版本和当前选择字段",
+        "旧 regenerate 接口只处理最后一条 AI 回复并删除旧内容",
+        "切换本地版本后如果仍使用服务端线性历史，模型上下文会与屏幕显示分支不一致"
+      ],
+      "fixes": [
+        "Room 升级到 v4，为消息增加 parentId、variantIndex 和 isActiveVariant，并迁移旧线性历史",
+        "ChatRepository 将消息树投影为当前激活路径，同时原子保存和切换同级版本",
+        "AI 消息操作区增加重新生成，用户消息增加编辑请求，多个版本显示左右箭头及当前序号",
+        "编辑和重新生成创建新兄弟节点并保留旧分支，后续子树随所选版本切换",
+        "Android 通过 history_override 发送当前激活路径，后端生成时覆盖默认线性历史"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_frontend\\verify_chat_message_branching.py：PASS",
+        "相关 Python 文件 py_compile：PASS",
+        "相关 Python 文件 Ruff：PASS",
+        "未由 Codex 运行 Gradle，Room/Kotlin 编译与设备交互由 Android Studio 验证"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "ANDROID-CHAT-BRANCHING-001",
+      "title": "聊天页缺少传统 AI 前端的消息编辑与回复版本分支",
+      "date": "2026-08-18",
+      "category": "02_android_frontend",
+      "problem": "用户无法重新生成指定 AI 回复、编辑历史请求，旧版本也无法保留和切换。",
+      "steps": [
+        "进入 Android 聊天页并点击任意消息",
+        "检查消息操作按钮",
+        "尝试重新生成 AI 回复或编辑用户请求",
+        "尝试返回此前的请求或回复版本"
+      ],
+      "expected": [
+        "AI 回复可以重新生成并显示版本序号",
+        "用户请求可以编辑并形成新分支",
+        "左右切换版本时后续对话和模型上下文同步切换"
+      ],
+      "actual": [
+        "操作区仅有播放、复制和删除",
+        "旧重新生成能力会删除旧回复且只支持最后一轮",
+        "消息存储没有分支结构"
+      ],
+      "root_causes": [
+        "本地消息模型为单链表",
+        "客户端没有向后端传递当前选择的分支上下文"
+      ],
+      "fixes": [
+        "使用父消息和激活同级版本构建持久化消息树",
+        "增加编辑、重新生成和版本导航 UI",
+        "生成请求显式携带当前激活路径"
+      ],
+      "verification": [
+        "verify_chat_message_branching.py 静态回归检查通过",
+        "Android Studio 构建后验证 Room 3 到 4 迁移、编辑、重生成及版本切换"
+      ]
+    }
+  ]
+}

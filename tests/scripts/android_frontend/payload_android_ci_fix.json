@@ -1,0 +1,60 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-17",
+      "weekday": "周一",
+      "title": "修复 Android GitHub Actions 干净环境构建失败",
+      "background": "Android CI 在 GitHub 托管的全新 Ubuntu 环境中运行单元测试时立即退出，后续 Debug APK 构建被跳过，同时工作流报告 Node.js 20 Action 弃用警告。",
+      "root_causes": [
+        "gradlew 启动必须加载 gradle/wrapper/gradle-wrapper.jar，但该文件被 .gitignore 排除，仅存在于本地而未进入 Git 提交",
+        "工作流仍使用基于 Node.js 20 的 checkout、setup-java 与 upload-artifact 旧主版本"
+      ],
+      "fixes": [
+        "取消忽略并纳入经 Gradle 官方 SHA-256 校验的 Gradle 8.14.3 Wrapper JAR",
+        "为 Gradle 8.14.3 完整发行包增加 distributionSha256Sum 完整性校验",
+        "将 checkout、setup-java、upload-artifact 分别升级到 v6、v5、v7",
+        "新增 Android CI 完整性验证脚本，覆盖 Wrapper 可收录性、双重校验值和工作流关键步骤"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_frontend\\verify_android_ci_integrity.py"
+      ],
+      "notes": [
+        "本地验证负责确认仓库快照具备 CI 所需输入；实际 GitHub 托管环境结果在相关文件提交并推送后由 Android CI 再次确认"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "ANDROID-CI-001",
+      "title": "Android CI 在单元测试步骤立即失败",
+      "date": "2026-08-17",
+      "category": "09_build_test_env",
+      "problem": "GitHub Actions 的 Android CI 在检出代码、安装 JDK 和授予 gradlew 执行权限后，于运行单元测试步骤立即失败，Debug APK 构建被跳过。",
+      "steps": [
+        "向 main 推送包含 Android 客户端或 android-ci.yml 的提交",
+        "GitHub Actions 在全新 Ubuntu runner 中检出仓库",
+        "工作流执行 ./gradlew :app:testDebugUnitTest"
+      ],
+      "expected": [
+        "Gradle Wrapper 能从仓库快照启动并下载指定的 Gradle 8.14.3 发行包",
+        "工作流继续执行单元测试、Debug APK 构建和 lint"
+      ],
+      "actual": [
+        "仓库快照缺少 gradle-wrapper.jar，单元测试命令立即以退出码 1 结束",
+        "Debug APK 构建因前置步骤失败而跳过"
+      ],
+      "root_causes": [
+        "gradle-wrapper.jar 被精确路径的 .gitignore 规则排除，没有随 gradlew 和 gradle-wrapper.properties 一起提交",
+        "开发机本地保留了被忽略的 JAR，导致本地构建无法暴露干净检出环境缺文件的问题"
+      ],
+      "fixes": [
+        "移除 Wrapper JAR 的忽略规则并确认文件可被 Git 收录",
+        "核对本地 Wrapper JAR SHA-256 与 Gradle 8.14.3 官方值一致",
+        "增加 Gradle 发行包 SHA-256 校验并升级工作流 Action 主版本"
+      ],
+      "verification": [
+        "venv_core\\Scripts\\python.exe tests\\scripts\\android_frontend\\verify_android_ci_integrity.py"
+      ]
+    }
+  ]
+}

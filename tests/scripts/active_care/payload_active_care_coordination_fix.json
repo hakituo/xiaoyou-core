@@ -1,0 +1,93 @@
+{
+  "updates": [
+    {
+      "date": "2026-08-18",
+      "weekday": "周二",
+      "title": "修复 Active Care 自动日计划连续催促与双角色重复话题",
+      "background": "AI 自动日计划被逐项注册为到期硬提醒，两个角色可在协商缺失时交替消费同一队列；Peer Chat 另有角色名映射和历史素材不完整问题。",
+      "root_causes": [
+        "到期提醒事件在 MDP 前优先执行并终止本轮决策，因此绕过未回复退避。",
+        "CharacterDaily 接管后未调用主动关怀时段分工协商，协商失败时又没有唯一兜底主导。",
+        "Peer Chat 情境中的双角色名称映射颠倒，当日互聊计数只读取当前发起者，且只聚合一个角色的主人聊天。"
+      ],
+      "fixes": [
+        "AI 自动日计划不再批量创建硬提醒，显式新增或修改的定时项使用 delivery_mode=hard；历史无标记项静默完成并交回 MDP。",
+        "CharacterDaily 补齐主动关怀时段协商，并为协商缺失或失败场景按日期和时段生成唯一兜底主导。",
+        "修正 Peer Chat 角色名与全局当日计数，同时聚合双方真实主人聊天和历史互聊，优先选取具体有趣素材。",
+        "扩展通用脏数据清理脚本，支持预览、备份并取消历史自动日计划待发项。"
+      ],
+      "verification": [
+        "venv_core 与 venv_cpu 执行 tests\\scripts\\active_care\\verify_active_care_coordination.py 均通过",
+        "venv_core 与 venv_cpu 执行 tests\\scripts\\active_care\\verify_proactive_assignment.py，均为 29/29 通过",
+        "venv_core 执行 tests\\unit\\test_active_care_due_reminder_and_loop.py，16 passed",
+        "目标文件 Ruff 检查通过"
+      ]
+    }
+  ],
+  "question_reviewers": [
+    {
+      "id": "AC-20260818-AUTO-PLAN-MDP-BYPASS",
+      "title": "自动日计划硬提醒绕过 MDP 未回复退避",
+      "date": "2026-08-18",
+      "category": "01_active_care",
+      "problem": "用户连续不回复时，两个角色仍按约十分钟间隔逐项提醒日计划。",
+      "steps": [
+        "生成含多个短时间块的 AI 自动日计划。",
+        "不回复后继续运行双角色 Active Care。",
+        "观察到期提醒是否在 MDP 决策之前连续发送。"
+      ],
+      "expected": [
+        "AI 自动计划只作为 MDP 输入，未回复退避能抑制后续主动消息。",
+        "同一时段只有一个角色拥有主动发送权。"
+      ],
+      "actual": [
+        "旧逻辑把每个时间块都转为到期硬提醒，事件路径抢先执行并绕开退避。"
+      ],
+      "root_causes": [
+        "自动计划与用户明确硬提醒没有投递语义分层。",
+        "协商失败兜底时两个角色都可通过发送门控。"
+      ],
+      "fixes": [
+        "使用 delivery_mode=hard 区分显式硬提醒，自动日计划交回 MDP。",
+        "对历史无标记待发项增加运行时静默完成与通用离线清理。",
+        "为双角色分工增加唯一、稳定的失败兜底主导。"
+      ],
+      "verification": [
+        "tests\\scripts\\active_care\\verify_active_care_coordination.py",
+        "tests\\scripts\\active_care\\verify_proactive_assignment.py",
+        "tests\\unit\\test_active_care_due_reminder_and_loop.py"
+      ]
+    },
+    {
+      "id": "AC-20260818-PEER-CONTEXT-COORDINATION",
+      "title": "Peer Chat 分工未触发且历史素材偏空泛",
+      "date": "2026-08-18",
+      "category": "01_active_care",
+      "problem": "Peer Chat 切换发起者后可误判为当天首次互聊，剧本又只使用单方与主人的近期历史，容易重复空泛日常话题。",
+      "steps": [
+        "让两个角色在当天不同时间分别发起 Peer Chat。",
+        "检查情境中的角色名、当日计数与主人历史素材。"
+      ],
+      "expected": [
+        "角色名与实际 persona 一致，当日计数是双方共享状态。",
+        "剧本可自然分享双方与主人的真实有趣互动，也能接续上次互聊。"
+      ],
+      "actual": [
+        "旧情境映射颠倒两个名称，并只读取当前发起者的计数和主人历史。"
+      ],
+      "root_causes": [
+        "手写角色名映射与 role_id 不一致。",
+        "历史聚合管道未同时解析 role 与 peer 的 persona 会话。",
+        "剧本 prompt 未将真实具体互动设为优先素材。"
+      ],
+      "fixes": [
+        "通过 persona 注册表获取角色名，并使用双方计数的全局值。",
+        "同时聚合双角色的真实主人对话，过滤 Active Care 自动消息。",
+        "强化 prompt 中的真实素材优先级与不编造约束。"
+      ],
+      "verification": [
+        "tests\\scripts\\active_care\\verify_active_care_coordination.py"
+      ]
+    }
+  ]
+}
