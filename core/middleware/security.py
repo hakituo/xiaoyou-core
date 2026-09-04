@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 安全中间件模块
 包含认证、授权、速率限制等安全功能
@@ -7,6 +5,7 @@
 
 import asyncio
 import hmac
+import ipaddress
 import time
 from collections import deque, defaultdict
 from typing import Dict, Deque
@@ -18,7 +17,6 @@ from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# 速率限制配置
 RATE_WINDOW_SECONDS = 60.0
 rate_limit_lock = asyncio.Lock()
 global_request_timestamps: Deque[float] = deque()
@@ -55,8 +53,28 @@ def get_required_access_token() -> str:
         return ""
 
 
+def get_peer_ip(request: Request) -> str:
+    """返回实际 TCP peer 地址；认证边界绝不能信任可伪造的转发头。"""
+    if request.client and request.client.host:
+        return str(request.client.host).strip()
+    return "unknown"
+
+
+def is_loopback_peer(request: Request) -> bool:
+    """仅当实际 TCP peer 是 loopback 时允许本地适配器免 token。"""
+    peer_ip = get_peer_ip(request)
+    try:
+        return ipaddress.ip_address(peer_ip).is_loopback
+    except ValueError:
+        return peer_ip.lower() == "localhost"
+
+
 def get_client_ip(request: Request) -> str:
-    """获取客户端IP地址"""
+    """获取用于日志/限流的客户端 IP。
+
+    转发头仅用于观测和限流，不能用于认证或本地信任判断。未经受信代理
+    校验的 X-Forwarded-For / X-Real-IP 都是用户可控输入。
+    """
     forwarded_for = str(request.headers.get("x-forwarded-for", "")).strip()
     if forwarded_for:
         ip = forwarded_for.split(",")[0].strip()
@@ -65,13 +83,10 @@ def get_client_ip(request: Request) -> str:
     real_ip = str(request.headers.get("x-real-ip", "")).strip()
     if real_ip:
         return real_ip
-    if request.client and request.client.host:
-        return str(request.client.host)
-    return "unknown"
+    return get_peer_ip(request)
 
 
 def json_auth_error(status_code: int, message: str):
-    """返回JSON格式的认证错误响应"""
     return JSONResponse(
         status_code=status_code,
         content={"success": False, "error": message},
@@ -79,21 +94,18 @@ def json_auth_error(status_code: int, message: str):
 
 
 async def security_middleware(request: Request, call_next):
-    """安全中间件，处理认证和速率限制"""
     path = request.url.path
     if request.method.upper() == "OPTIONS":
         return await call_next(request)
     if not is_protected_path(path):
         return await call_next(request)
 
-    # 跳过 WebSocket 升级请求，由 WebSocket 层自行处理认证
-    # 内部适配器（如 QQ）通过本地连接，不需要 web_access_token
     if request.headers.get("upgrade", "").lower() == "websocket":
         return await call_next(request)
 
-    # 内部适配器（QQ bot 客户端等）通过本地连接访问 HTTP API 时，跳过 token 校验
-    client_ip = get_client_ip(request)
-    if client_ip in ("127.0.0.1", "::1", "localhost"):
+    # 仅信任实际 socket peer。此前这里使用 get_client_ip()，攻击者可通过
+    # X-Forwarded-For: 127.0.0.1 伪造本地来源并绕过受保护 API 的 token 校验。
+    if is_loopback_peer(request):
         return await call_next(request)
 
     required_token = get_required_access_token()
@@ -162,59 +174,40 @@ async def security_middleware(request: Request, call_next):
         global_request_timestamps.append(now)
         ip_queue.append(now)
 
-    response = await call_next(request)
-    return response
+    return await call_next(request)
 
 
 async def strict_origin_middleware(request: Request, call_next, allow_origins: list):
-    """严格 Origin 校验中间件"""
     if request.method.upper() == "OPTIONS":
         return await call_next(request)
-    # 跳过 WebSocket 升级请求：原生 App（Android/iOS）发起 WS 握手时不带 Origin 头，
-    # 而经 Cloudflare tunnel / 反向代理转发时可能被注入代理域名 Origin，
-    # 命中白名单校验会错误返回 403，导致客户端报
-    # "Expected HTTP 101 response but was '403 Forbidden'"。
-    # WebSocket 的认证由连接层（握手 token / 业务层）自行处理，无需此处 Origin 校验。
     if request.headers.get("upgrade", "").lower() == "websocket":
         return await call_next(request)
-
-    # 仅针对受保护的 API 路径进行严格 Origin 检查
     if not is_protected_path(request.url.path):
         return await call_next(request)
 
-    # 获取请求的 Origin
     origin = request.headers.get("origin")
-
-    # 如果没有 Origin (非浏览器请求)，或者 Origin 在白名单中，或者是本地请求，则放行
     if not origin:
         return await call_next(request)
-    
-    # 获取配置的允许来源列表
     if "*" in allow_origins:
-        # 如果配置为允许所有，则不做额外拦截
         return await call_next(request)
 
     if origin not in allow_origins:
-        # 记录警告日志
         client_ip = get_client_ip(request)
         logger.warning(
-            f"REJECTED: Unauthorized Origin '{origin}' from IP {client_ip} "
-            f"requesting {request.url.path}"
+            "REJECTED: Unauthorized Origin %r from IP %s requesting %s",
+            origin,
+            client_ip,
+            request.url.path,
         )
         return JSONResponse(
             status_code=403,
             content={"success": False, "error": "Unauthorized Origin"},
         )
-            
+
     return await call_next(request)
 
 
 async def request_logging_middleware(request: Request, call_next):
-    """请求日志中间件"""
-    # WebSocket 握手请求直接放行，不要操作其响应对象。
-    # WebSocket 的 response 是 WebSocketResponse，对其设置 HTTP header 会在
-    # 握手阶段触发内部异常，被全局异常处理器包装成 500，使客户端收到
-    # "Expected HTTP 101 response but was '500 Internal Server Error'"。
     if request.scope.get("type") != "http":
         return await call_next(request)
 
