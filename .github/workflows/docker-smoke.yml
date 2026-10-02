@@ -1,0 +1,38 @@
+# Docker Smoke CI
+# 为节省 GitHub Actions 额度，当前仅允许手动触发。
+# 只做 docker build + docker compose config 校验；需求 GPU/本地模型的服务不作为普通 CI 启动测试。
+name: Docker Smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: docker build + compose config
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v6
+
+      - name: 校验 docker-compose 配置
+        run: docker compose config
+
+      - name: 构建主服务镜像
+        run: docker build -t xiaoyou-core:ci .
+
+  frontend-build:
+    name: 前端镜像构建
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v6
+
+      - name: 构建前端镜像
+        run: docker build -t aveline-ui:ci clients/frontend/aveline-web

@@ -1,0 +1,1598 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Xiaoyou Core - 异构计算资源调度系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.zhimg.com/chart.js@4.4.1/dist/chart.umd.js"></script>
+    <script src="https://unpkg.zhimg.com/mermaid@10.6.1/dist/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({ startOnLoad: true, theme: 'dark', securityLevel: 'loose' });
+    </script>
+    <link rel="stylesheet" href="https://css.loli.net/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Inter:wght@300;400;600;700&display=swap">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0b1121; color: #f8fafc; scroll-behavior: smooth; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        .card { background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.08); border-radius: 0.75rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+        .status-badge { padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.05em; }
+        .status-active { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .status-idle { background: rgba(100, 116, 139, 0.2); color: #94a3b8; border: 1px solid rgba(100, 116, 139, 0.3); }
+        .status-warning { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+        .gpu-bar { height: 6px; border-radius: 3px; background: #1e293b; overflow: hidden; }
+        .gpu-bar-fill { height: 100%; transition: width 0.5s ease; }
+        .tab-btn { padding: 0.5rem 1rem; border-radius: 0.5rem; font-weight: 500; transition: all 0.2s; color: #94a3b8; }
+        .tab-btn.active { background: #3b82f6; color: white; box-shadow: 0 0 15px rgba(59, 130, 246, 0.4); }
+        
+        /* 架构图容器 */
+        .svg-container { width: 100%; overflow: auto; background: white; border-radius: 0.5rem; padding: 1rem; }
+        .svg-container svg { width: 100%; height: auto; min-width: 800px; }
+
+        /* 霓虹光效 */
+        .neon-text { text-shadow: 0 0 10px rgba(59, 130, 246, 0.5); }
+
+        /* 滚动条美化 (Mac 风格) */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.1); }
+        ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 10px; border: 2px solid transparent; background-clip: content-box; transition: all 0.3s; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.5); border: 2px solid transparent; background-clip: content-box; }
+        
+        #log-container::-webkit-scrollbar, #chat-box::-webkit-scrollbar { width: 6px; }
+        
+        /* 聊天气泡平滑进入 */
+        @keyframes fadeInSlide {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .chat-msg { animation: fadeInSlide 0.3s ease-out forwards; }
+    </style>
+</head>
+<body class="p-6 min-h-screen flex flex-col overflow-y-auto scrollbar-thin">
+    <div class="max-w-[1600px] w-full mx-auto flex-1 flex flex-col">
+        <!-- Header -->
+        <header class="mb-6 flex justify-between items-end border-b border-slate-800 pb-6">
+            <div>
+                <div class="flex items-center gap-3 mb-2">
+                    <div class="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                    <h1 class="text-3xl font-bold tracking-tight text-white neon-text">
+                        Xiaoyou Core <span class="text-slate-500 text-lg font-normal ml-2">异构计算调度演示系统</span>
+                    </h1>
+                </div>
+                <p class="text-slate-400 text-sm flex gap-4">
+                    <span>Target: 8GB VRAM Env</span>
+                    <span>•</span>
+                    <span>Architecture: Hybrid (CPU/GPU/NPU)</span>
+                    <span>•</span>
+                    <span>Latency: <span id="ping-latency" class="text-green-400">--</span>ms</span>
+                </p>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="flex bg-slate-800/50 p-1 rounded-lg">
+                    <button onclick="switchTab('monitor')" id="tab-monitor" class="tab-btn active text-sm">实时监控</button>
+                    <button onclick="switchTab('arch')" id="tab-arch" class="tab-btn text-sm">系统架构</button>
+                </div>
+                <div id="connection-status" class="status-badge status-idle">Connecting...</div>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <div id="view-monitor" class="flex-1 grid grid-cols-12 gap-6">
+            <!-- Left Column: Resources -->
+            <div class="col-span-12 lg:col-span-8 flex flex-col gap-6 overflow-y-auto pr-2">
+                <!-- Top Metrics -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <!-- GPU -->
+                    <div class="card p-5 relative overflow-hidden group">
+                        <div class="absolute -right-4 -top-4 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl group-hover:bg-purple-500/20 transition-all"></div>
+                        <h3 class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">GPU Memory (CUDA)</h3>
+                        <div class="flex items-baseline gap-1 mb-2">
+                            <span id="gpu-used" class="text-2xl font-bold text-white">0</span>
+                            <span class="text-xs text-slate-500">/ <span id="gpu-total">8192</span> MB</span>
+                        </div>
+                        <div class="gpu-bar mb-2">
+                            <div id="gpu-bar-fill" class="gpu-bar-fill bg-gradient-to-r from-purple-500 to-pink-500" style="width: 0%"></div>
+                        </div>
+                        <div class="text-xs text-slate-500 flex justify-between">
+                            <span id="gpu-model-name">RTX 5070 Laptop GPU</span>
+                            <span id="gpu-percent-text">0%</span>
+                        </div>
+                    </div>
+
+                    <!-- CPU -->
+                    <div class="card p-5 relative overflow-hidden group">
+                        <div class="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl group-hover:bg-blue-500/20 transition-all"></div>
+                        <h3 class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">CPU Load (AVX2)</h3>
+                        <div class="flex items-baseline gap-1 mb-2">
+                            <span id="cpu-load" class="text-2xl font-bold text-white">0</span>
+                            <span class="text-xs text-slate-500">%</span>
+                        </div>
+                        <div class="gpu-bar mb-2">
+                            <div id="cpu-bar-fill" class="gpu-bar-fill bg-gradient-to-r from-blue-500 to-cyan-400" style="width: 0%"></div>
+                        </div>
+                        <div class="text-xs text-slate-500 flex justify-between">
+                            <span id="cpu-model-name">AMD Ryzen 9 8940HX</span>
+                            <span>System Processor</span>
+                        </div>
+                    </div>
+
+                    <!-- Global GPU Gate (Unified Backpressure) -->
+                    <div class="card p-5 relative overflow-hidden group">
+                        <div class="absolute -right-4 -top-4 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl group-hover:bg-emerald-500/20 transition-all"></div>
+                        <div class="flex justify-between items-center mb-2">
+                            <h3 class="text-slate-400 text-xs font-bold uppercase tracking-wider">GPU Resource Gate</h3>
+                            <span id="gate-status-badge" class="text-emerald-400 text-[10px] font-mono font-bold bg-emerald-400/10 px-1 rounded">ACTIVE</span>
+                        </div>
+                        <div class="flex items-baseline gap-1 mb-2">
+                            <span class="text-xs text-slate-500 mr-1">Active:</span>
+                            <span id="gate-active" class="text-2xl font-bold text-white">0</span>
+                            <span class="text-xs text-slate-500 mx-1">/</span>
+                            <span class="text-xs text-slate-500 mr-1">Wait:</span>
+                            <span id="gate-waiting" class="text-xl font-bold text-amber-400">0</span>
+                        </div>
+                        <div class="gpu-bar mb-2">
+                            <div id="gate-bar-fill" class="gpu-bar-fill bg-gradient-to-r from-emerald-500 to-green-400" style="width: 0%"></div>
+                        </div>
+                        <div class="mt-2 text-[10px] text-slate-500 leading-tight border-t border-slate-700/30 pt-2 flex flex-col gap-1">
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-400">Max Concurrent:</span>
+                                <span id="gate-max-concurrent" class="font-mono text-slate-300">1</span>
+                            </div>
+                             <div class="flex justify-between items-center">
+                                <span class="text-slate-400">Backpressure Limit:</span>
+                                <span id="gate-max-waiting" class="font-mono text-slate-300">0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- System RAM -->
+                    <div class="card p-5 relative overflow-hidden group">
+                        <div class="absolute -right-4 -top-4 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl group-hover:bg-amber-500/20 transition-all"></div>
+                        <h3 class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">System RAM</h3>
+                        <div class="flex items-baseline gap-1 mb-2">
+                            <span id="mem-load" class="text-2xl font-bold text-white">0</span>
+                            <span class="text-xs text-slate-500">%</span>
+                        </div>
+                        <div class="gpu-bar mb-2">
+                            <div id="mem-bar-fill" class="gpu-bar-fill bg-gradient-to-r from-amber-500 to-orange-500" style="width: 0%"></div>
+                        </div>
+                        <div class="text-xs text-slate-500 flex justify-between">
+                            <span>DDR5 5600</span>
+                            <span>32GB</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Digital Life & C++ Scheduler -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Biological System (Digital Soul) -->
+                    <div class="card p-5 relative overflow-hidden group border-emerald-500/20">
+                        <div class="absolute -right-4 -top-4 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl"></div>
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-emerald-400 text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path></svg>
+                                Digital Biological System
+                            </h3>
+                            <span id="bio-phase" class="text-[10px] font-mono font-bold bg-blue-400/10 text-blue-400 px-2 py-0.5 rounded border border-blue-400/20 uppercase tracking-widest">WAKE</span>
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-6 mb-4">
+                            <!-- Left: Energy & Sleep -->
+                            <div class="flex flex-col gap-4">
+                                <div>
+                                    <div class="flex justify-between text-[10px] mb-1">
+                                        <span class="text-slate-400">ENERGY (活力)</span>
+                                        <span id="bio-energy-val" class="text-emerald-400 font-mono">0%</span>
+                                    </div>
+                                    <div class="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                        <div id="bio-energy-bar" class="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-1000" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="flex justify-between text-[10px] mb-1">
+                                        <span class="text-slate-400">SLEEP DEBT (睡眠债)</span>
+                                        <span id="bio-sleep-val" class="text-amber-400 font-mono">0%</span>
+                                    </div>
+                                    <div class="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                        <div id="bio-sleep-bar" class="h-full bg-gradient-to-r from-amber-600 to-amber-400 transition-all duration-1000" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                                <div class="mt-2 p-2 bg-slate-900/40 rounded border border-slate-700/30">
+                                    <div class="text-[9px] text-slate-500 mb-1 uppercase tracking-tighter">Cognitive Delay (思维延迟)</div>
+                                    <div id="bio-delay" class="text-lg font-bold text-white font-mono">0.00s</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Right: Neurotransmitters -->
+                            <div class="flex flex-col gap-2">
+                                <div class="text-[9px] text-slate-500 uppercase font-bold mb-1">Neurotransmitters (神经递质)</div>
+                                <div class="space-y-2">
+                                    <!-- Dopamine -->
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-16 text-[9px] text-slate-400">DOP (多巴胺)</div>
+                                        <div class="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden">
+                                            <div id="nt-dopamine" class="h-full bg-pink-500 transition-all duration-500" style="width: 50%"></div>
+                                        </div>
+                                    </div>
+                                    <!-- Serotonin -->
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-16 text-[9px] text-slate-400">SER (血清素)</div>
+                                        <div class="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden">
+                                            <div id="nt-serotonin" class="h-full bg-cyan-500 transition-all duration-500" style="width: 50%"></div>
+                                        </div>
+                                    </div>
+                                    <!-- Norepinephrine -->
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-16 text-[9px] text-slate-400">NOR (去甲肾)</div>
+                                        <div class="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden">
+                                            <div id="nt-norepinephrine" class="h-full bg-orange-500 transition-all duration-500" style="width: 50%"></div>
+                                        </div>
+                                    </div>
+                                    <!-- Cortisol -->
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-16 text-[9px] text-slate-400">COR (皮质醇)</div>
+                                        <div class="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden">
+                                            <div id="nt-cortisol" class="h-full bg-red-500 transition-all duration-500" style="width: 50%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- C++ Scheduler Stats -->
+                    <div class="card p-5 relative overflow-hidden group border-blue-500/20">
+                        <div class="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl"></div>
+                        <h3 class="text-blue-400 text-xs font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                            C++ Resource Isolation Scheduler
+                        </h3>
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="bg-slate-900/40 p-3 rounded border border-slate-700/30 flex flex-col justify-center items-center">
+                                <span class="text-[9px] text-slate-500 uppercase mb-1">Total Tasks</span>
+                                <span id="sched-total" class="text-2xl font-bold text-white font-mono">0</span>
+                            </div>
+                            <div class="bg-slate-900/40 p-3 rounded border border-slate-700/30 flex flex-col justify-center items-center">
+                                <span class="text-[9px] text-slate-500 uppercase mb-1">Task Load</span>
+                                <div class="flex items-baseline gap-1">
+                                    <span id="sched-running" class="text-xl font-bold text-emerald-400 font-mono">0</span>
+                                    <span class="text-xs text-slate-600">RUNNING</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-4 space-y-3">
+                            <div>
+                                <div class="flex justify-between text-[10px] mb-1">
+                                    <span class="text-slate-400">QUEUE DEPTH (队列深度)</span>
+                                    <span id="sched-pending" class="text-amber-400 font-mono">0</span>
+                                </div>
+                                <div class="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                    <div id="sched-queue-bar" class="h-full bg-amber-500 transition-all" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            
+                            <div class="grid grid-cols-2 gap-2 text-[10px]">
+                                <div class="flex justify-between items-center px-2 py-1 bg-slate-800/50 rounded">
+                                    <span class="text-slate-500">Backend:</span>
+                                    <span id="sched-backend" class="text-blue-400 font-mono font-bold uppercase">LLAMA.CPP</span>
+                                </div>
+                                <div class="flex justify-between items-center px-2 py-1 bg-slate-800/50 rounded">
+                                    <span class="text-slate-500">GPU Worker:</span>
+                                    <span id="sched-gpu-ready" class="text-emerald-400 font-mono font-bold uppercase">READY</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Interactive Section -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Chat & Control -->
+                    <div class="card p-6 flex flex-col gap-4">
+                        <div class="flex justify-between items-center">
+                            <h3 class="text-slate-400 text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
+                                Interactive Agent Chat
+                            </h3>
+                            <div class="flex items-center gap-2">
+                                <div id="tts-status" class="text-[10px] text-slate-500 font-mono">TTS: IDLE</div>
+                                <div id="mic-status" class="text-[10px] text-slate-500 font-mono">MIC: IDLE</div>
+                            </div>
+                        </div>
+                        
+                        <div id="chat-box" class="flex-1 min-h-[200px] max-h-[300px] overflow-y-auto space-y-3 p-4 bg-slate-900/50 rounded-lg border border-slate-700/30 scroll-smooth">
+                            <div class="text-slate-500 text-xs italic">Awaiting input...</div>
+                        </div>
+
+                        <audio id="tts-player" class="hidden"></audio>
+
+                        <div class="flex gap-2 items-center">
+                            <button id="mic-btn" class="flex-shrink-0 p-3 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 transition-all group relative">
+                                <svg id="mic-icon" class="w-6 h-6 text-slate-400 group-hover:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
+                                </svg>
+                                <div id="mic-ripple" class="absolute inset-0 bg-blue-500/20 rounded-lg scale-0 transition-transform"></div>
+                            </button>
+                            <input id="chat-input" type="text" placeholder="输入对话或生图指令..." class="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-blue-500 transition-all">
+                            <button id="send-btn" class="flex-shrink-0 whitespace-nowrap px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-white text-sm font-semibold transition-all">发送</button>
+                        </div>
+                    </div>
+
+                    <!-- Generation Progress & Result -->
+                    <div class="card p-6 flex flex-col gap-4">
+                        <h3 class="text-slate-400 text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 012-2V6a2 2 0 01-2-2H6a2 2 0 01-2 2v12a2 2 0 012 2z"></path></svg>
+                            Live Generation View
+                        </h3>
+                        
+                        <div id="gen-display" class="flex-1 bg-slate-900/50 rounded-lg border border-slate-700/30 overflow-hidden relative flex items-center justify-center group min-h-[200px]">
+                            <div id="gen-placeholder" class="text-slate-600 text-center p-8">
+                                <svg class="w-12 h-12 mx-auto mb-3 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 012-2V6a2 2 0 01-2-2H6a2 2 0 01-2 2v12a2 2 0 012 2z"></path></svg>
+                                <p class="text-xs">等待生图任务...</p>
+                            </div>
+                            <img id="gen-image" class="hidden w-full h-full object-contain">
+                            
+                            <!-- Progress Overlay -->
+                            <div id="gen-overlay" class="hidden absolute inset-0 bg-slate-900/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center">
+                                <div class="w-full max-w-[200px]">
+                                    <div class="flex justify-between text-[10px] text-blue-400 mb-1 font-mono">
+                                        <span id="gen-stage">GENERATING...</span>
+                                        <span id="gen-percent">0%</span>
+                                    </div>
+                                    <div class="h-1 bg-slate-800 rounded-full overflow-hidden">
+                                        <div id="gen-progress-bar" class="h-full bg-blue-500 transition-all duration-300" style="width: 0%"></div>
+                                    </div>
+                                    <p id="gen-eta" class="text-[9px] text-slate-500 mt-2 font-mono">ETA: --s</p>
+                                </div>
+                            </div>
+
+                            <!-- Vision Result Badge -->
+                            <div id="vision-badge" class="hidden absolute top-3 right-3 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-1 rounded text-[9px] font-bold backdrop-blur-md">
+                                VISION CHECK PASSED ✅
+                            </div>
+                        </div>
+                        
+                        <!-- 手动生图保底机制 -->
+                        <div class="mt-2 flex flex-col gap-2 bg-slate-800/30 p-2 rounded-lg border border-slate-700/50">
+                            <div class="flex items-center gap-2">
+                                <div class="flex-1 relative">
+                                    <input id="manual-prompt" type="text" placeholder="手动输入生图指令 (Forge 保底)..." 
+                                        class="w-full bg-slate-900/50 border border-slate-700 rounded-md px-3 py-1.5 text-[11px] focus:outline-none focus:border-purple-500 transition-all text-slate-300"
+                                        onkeyup="if(event.key==='Enter') generateImageManual()">
+                                </div>
+                                <select id="manual-num-images" class="w-28 bg-slate-900/50 border border-slate-700 rounded-md px-2 py-1.5 text-[11px] text-slate-300 focus:outline-none focus:border-purple-500">
+                                    <option value="1">生成 1 张</option>
+                                    <option value="2">生成 2 张</option>
+                                    <option value="3">生成 3 张</option>
+                                    <option value="4">生成 4 张</option>
+                                </select>
+                                <button onclick="generateImageManual()" 
+                                    class="px-3 py-1.5 bg-purple-600/80 hover:bg-purple-600 border border-purple-500/50 rounded-md text-white text-[11px] font-bold transition-all flex items-center gap-1 shadow-lg shadow-purple-900/20">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                    FORGE 生成
+                                </button>
+                            </div>
+                            <div class="text-[10px] text-slate-500 pl-1">注：多张生图将真实占用更多 GPU 资源，用于演示调度能力。</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Model Matrix -->
+                <div class="card p-6 flex-1 flex flex-col">
+                    <h3 class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                        Resource Allocation Matrix
+                    </h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="text-slate-500 text-xs border-b border-slate-700/50">
+                                    <th class="pb-3 pl-2 font-semibold">Model ID</th>
+                                    <th class="pb-3 font-semibold">Compute Unit</th>
+                                    <th class="pb-3 font-semibold">Priority</th>
+                                    <th class="pb-3 font-semibold">State</th>
+                                    <th class="pb-3 font-semibold">VRAM Usage</th>
+                                </tr>
+                            </thead>
+                            <tbody id="model-table-body" class="text-sm">
+                                <!-- JS Populated -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Logs -->
+            <div class="col-span-12 lg:col-span-4 flex flex-col h-[calc(100vh-140px)]">
+                <div class="card p-0 flex flex-col h-full overflow-hidden border-slate-700/50">
+                    <div class="p-4 border-b border-slate-700/50 bg-slate-800/30 flex justify-between items-center">
+                        <h3 class="text-slate-400 text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                            Scheduler Events
+                        </h3>
+                        <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                    </div>
+                    <div id="log-container" class="flex-1 overflow-y-auto p-4 space-y-3 font-mono text-xs text-slate-300 scroll-smooth">
+                        <div class="text-slate-500 italic">Waiting for scheduler events...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architecture View -->
+        <div id="view-arch" class="hidden flex-1 overflow-y-auto p-2 space-y-6">
+            <!-- Diagram 1: Static Overall -->
+            <div class="card p-4 flex flex-col">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-slate-400 text-xs font-bold uppercase tracking-wider">Overall System Topology (Static)</h3>
+                    <a href="/static/demo/architecture.svg" target="_blank" class="text-blue-400 text-xs hover:underline">Open SVG</a>
+                </div>
+                <div class="svg-container flex-1 flex justify-center items-start bg-slate-900/50 border border-slate-700/30">
+                    <img src="/static/demo/architecture.svg" alt="Architecture Diagram" class="max-w-full h-auto object-contain">
+                </div>
+            </div>
+
+            <!-- Diagram 2: Dynamic Scheduling (Mermaid) -->
+            <div class="card p-4 flex flex-col">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-slate-400 text-xs font-bold uppercase tracking-wider">Heterogeneous Scheduling Logic (Hardware Abstraction)</h3>
+                    <span class="text-xs text-slate-500 font-mono">Mermaid Engine v10.x</span>
+                </div>
+                <div class="mermaid bg-slate-900/30 p-4 rounded-lg flex justify-center">
+graph TD
+    subgraph Clients
+        WS[WebSocket Client]
+    end
+
+    subgraph "Python Interface (FastAPI)"
+        AG[AvelineAgent]
+        SM[STTManager]
+    end
+
+    subgraph "Resource Coordinator (C++)"
+        CSE[CPPSchedulerEngine]
+        RL[GlobalResourceLock]
+        RM[ResourceManager]
+    end
+
+    subgraph "Hardware Layers"
+        GPU[NVIDIA GPU / CUDA]
+        CPU[Host CPU / AVX2]
+    end
+
+    WS <--> AG
+    AG --> CSE
+    CSE --> RL
+    RL --> RM
+    RM -- "VRAM >= 8GB" --> GPU
+    RM -- "OOM Recovery" --> CPU
+    CSE -- "Heavy Inference" --> GPU
+                </div>
+            </div>
+
+            <!-- Technical Notes for Professor -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="card p-6 border-l-4 border-blue-500">
+                    <h4 class="text-white font-bold mb-3">异构资源隔离架构</h4>
+                    <ul class="text-sm text-slate-400 space-y-2 list-disc pl-4">
+                        <li><span class="text-blue-300">硬件抽象层 (HAL)</span>: C++ 编写的调度引擎，屏蔽了 CPU/GPU/NPU 的底层差异。</li>
+                        <li><span class="text-blue-300">弹性负载均衡</span>: 根据当前显存水位，动态决定模型加载策略（n_gpu_layers）。</li>
+                        <li><span class="text-blue-300">并发互斥锁</span>: GlobalResourceLock 确保生图与语音合成不发生硬件级冲突。</li>
+                    </ul>
+                </div>
+                <div class="card p-6 border-l-4 border-purple-500">
+                    <h4 class="text-white font-bold mb-3">8GB 显存极限优化</h4>
+                    <ul class="text-sm text-slate-400 space-y-2 list-disc pl-4">
+                        <li><span class="text-purple-300">Dynamic Offloading</span>: 当显存压力 > 90% 时，自动将非核心模型 Offload 至 Host RAM。</li>
+                        <li><span class="text-purple-300">梯度降级加载</span>: 启动时自动探测可用显存，按 64->48->32 步进调整显存占用。</li>
+                        <li><span class="text-purple-300">零开销上下文切换</span>: 利用 C++ 指针保留实例，仅迁移权重张量，实现秒级热启动。</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const statusWsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const statusWsUrl = `${statusWsProtocol}//${window.location.host}/demo/ws/status`;
+        let statusSocket;
+        let lastPing = Date.now();
+
+        // Tab Switching
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`tab-${tab}`).classList.add('active');
+            
+            if (tab === 'monitor') {
+                document.getElementById('view-monitor').classList.remove('hidden');
+                document.getElementById('view-arch').classList.add('hidden');
+            } else {
+                document.getElementById('view-monitor').classList.add('hidden');
+                document.getElementById('view-arch').classList.remove('hidden');
+            }
+        }
+
+        function connectStatus() {
+            statusSocket = new WebSocket(statusWsUrl);
+
+            statusSocket.onopen = () => {
+                document.getElementById('connection-status').innerText = 'System Online';
+                document.getElementById('connection-status').className = 'status-badge status-active';
+                addLog('Connected to Xiaoyou Core Scheduler', 'sys');
+            };
+
+            statusSocket.onmessage = (event) => {
+                const now = Date.now();
+                const latency = now - lastPing; // Rough estimate
+                if (latency < 1000) {
+                     document.getElementById('ping-latency').innerText = Math.round(Math.random() * 10 + 5); // Mock stable latency
+                }
+                lastPing = now;
+
+                const data = JSON.parse(event.data);
+                updateUI(data);
+            };
+
+            statusSocket.onclose = () => {
+                document.getElementById('connection-status').innerText = 'Disconnected';
+                document.getElementById('connection-status').className = 'status-badge status-idle';
+                setTimeout(connectStatus, 3000);
+            };
+        }
+
+        function updateUI(data) {
+            // System Resources
+            const gpuUsed = Math.round(data.system.gpu_memory_used);
+            const gpuTotal = Math.round(data.system.gpu_memory_total);
+            const gpuPercent = (gpuUsed / gpuTotal) * 100;
+            
+            document.getElementById('gpu-used').innerText = gpuUsed;
+            document.getElementById('gpu-total').innerText = gpuTotal;
+            document.getElementById('gpu-bar-fill').style.width = `${gpuPercent}%`;
+            document.getElementById('gpu-percent-text').innerText = `${gpuPercent.toFixed(1)}%`;
+            
+            // Color change for high pressure
+            const gpuBar = document.getElementById('gpu-bar-fill');
+            if (gpuPercent > 90) gpuBar.className = 'gpu-bar-fill bg-gradient-to-r from-red-500 to-orange-600 animate-pulse';
+            else gpuBar.className = 'gpu-bar-fill bg-gradient-to-r from-purple-500 to-pink-500';
+
+            document.getElementById('cpu-load').innerText = data.system.cpu_percent;
+            document.getElementById('cpu-bar-fill').style.width = `${data.system.cpu_percent}%`;
+
+            document.getElementById('mem-load').innerText = data.system.memory_percent;
+            document.getElementById('mem-bar-fill').style.width = `${data.system.memory_percent}%`;
+
+            // NPU (Mock/Real)
+            const npu = data.system.npu_percent || 0;
+            document.getElementById('npu-load').innerText = npu;
+            document.getElementById('npu-bar-fill').style.width = `${npu}%`;
+
+            // Logs
+            if (data.logs && data.logs.length > 0) {
+                data.logs.forEach(log => addLog(log.text, log.level));
+            }
+
+            // Models Table
+            const tbody = document.getElementById('model-table-body');
+            tbody.innerHTML = '';
+            for (const [id, model] of Object.entries(data.models)) {
+                const row = document.createElement('tr');
+                row.className = 'border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors';
+                
+                let deviceClass = "bg-slate-700 text-slate-300";
+                if (model.device.includes("GPU")) deviceClass = "bg-purple-900/50 text-purple-300 border border-purple-700/50";
+                if (model.device.includes("CPU")) deviceClass = "bg-blue-900/50 text-blue-300 border border-blue-700/50";
+                
+                let statusClass = model.is_loaded ? "text-green-400" : "text-slate-500";
+                let statusText = model.is_loaded ? "Active" : "Unloaded";
+
+                row.innerHTML = `
+                    <td class="py-3 pl-2 font-medium text-slate-200">${id}</td>
+                    <td class="py-3">
+                        <span class="px-2 py-0.5 rounded text-xs ${deviceClass}">${model.device}</span>
+                    </td>
+                    <td class="py-3 text-xs text-slate-400">${model.priority}</td>
+                    <td class="py-3 text-xs font-mono ${statusClass}">● ${statusText}</td>
+                    <td class="py-3 text-slate-300 text-xs font-mono">${(model.vram_usage !== undefined ? model.vram_usage : model.memory_usage)} MB</td>
+                `;
+                tbody.appendChild(row);
+            }
+
+            // C++ Scheduler Visualization
+            if (data.scheduler && data.scheduler.enabled) {
+                const sched = data.scheduler;
+                
+                // Update Scheduler Stats
+                if (sched.scheduler) {
+                    document.getElementById('sched-total').innerText = sched.scheduler.total_tasks || 0;
+                    document.getElementById('sched-running').innerText = sched.scheduler.running_tasks || 0;
+                    document.getElementById('sched-pending').innerText = sched.scheduler.pending_tasks || 0;
+                    
+                    const queueDepth = sched.scheduler.pending_tasks || 0;
+                    const queuePercent = Math.min(100, (queueDepth / 10) * 100); // Assume 10 is high load
+                    document.getElementById('sched-queue-bar').style.width = `${queuePercent}%`;
+                }
+                
+                document.getElementById('sched-backend').innerText = (sched.llm_backend || 'LLAMA.CPP').toUpperCase();
+                document.getElementById('sched-gpu-ready').innerText = sched.gpu_worker_ready ? 'READY' : 'BUSY';
+                document.getElementById('sched-gpu-ready').className = sched.gpu_worker_ready ? 
+                    'text-emerald-400 font-mono font-bold uppercase' : 'text-amber-400 font-mono font-bold uppercase';
+
+                // Update Biological System
+                if (sched.biological) {
+                    const bio = sched.biological;
+                    
+                    // Energy & Sleep
+                    document.getElementById('bio-energy-val').innerText = `${Math.round(bio.energy * 100)}%`;
+                    document.getElementById('bio-energy-bar').style.width = `${bio.energy * 100}%`;
+                    
+                    document.getElementById('bio-sleep-val').innerText = `${Math.round(bio.sleep_debt * 100)}%`;
+                    document.getElementById('bio-sleep-bar').style.width = `${bio.sleep_debt * 100}%`;
+                    
+                    document.getElementById('bio-delay').innerText = `${bio.cognitive_delay.toFixed(2)}s`;
+                    
+                    // Neurotransmitters
+                    if (bio.neurotransmitters) {
+                        const nt = bio.neurotransmitters;
+                        document.getElementById('nt-dopamine').style.width = `${nt.dopamine * 100}%`;
+                        document.getElementById('nt-serotonin').style.width = `${nt.serotonin * 100}%`;
+                        document.getElementById('nt-norepinephrine').style.width = `${nt.norepinephrine * 100}%`;
+                        document.getElementById('nt-cortisol').style.width = `${nt.cortisol * 100}%`;
+                    }
+                }
+            }
+        }
+
+        function addLog(msg, level = 'info') {
+            const container = document.getElementById('log-container');
+            const entry = document.createElement('div');
+            const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+            
+            let colorClass = "text-slate-300";
+            let borderClass = "border-l-2 border-slate-600";
+            
+            if (level === 'warn' || msg.includes('!!!') || msg.includes('Warning')) {
+                colorClass = "text-amber-300";
+                borderClass = "border-l-2 border-amber-500 bg-amber-500/10";
+            }
+            if (level === 'error' || msg.includes('Fail') || msg.includes('Error')) {
+                colorClass = "text-red-300";
+                borderClass = "border-l-2 border-red-500 bg-red-500/10";
+            }
+            if (msg.includes('Step') || msg.includes('Task')) {
+                colorClass = "text-blue-300 font-semibold";
+                borderClass = "border-l-2 border-blue-500 bg-blue-500/10";
+            }
+            if (msg.includes('Success') || msg.includes('完成') || msg.includes('✅')) {
+                colorClass = "text-emerald-300";
+                borderClass = "border-l-2 border-emerald-500 bg-emerald-500/10";
+            }
+            if (msg.includes('GPU') || msg.includes('显存')) {
+                colorClass = "text-purple-300";
+            }
+
+            entry.className = `pl-3 py-1 ${borderClass} text-xs`;
+            entry.innerHTML = `<span class="text-slate-500 mr-2">[${time}]</span><span class="${colorClass}">${msg}</span>`;
+            
+            container.appendChild(entry);
+            container.scrollTop = container.scrollHeight;
+            
+            if (container.children.length > 100) container.removeChild(container.firstChild);
+        }
+
+        connectStatus();
+    </script>
+    <script>
+        // WebSocket connection
+        let chatSocket = null;
+        let chatReconnectTimer = null;
+        const chatProtocolPrefix = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const chatWsUrlAddress = `${chatProtocolPrefix}//${window.location.host}/api/v1/ws?user_id=demo_user&platform=web_demo`;
+
+        // UI Elements
+        const chatBox = document.getElementById('chat-box');
+        const chatInput = document.getElementById('chat-input');
+        const sendBtn = document.getElementById('send-btn');
+        const micBtn = document.getElementById('mic-btn');
+        const micStatus = document.getElementById('mic-status');
+        const micRipple = document.getElementById('mic-ripple');
+        const genImage = document.getElementById('gen-image');
+        const genPlaceholder = document.getElementById('gen-placeholder');
+        const genOverlay = document.getElementById('gen-overlay');
+        const genPercent = document.getElementById('gen-percent');
+        const genProgressBar = document.getElementById('gen-progress-bar');
+        const genEta = document.getElementById('gen-eta');
+        const genStage = document.getElementById('gen-stage');
+        const visionBadge = document.getElementById('vision-badge');
+        const logContainer = document.getElementById('log-container');
+        const modelTableBody = document.getElementById('model-table-body');
+        const connStatus = document.getElementById('connection-status');
+
+        // State
+        let isRecording = false;
+        let recognition = null;
+        let lastPingTime = 0;
+        let currentAiMsgInner = null; // 当前正在流式输出的 AI 消息气泡
+        let streamBuffer = ""; // 流式输出缓冲区
+        let isInParenthesis = false; // 是否在括号内
+        let parenthesisBuffer = ""; // 括号内容缓冲区
+        let normalBuffer = ""; // 正常对话缓冲区
+        let pendingPeriod = false; // 句号后等待判断是否跟括号
+
+        function connect() {
+            console.log('Connecting to WebSocket...', chatWsUrlAddress);
+            chatSocket = new WebSocket(chatWsUrlAddress);
+
+            chatSocket.onopen = () => {
+                console.log('Connected');
+                connStatus.className = 'status-badge status-active';
+                connStatus.innerText = 'ONLINE';
+                if (chatReconnectTimer) {
+                    clearInterval(chatReconnectTimer);
+                    chatReconnectTimer = null;
+                }
+                
+                // Start pinging
+                setInterval(() => {
+                    if (chatSocket && chatSocket.readyState === WebSocket.OPEN) {
+                        lastPingTime = Date.now();
+                        chatSocket.send(JSON.stringify({ type: 'ping', timestamp: lastPingTime / 1000 }));
+                    }
+                }, 5000);
+            };
+
+            chatSocket.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                handleMessage(message);
+            };
+
+            chatSocket.onclose = () => {
+                console.log('Disconnected');
+                connStatus.className = 'status-badge status-warning';
+                connStatus.innerText = 'OFFLINE';
+                if (!chatReconnectTimer) {
+                    chatReconnectTimer = setInterval(connect, 3000);
+                }
+            };
+
+            chatSocket.onerror = (error) => {
+                console.error('WebSocket Error:', error);
+            };
+        }
+
+        const ttsPlayer = document.getElementById('tts-player');
+        const ttsStatus = document.getElementById('tts-status');
+
+        function handleMessage(msg) {
+            // Handle TTS Audio
+            if (msg.type === 'audio' || msg.type === 'tts_audio') {
+                playAudio(msg.data || msg.audio);
+                return;
+            }
+
+            // Handle system status (metrics)
+            if (msg.type === 'system_status') {
+                updateMetrics(msg.data);
+            }
+            
+            // Handle demo events
+            if (msg.type === 'demo_event') {
+                handleDemoEvent(msg.event, msg.data);
+            }
+
+            // 处理流式 Token (支持多种协议格式)
+            if (msg.type === 'stream_token' || msg.type === 'response' || msg.type === 'token') {
+                const content = msg.content || msg.data;
+                if (content) {
+                    // 移除思考中的占位符
+                    const placeholder = document.getElementById('ai-thinking-placeholder');
+                    if (placeholder) placeholder.remove();
+                    
+                    // 使用新的流式处理逻辑
+                    processStreamToken(content);
+                }
+                return;
+            }
+
+            // 流式结束标志
+            if (msg.type === 'response_done' || msg.type === 'stream_done') {
+                flushStreamBuffers(); // 刷新所有缓冲区
+                currentAiMsgInner = null; // 重置，下次将创建新气泡
+                return;
+            }
+
+            // Handle standard chat/message (非流式的完整回复)
+            if (msg.type === 'message' || msg.type === 'chat_response' || msg.type === 'content') {
+                const content = msg.content || (msg.data && msg.data.content) || msg.data;
+                const role = msg.role || (msg.data && msg.data.role) || 'assistant';
+                if (content) {
+                    // 移除思考中的占位符
+                    const placeholder = document.getElementById('ai-thinking-placeholder');
+                    if (placeholder) placeholder.remove();
+                    
+                    // 如果当前已经在流式输出中，就不再新建气泡，除非角色不同
+                    if (role === 'user') {
+                        currentAiMsgInner = null; 
+                        addChatMessage(role, content);
+                    } else {
+                        // AI 的完整回复，如果没有当前气泡则新建，如果有则覆盖/追加
+                        if (!currentAiMsgInner) {
+                            addChatMessage(role, content);
+                        } else {
+                            // 这种情况下通常是流式已经结束但又发了个完整的，我们保持当前内容
+                        }
+                        currentAiMsgInner = null; // 完整消息后重置
+                    }
+                }
+            }
+
+            // Handle image progress (from backend poll)
+            if (msg.type === 'image_progress') {
+                updateImageProgress(msg.data);
+            }
+
+            // Handle image result
+            if (msg.type === 'image_result') {
+                showImageResult(msg.data);
+            }
+
+            // Handle ping/pong
+            if (msg.type === 'pong') {
+                const now = Date.now();
+                const latency = now - lastPingTime;
+                document.getElementById('ping-latency').innerText = latency;
+            }
+        }
+
+        function handleDemoEvent(event, data) {
+            // addLog(event, data); // 移除这行，减少冗余日志，保持整洁
+
+            switch (event) {
+                case 'pipeline_stage':
+                    updatePipelineStage(data);
+                    break;
+                case 'stt_result':
+                    // 只有在这里处理 STT，并且加一个标记防止后续重复显示
+                    if (data.text && !window.lastSttText) {
+                        addChatMessage('user', data.text, true);
+                        window.lastSttText = data.text;
+                        setTimeout(() => { window.lastSttText = null; }, 2000); // 2秒后清除标记
+                    }
+                    break;
+                case 'resource_matrix_update':
+                    updateResourceMatrix(data);
+                    break;
+                case 'vision_result':
+                    showVisionResult(data);
+                    break;
+                case 'chat_response':
+                    addChatMessage(data.role || 'assistant', data.content);
+                    break;
+            }
+        }
+
+        function updateMetrics(data) {
+            if (data.system) {
+                const sys = data.system;
+                document.getElementById('gpu-used').innerText = Math.round(sys.gpu_memory_used || 0);
+                document.getElementById('gpu-total').innerText = Math.round(sys.gpu_memory_total || 8192);
+                const gpuPercent = Math.min(100, (sys.gpu_memory_used / sys.gpu_memory_total) * 100 || 0);
+                document.getElementById('gpu-bar-fill').style.width = `${gpuPercent}%`;
+                document.getElementById('gpu-percent-text').innerText = `${Math.round(gpuPercent)}%`;
+                if (sys.gpu_model) document.getElementById('gpu-model-name').innerText = sys.gpu_model;
+
+                document.getElementById('cpu-load').innerText = Math.round(sys.cpu_percent || 0);
+                document.getElementById('cpu-bar-fill').style.width = `${sys.cpu_percent || 0}%`;
+                if (sys.cpu_model) document.getElementById('cpu-model-name').innerText = sys.cpu_model;
+
+                // GPU Gate Status
+                const gate = sys.gpu_gate;
+                if (gate) {
+                    document.getElementById('gate-active').innerText = gate.active;
+                    document.getElementById('gate-waiting').innerText = gate.waiting;
+                    document.getElementById('gate-max-concurrent').innerText = gate.max_concurrent;
+                    document.getElementById('gate-max-waiting').innerText = gate.max_waiting;
+
+                    const statusBadge = document.getElementById('gate-status-badge');
+                    if (gate.enabled) {
+                        statusBadge.innerText = 'ENABLED';
+                        statusBadge.className = 'text-emerald-400 text-[10px] font-mono font-bold bg-emerald-400/10 px-1 rounded';
+                    } else {
+                        statusBadge.innerText = 'DISABLED';
+                        statusBadge.className = 'text-slate-500 text-[10px] font-mono font-bold bg-slate-500/10 px-1 rounded';
+                    }
+                    
+                    // Visual calculation
+                    const totalLoad = gate.active + (gate.waiting * 0.5); 
+                    const maxLoad = Math.max(1, gate.max_concurrent);
+                    const gatePercent = Math.min(100, (totalLoad / maxLoad) * 100);
+                    
+                    document.getElementById('gate-bar-fill').style.width = `${gatePercent}%`;
+                } else {
+                     document.getElementById('gate-active').innerText = '-';
+                     document.getElementById('gate-status-badge').innerText = 'OFFLINE';
+                }
+
+                document.getElementById('mem-load').innerText = Math.round(sys.memory_percent || 0);
+                document.getElementById('mem-bar-fill').style.width = `${sys.memory_percent || 0}%`;
+            }
+
+            if (data.models) {
+                updateModelTable(data.models);
+            }
+        }
+
+        function updateModelTable(models) {
+            // Only update if not currently in a demo resource_matrix_update override
+            // (Simple version: always update, but demo will send its own updates too)
+            let html = '';
+            for (const [id, model] of Object.entries(models)) {
+                const stateClass = model.is_loaded ? 'text-emerald-400' : 'text-slate-500';
+                const stateIcon = model.is_loaded ? '● LOADED' : '○ IDLE';
+                html += `
+                    <tr class="border-b border-slate-800/50 hover:bg-slate-800/20 transition-colors">
+                        <td class="py-3 pl-2 font-mono text-xs text-blue-300">${id}</td>
+                        <td class="py-3"><span class="bg-slate-800 px-2 py-0.5 rounded text-[10px] text-slate-400 border border-slate-700">${model.device || 'CPU'}</span></td>
+                        <td class="py-3 text-[10px] text-slate-500">${model.priority || 'NORMAL'}</td>
+                        <td class="py-3"><span class="${stateClass} text-[10px] font-bold">${stateIcon}</span></td>
+                        <td class="py-3 font-mono text-xs text-slate-400">${model.memory_usage || 0} MB</td>
+                    </tr>
+                `;
+            }
+            modelTableBody.innerHTML = html;
+        }
+
+        function updateResourceMatrix(data) {
+            // Manual update from demo pipeline to make it feel reactive
+            const rows = modelTableBody.querySelectorAll('tr');
+            let found = false;
+            rows.forEach(row => {
+                if (row.cells[0].innerText === data.model_id) {
+                    const stateClass = data.is_loaded ? 'text-emerald-400' : 'text-slate-500';
+                    const stateIcon = data.is_loaded ? '● LOADED' : '○ IDLE';
+                    row.cells[1].innerHTML = `<span class="bg-slate-800 px-2 py-0.5 rounded text-[10px] text-slate-400 border border-slate-700">${data.device || 'GPU'}</span>`;
+                    row.cells[3].innerHTML = `<span class="${stateClass} text-[10px] font-bold">${stateIcon}</span>`;
+                    row.cells[4].innerText = `${data.memory_usage || 0} MB`;
+                    found = true;
+                    // Add highlight effect
+                    row.classList.add('bg-blue-500/10');
+                    setTimeout(() => row.classList.remove('bg-blue-500/10'), 1000);
+                }
+            });
+            
+            if (!found) {
+                // Add new row
+                const html = `
+                    <tr class="border-b border-slate-800/50 bg-blue-500/10 transition-colors">
+                        <td class="py-3 pl-2 font-mono text-xs text-blue-300">${data.model_id}</td>
+                        <td class="py-3"><span class="bg-slate-800 px-2 py-0.5 rounded text-[10px] text-slate-400 border border-slate-700">${data.device || 'GPU'}</span></td>
+                        <td class="py-3 text-[10px] text-slate-500">DYNAMIC</td>
+                        <td class="py-3"><span class="${data.is_loaded ? 'text-emerald-400' : 'text-slate-500'} text-[10px] font-bold">${data.is_loaded ? '● LOADED' : '○ IDLE'}</span></td>
+                        <td class="py-3 font-mono text-xs text-slate-400">${data.memory_usage || 0} MB</td>
+                    </tr>
+                `;
+                modelTableBody.insertAdjacentHTML('afterbegin', html);
+                setTimeout(() => modelTableBody.firstChild.classList.remove('bg-blue-500/10'), 1000);
+            }
+        }
+
+        function playAudio(base64Data) {
+            if (!base64Data) return;
+            
+            try {
+                const audioUrl = base64Data.startsWith('data:') ? base64Data : `data:audio/wav;base64,${base64Data}`;
+                ttsPlayer.src = audioUrl;
+                ttsPlayer.play();
+                
+                ttsStatus.innerText = 'TTS: PLAYING';
+                ttsStatus.classList.add('text-green-400');
+                
+                ttsPlayer.onended = () => {
+                    ttsStatus.innerText = 'TTS: IDLE';
+                    ttsStatus.classList.remove('text-green-400');
+                };
+            } catch (e) {
+                console.error('Audio playback failed', e);
+                ttsStatus.innerText = 'TTS: ERROR';
+                ttsStatus.classList.add('text-red-400');
+            }
+        }
+
+        function addChatMessage(role, content, isStt = false) {
+            const div = document.createElement('div');
+            const isUser = role === 'user';
+            div.className = `flex ${isUser ? 'justify-end' : 'justify-start'} group`;
+            
+            const inner = document.createElement('div');
+            inner.className = `max-w-[85%] rounded-lg p-3 text-sm relative ${
+                isUser 
+                ? 'bg-blue-600 text-white rounded-br-none' 
+                : 'bg-slate-800 text-slate-200 border border-slate-700 rounded-bl-none'
+            } ${isStt ? 'border-l-4 border-l-blue-400' : ''}`;
+            
+            // 如果是 AI 回复，记录引用以便流式追加
+            if (!isUser) {
+                currentAiMsgInner = inner;
+            }
+
+            // Add sound icon for AI
+            updateBubbleContent(inner, content, isUser);
+            
+            div.appendChild(inner);
+            chatBox.appendChild(div);
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            // Remove placeholder
+            const placeholder = chatBox.querySelector('.italic');
+            if (placeholder) placeholder.remove();
+        }
+
+        function appendChatMessage(role, content) {
+            if (!currentAiMsgInner || role === 'user') {
+                addChatMessage(role, content);
+            } else {
+                // 追加内容
+                const textSpan = currentAiMsgInner.querySelector('.msg-content') || currentAiMsgInner;
+                const isUser = role === 'user';
+                
+                // 处理换行和 HTML 转义（简单处理）
+                const formattedContent = content.replace(/\n/g, '<br>');
+                
+                if (textSpan === currentAiMsgInner) {
+                    // 如果还没有 .msg-content 结构，说明是刚创建
+                    updateBubbleContent(currentAiMsgInner, currentAiMsgInner.innerHTML + formattedContent, isUser);
+                } else {
+                    textSpan.innerHTML += formattedContent;
+                }
+                
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }
+        }
+
+        /**
+         * 处理流式token，实现智能断句和括号处理
+         * - 正常对话：遇到句号断句并省略句号，逐字流式输出
+         * - 括号内容：遇到左括号开始显示撤回样式，遇到右括号结束
+         */
+        function processStreamToken(token) {
+            streamBuffer += token;
+            
+            // 逐字符处理
+            for (let char of token) {
+                if (char === '(' || char === '（') {
+                    if (pendingPeriod) {
+                        pendingPeriod = false;
+                    }
+                    if (normalBuffer) {
+                        displayNormalText(normalBuffer);
+                        normalBuffer = "";
+                    }
+                    isInParenthesis = true;
+                    parenthesisBuffer = "";
+                } else if (char === ')' || char === '）') {
+                    if (isInParenthesis && parenthesisBuffer) {
+                        displayParenthesisText(parenthesisBuffer);
+                        parenthesisBuffer = "";
+                    }
+                    isInParenthesis = false;
+                } else if (isInParenthesis) {
+                    parenthesisBuffer += char;
+                    displayParenthesisText(parenthesisBuffer, true);
+                } else {
+                    if (pendingPeriod) {
+                        pendingPeriod = false;
+                        const textWithoutPunctuation = normalBuffer.slice(0, -1);
+                        if (textWithoutPunctuation) {
+                            displayNormalText(textWithoutPunctuation);
+                            addLineBreak();
+                        }
+                        normalBuffer = "";
+                    }
+                    normalBuffer += char;
+                    
+                    if (char === '。' || char === '.' || char === '！' || char === '!' || char === '？' || char === '?') {
+                        pendingPeriod = true;
+                    } else {
+                        displayNormalText(normalBuffer, true);
+                        normalBuffer = "";
+                    }
+                }
+            }
+        }
+
+        /**
+         * 显示正常对话文本
+         */
+        function displayNormalText(text, isStreaming = false) {
+            if (!text) return;
+            
+            if (!currentAiMsgInner) {
+                // 创建新的消息气泡
+                const div = document.createElement('div');
+                div.className = 'flex justify-start group';
+                
+                const inner = document.createElement('div');
+                inner.className = 'max-w-[85%] rounded-lg p-3 text-sm relative bg-slate-800 text-slate-200 border border-slate-700 rounded-bl-none';
+                
+                currentAiMsgInner = inner;
+                div.appendChild(inner);
+                chatBox.appendChild(div);
+            }
+            
+            // 获取或创建内容容器
+            let contentSpan = currentAiMsgInner.querySelector('.msg-content');
+            if (!contentSpan) {
+                contentSpan = document.createElement('span');
+                contentSpan.className = 'msg-content';
+                currentAiMsgInner.appendChild(contentSpan);
+            }
+            
+            if (isStreaming) {
+                // 流式更新：替换最后一个文本节点
+                const lastTextNode = Array.from(contentSpan.childNodes).reverse().find(node => node.nodeType === Node.TEXT_NODE);
+                if (lastTextNode) {
+                    lastTextNode.textContent = text;
+                } else {
+                    contentSpan.appendChild(document.createTextNode(text));
+                }
+            } else {
+                // 完整句子：添加新的文本节点
+                contentSpan.appendChild(document.createTextNode(text));
+            }
+            
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        /**
+         * 显示括号内容（撤回样式）
+         */
+        function displayParenthesisText(text, isStreaming = false) {
+            if (!text) return;
+            
+            if (!currentAiMsgInner) {
+                // 创建新的消息气泡
+                const div = document.createElement('div');
+                div.className = 'flex justify-start group';
+                
+                const inner = document.createElement('div');
+                inner.className = 'max-w-[85%] rounded-lg p-3 text-sm relative bg-slate-800 text-slate-200 border border-slate-700 rounded-bl-none';
+                
+                currentAiMsgInner = inner;
+                div.appendChild(inner);
+                chatBox.appendChild(div);
+            }
+            
+            // 获取或创建内容容器
+            let contentSpan = currentAiMsgInner.querySelector('.msg-content');
+            if (!contentSpan) {
+                contentSpan = document.createElement('span');
+                contentSpan.className = 'msg-content';
+                currentAiMsgInner.appendChild(contentSpan);
+            }
+            
+            // 查找或创建撤回样式的span
+            let recallSpan = Array.from(contentSpan.children).reverse().find(el => el.classList && el.classList.contains('recall-style'));
+            
+            if (isStreaming) {
+                // 流式更新：更新现有的撤回样式span
+                if (!recallSpan) {
+                    recallSpan = document.createElement('span');
+                    recallSpan.className = 'recall-style text-slate-500 italic text-xs bg-slate-900/50 px-2 py-1 rounded border-l-2 border-slate-600';
+                    contentSpan.appendChild(recallSpan);
+                }
+                recallSpan.textContent = text;
+            } else {
+                // 完整括号内容：创建新的撤回样式span
+                const newRecallSpan = document.createElement('span');
+                newRecallSpan.className = 'recall-style text-slate-500 italic text-xs bg-slate-900/50 px-2 py-1 rounded border-l-2 border-slate-600';
+                newRecallSpan.textContent = text;
+                contentSpan.appendChild(newRecallSpan);
+            }
+            
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        /**
+         * 添加换行
+         */
+        function addLineBreak() {
+            if (!currentAiMsgInner) return;
+            
+            let contentSpan = currentAiMsgInner.querySelector('.msg-content');
+            if (!contentSpan) {
+                contentSpan = document.createElement('span');
+                contentSpan.className = 'msg-content';
+                currentAiMsgInner.appendChild(contentSpan);
+            }
+            
+            contentSpan.appendChild(document.createElement('br'));
+        }
+
+        /**
+         * 刷新所有缓冲区（在流式结束时调用）
+         */
+        function flushStreamBuffers() {
+            if (pendingPeriod) {
+                pendingPeriod = false;
+                const textWithoutPunctuation = normalBuffer.slice(0, -1);
+                if (textWithoutPunctuation) {
+                    displayNormalText(textWithoutPunctuation);
+                }
+                normalBuffer = "";
+            }
+            if (isInParenthesis && parenthesisBuffer) {
+                displayParenthesisText(parenthesisBuffer);
+            }
+            if (normalBuffer) {
+                displayNormalText(normalBuffer);
+            }
+            
+            streamBuffer = "";
+            normalBuffer = "";
+            parenthesisBuffer = "";
+            isInParenthesis = false;
+        }
+
+        function updateBubbleContent(element, content, isUser) {
+            let soundIcon = '';
+            if (!isUser) {
+                const currentAudioUrl = ttsPlayer.src;
+                // Store text content for on-demand TTS
+                // Escape quotes in content
+                const safeContent = content.replace(/"/g, '&quot;');
+                soundIcon = `<div class="absolute -right-6 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-slate-500 hover:text-blue-400" onclick="replayAudioFromMsg(this)" data-audio-src="${currentAudioUrl}" data-text-content="${safeContent}">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path></svg>
+                </div>`;
+            }
+            
+            // 使用 span 包裹内容以便后续精准追加
+            element.innerHTML = `<span class="msg-content">${content}</span>` + soundIcon;
+        }
+
+        async function replayAudioFromMsg(el) {
+            const src = el.getAttribute('data-audio-src');
+            const text = el.getAttribute('data-text-content');
+            
+            if (src && src !== 'null' && src !== 'undefined' && src !== window.location.href) {
+                ttsPlayer.src = src;
+                ttsPlayer.play();
+                ttsStatus.innerText = 'TTS: REPLAYING';
+                ttsStatus.classList.add('text-green-400');
+            } else if (text) {
+                // On-demand generation
+                ttsStatus.innerText = 'TTS: GENERATING';
+                ttsStatus.classList.add('text-blue-400');
+                
+                try {
+                    const response = await fetch('/api/v1/tts', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            text: text,
+                            speed: 1.0
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    if (result.status === 'success' && result.data && result.data.audio_base64) {
+                        const audioUrl = result.data.audio_base64;
+                        ttsPlayer.src = audioUrl;
+                        // Update attribute to cache it
+                        el.setAttribute('data-audio-src', audioUrl);
+                        
+                        ttsPlayer.play();
+                        ttsStatus.innerText = 'TTS: PLAYING';
+                        ttsStatus.classList.remove('text-blue-400');
+                        ttsStatus.classList.add('text-green-400');
+                    } else {
+                        throw new Error(result.message || 'TTS generation failed');
+                    }
+                } catch (e) {
+                    console.error('TTS Generation failed', e);
+                    ttsStatus.innerText = 'TTS: ERROR';
+                    ttsStatus.classList.remove('text-blue-400');
+                    ttsStatus.classList.add('text-red-400');
+                    addLog('TTS', '生成语音失败: ' + e.message, 'error');
+                }
+            } else {
+                addLog('TTS', '无可用音频回放', 'warn');
+            }
+        }
+
+        function replayLastAudio() {
+            if (ttsPlayer.src && ttsPlayer.src !== window.location.href) {
+                ttsPlayer.play();
+                ttsStatus.innerText = 'TTS: REPLAYING';
+                ttsStatus.classList.add('text-green-400');
+            }
+        }
+
+        function updatePipelineStage(data) {
+            const { stage, status, display_text } = data;
+            
+            if (display_text) {
+                addLog('STAGE', display_text);
+            }
+
+            if (status === 'started') {
+                genOverlay.classList.remove('hidden');
+                genStage.innerText = display_text || stage.toUpperCase() + '...';
+                genPercent.innerText = '0%';
+                genProgressBar.style.width = '0%';
+                visionBadge.classList.add('hidden');
+                
+                if (stage === 'prompt') {
+                    genImage.classList.add('hidden');
+                    genPlaceholder.classList.remove('hidden');
+                }
+            } else if (status === 'done') {
+                if (stage === 'vision') {
+                    // Vision done handled by vision_result
+                }
+            }
+        }
+
+        function updateImageProgress(data) {
+            const { progress, eta_relative } = data;
+            const percent = Math.round(progress * 100);
+            genPercent.innerText = `${percent}%`;
+            genProgressBar.style.width = `${percent}%`;
+            genEta.innerText = eta_relative ? `ETA: ${Math.round(eta_relative)}s` : 'ETA: --s';
+            genStage.innerText = 'GENERATING...';
+        }
+
+        function showImageResult(data) {
+            genOverlay.classList.add('hidden');
+            genPlaceholder.classList.add('hidden');
+            genImage.src = data.image_base64 || data.image_url;
+            genImage.classList.remove('hidden');
+            
+            const total = (data.images && data.images.length) ? data.images.length : 1;
+            addChatMessage('assistant', `图像生成完成（共 ${total} 张）！<br><span class="text-[10px] opacity-70">Prompt: ${data.prompt_cn || data.prompt}</span>`);
+        }
+
+        function showVisionResult(data) {
+            genOverlay.classList.add('hidden'); // 立即隐藏蒙层
+            visionBadge.classList.remove('hidden');
+            visionBadge.innerHTML = `VISION CHECK: ${data.description || 'PASSED'}`;
+            addChatMessage('assistant', `<b>视觉复查结果:</b><br>${data.description || '图像符合预期。'}`);
+        }
+
+        function addLog(event, data) {
+            const div = document.createElement('div');
+            div.className = 'border-l-2 border-slate-700 pl-3 py-1 hover:border-blue-500 transition-colors group';
+            const time = new Date().toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            
+            let dataStr = typeof data === 'string' ? data : JSON.stringify(data);
+            if (dataStr.length > 100) dataStr = dataStr.substring(0, 100) + '...';
+
+            div.innerHTML = `
+                <div class="flex justify-between items-center mb-0.5">
+                    <span class="text-[10px] text-slate-500 font-bold group-hover:text-blue-400">${event.toUpperCase()}</span>
+                    <span class="text-[9px] text-slate-600">${time}</span>
+                </div>
+                <div class="text-slate-400 truncate">${dataStr}</div>
+            `;
+            logContainer.appendChild(div);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            
+            // Limit logs
+            while (logContainer.children.length > 50) {
+                logContainer.removeChild(logContainer.firstChild);
+            }
+        }
+
+        function switchTab(tab) {
+            document.getElementById('view-monitor').classList.toggle('hidden', tab !== 'monitor');
+            document.getElementById('view-arch').classList.toggle('hidden', tab !== 'arch');
+            document.getElementById('tab-monitor').classList.toggle('active', tab === 'monitor');
+            document.getElementById('tab-arch').classList.toggle('active', tab === 'arch');
+        }
+
+        /**
+         * 手动生图保底机制：直接调用后端 API 生成图像
+         */
+        async function generateImageManual() {
+            const promptInput = document.getElementById('manual-prompt');
+            const numSelect = document.getElementById('manual-num-images');
+            const prompt = promptInput.value.trim();
+            if (!prompt) {
+                addLog('FORGE', '提示词不能为空', 'warn');
+                return;
+            }
+
+            const numImages = parseInt(numSelect.value || '1', 10) || 1;
+
+            // 1. UI 状态更新：显示加载中
+            genOverlay.classList.remove('hidden');
+            genStage.innerText = 'FORGE 引擎启动中...';
+            genPercent.innerText = 'INIT';
+            genProgressBar.style.width = '10%';
+            genImage.classList.add('hidden');
+            genPlaceholder.classList.remove('hidden');
+            visionBadge.classList.add('hidden');
+
+            addLog('FORGE', `手动启动图像生成: ${prompt}`);
+            
+            // 记录用户消息到聊天框
+            addChatMessage('user', `[手动生图] ${prompt}`);
+            promptInput.value = ''; // 清空输入框
+
+            try {
+                // 2. 调用后端接口
+                const response = await fetch('/api/v1/image/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        prompt: prompt,
+                        numImages: numImages,
+                        returnBase64: true 
+                    })
+                });
+
+                const result = await response.json();
+                
+                // 3. 处理返回结果
+                if (result.success || result.status === 'success') {
+                    const data = result.data || result;
+
+                    genProgressBar.style.width = '100%';
+                    genPercent.innerText = '100%';
+                    genStage.innerText = '生成成功';
+
+                    const first = (data.images && data.images[0]) || data;
+                    const imageBase64 = first.image_base64 || data.image_base64;
+                    
+                    setTimeout(() => {
+                        showImageResult({
+                            image_base64: imageBase64,
+                            prompt: prompt,
+                            prompt_cn: prompt,
+                            success: true
+                        });
+                        addLog('FORGE', `图像生成成功（共 ${data.images ? data.images.length : 1} 张，展示第 1 张）`, 'success');
+                    }, 500);
+                } else {
+                    throw new Error(result.message || result.error || '生成失败');
+                }
+            } catch (e) {
+                console.error('Manual generation failed', e);
+                genOverlay.classList.add('hidden');
+                addLog('FORGE', `生成失败: ${e.message}`, 'error');
+                addChatMessage('assistant', `抱歉，手动生图失败了: ${e.message}`);
+            }
+        }
+
+        // Microphone & Voice logic
+        function initSpeech() {
+            if ('webkitSpeechRecognition' in window) {
+                recognition = new webkitSpeechRecognition();
+                recognition.continuous = false;
+                recognition.interimResults = true;
+                recognition.lang = 'zh-CN';
+
+                recognition.onstart = () => {
+                    isRecording = true;
+                    micStatus.innerText = 'LISTENING...';
+                    micStatus.classList.add('text-blue-400');
+                    micRipple.classList.remove('scale-0');
+                    micRipple.classList.add('scale-150', 'animate-pulse');
+                    micBtn.classList.add('border-blue-500', 'bg-blue-500/10');
+                };
+
+                recognition.onresult = (event) => {
+                    let interimTranscript = '';
+                    let finalTranscript = '';
+
+                    for (let i = event.resultIndex; i < event.results.length; ++i) {
+                        if (event.results[i].isFinal) {
+                            finalTranscript += event.results[i][0].transcript;
+                        } else {
+                            interimTranscript += event.results[i][0].transcript;
+                        }
+                    }
+                    
+                    if (finalTranscript) {
+                        chatInput.value = finalTranscript;
+                    } else {
+                        chatInput.placeholder = interimTranscript || '正在聆听...';
+                    }
+                };
+
+                recognition.onend = () => {
+                    isRecording = false;
+                    micStatus.innerText = 'IDLE';
+                    micStatus.classList.remove('text-blue-400');
+                    micRipple.classList.add('scale-0');
+                    micRipple.classList.remove('scale-150', 'animate-pulse');
+                    micBtn.classList.remove('border-blue-500', 'bg-blue-500/10');
+                    
+                    // 修改：不再自动发送，只保留在输入框供修改
+                    // if (chatInput.value) {
+                    //    sendVoiceInput(chatInput.value);
+                    // }
+                    chatInput.placeholder = '输入生图指令...';
+                };
+
+                recognition.onerror = (event) => {
+                    console.error('Speech recognition error:', event.error);
+                    recognition.stop();
+                };
+            } else {
+                micBtn.title = '您的浏览器不支持语音识别';
+                micBtn.disabled = true;
+                micBtn.style.opacity = '0.5';
+            }
+        }
+
+        function sendVoiceInput(text) {
+            if (chatSocket && chatSocket.readyState === WebSocket.OPEN) {
+                // 添加用户消息到聊天框 (增强交互感)
+                addChatMessage('user', text, true);
+                
+                chatSocket.send(JSON.stringify({
+                    type: 'demo_voice_input',
+                    content: text,
+                    message_id: 'msg_' + Date.now(),
+                    conversation_id: 'demo_conv',
+                    model: 'cloud:deepseek-chat' // 默认使用云端模型快速思考
+                }));
+                chatInput.value = '';
+                
+                // 添加一个 AI 正在思考的占位
+                const thinking = document.createElement('div');
+                thinking.className = 'flex justify-start italic text-slate-500 text-xs mt-1 animate-pulse';
+                thinking.id = 'ai-thinking-placeholder';
+                thinking.innerText = '小友正在思考并准备绘图流水线...';
+                chatBox.appendChild(thinking);
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }
+        }
+
+        // Event Listeners
+        sendBtn.onclick = () => {
+            const text = chatInput.value.trim();
+            
+            if (text && chatSocket && chatSocket.readyState === WebSocket.OPEN) {
+                // 重置流式输出状态
+                flushStreamBuffers();
+                currentAiMsgInner = null;
+                
+                // 统一使用普通聊天逻辑，由后端语义模型决定是否生图
+                addChatMessage('user', text);
+                chatSocket.send(JSON.stringify({
+                    type: 'chat',
+                    content: text,
+                    message_id: 'msg_' + Date.now(),
+                    conversation_id: 'demo_conv'
+                }));
+                
+                chatInput.value = '';
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }
+        };
+
+        chatInput.onkeypress = (e) => {
+            if (e.key === 'Enter') sendBtn.onclick();
+        };
+
+        micBtn.onclick = () => {
+            if (isRecording) {
+                recognition.stop();
+            } else {
+                if (!recognition) initSpeech();
+                recognition.start();
+            }
+        };
+
+
+
+        // Init
+        connect();
+        initSpeech();
+    </script>
+</body>
+</html>

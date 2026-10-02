@@ -1,0 +1,37 @@
+{
+  "enabled": true,
+  "scene_write_mode": "tool",
+  "scope": "ye",
+  "runtime_state_path": "companion_data/ye_data/runtime/current_state.json",
+  "uie": {
+    "enabled": true,
+    "min_probability": 0.5,
+    "schema_by_field": {
+      "location": ["地点", "位置"],
+      "activity": ["活动内容", "学习内容"],
+      "clothing": ["衣服"],
+      "people_present": ["人物"],
+      "physical_state": ["健康症状", "情绪"],
+      "current_possessions": ["物品"]
+    }
+  },
+  "limits": {
+    "active_rules": 20,
+    "pending_actions": 20,
+    "time_constraints": 20,
+    "explicit_facts": 30,
+    "processed_message_ids": 100
+  },
+  "private_mode": {
+    "enter_markers": ["进入私密模式", "切到私密模式", "/private"],
+    "exit_markers": ["退出私密模式", "回普通聊天", "结束当前互动", "/ordinary"]
+  },
+  "location_terms": [
+    "宿舍", "实验室", "图书馆", "教室", "食堂", "医院", "学校", "家里", "家",
+    "地铁", "公交车", "出租车", "路上", "实验楼", "教学楼", "办公室", "操场", "商场"
+  ],
+  "physical_terms": [
+    "困", "累", "疲惫", "头疼", "头痛", "发烧", "咳嗽", "不舒服", "头晕", "恶心",
+    "开心", "难过", "焦虑", "紧张", "生气", "烦", "郁闷", "高兴", "平静"
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "description": "人工核对的高优先级释义。仅这里确认过的义项才允许在 App 中加粗。",
+  "words": {
+    "a": {
+      "source_note": "结合旧词书条目与冠词用法人工核对；ECDICT 同词头混入字母和计算机缩写。",
+      "collapse_source_translations": true,
+      "primary_translations": [
+        {
+          "type": "art",
+          "translation": "一（个）；每一（个）"
+        }
+      ]
+    },
+    "account": {
+      "source_note": "结合 ECDICT 英文 definition、现有中文释义与旧词书条目人工交叉核对。",
+      "collapse_source_translations": true,
+      "primary_translations": [
+        {
+          "type": "n",
+          "translation": "账户；账目；说明"
+        },
+        {
+          "type": "vi",
+          "translation": "解释；占（比例）"
+        }
+      ]
+    },
+    "address": {
+      "source_note": "结合 ECDICT 英文 definition、现有中文释义与旧词书条目人工交叉核对。",
+      "collapse_source_translations": true,
+      "primary_translations": [
+        {
+          "type": "n",
+          "translation": "地址；演说"
+        },
+        {
+          "type": "vt",
+          "translation": "写地址；向……讲话；处理"
+        }
+      ]
+    },
+    "conduct": {
+      "source_note": "结合 ECDICT 英文 definition、现有中文释义与旧词书条目人工交叉核对。",
+      "collapse_source_translations": true,
+      "primary_translations": [
+        {
+          "type": "n",
+          "translation": "行为；举止"
+        },
+        {
+          "type": "vt",
+          "translation": "进行；实施；组织；指挥"
+        }
+      ]
+    },
+    "issue": {
+      "source_note": "结合 ECDICT 英文 definition、现有中文释义与旧词书条目人工交叉核对。",
+      "collapse_source_translations": true,
+      "primary_translations": [
+        {
+          "type": "n",
+          "translation": "问题；议题"
+        },
+        {
+          "type": "vt",
+          "translation": "发布；发行；发给"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,60 @@
+# Python Core CI
+# 为节省 GitHub Actions 额度，当前仅允许手动触发；Ruff + pytest 共用一个 runner。
+name: Core CI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: 单元测试 (pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v6
+
+      - name: 配置 uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          # 锁定目标 Python：本机 venv_core/venv_cpu 为 3.10，Linux 迁移后统一到 3.13。
+          # 不指定时 uv 吃 ubuntu-latest 自带解释器（实测会漂到更新版本），
+          # 出现「本地一个版本、CI 一个版本」的双轨。
+          python-version: '3.13'
+          enable-cache: true
+          cache-dependency-glob: 'uv.lock'
+
+      - name: 按 uv.lock 可复现安装依赖
+        run: uv sync --extra dev --frozen
+
+      - name: 运行 ruff
+        run: uv run ruff check
+
+      - name: 运行单元测试
+        # pyproject addopts 已默认排除 gpu / slow / e2e / integration，并带 `-n 4` 并行。
+        # 此外显式排除"收集期或运行期依赖重型可选依赖/外部服务/本机数据"的用例——
+        # 它们不属于轻量 GitHub-hosted CI 应跑的地盘，本地完整环境(venv_core / models extra)仍会跑：
+        #  --ignore: 需 transformers / core.models / vision / 网络 / 本机数据
+        #  --deselect: 仅剔除单个依赖受限用例，保留同文件的其余可靠单测
+        # 注意：需真实后端/模型/本机数据的脚本已移入 tests/diagnostics/（该目录不被 pytest 收集），
+        # 不再需要在命令行 --ignore。
+        run: |
+          uv run pytest \
+            --ignore=tests/unit/test_embedding_backend.py \
+            --ignore=tests/unit/test_intent_service.py \
+            --ignore=tests/unit/test_memory_vector_cache.py \
+            --ignore=tests/unit/test_stream_utils.py \
+            --ignore=tests/scripts/test_safe_timed_rotating_handler.py \
+            --ignore=tests/unit/test_active_care_executor_connections.py \
+            --ignore=tests/unit/test_tts_manager_optimized.py \
+            --deselect tests/unit/test_empty_responses.py::test_active_care_health_checker_registration_and_status \
+            --deselect tests/unit/test_empty_responses.py::test_local_llm_adapter_skip_preload_when_cpp_llm_enabled
+
+      # 若将来需要，可在此新增 continue-on-error 的 smoke 报告步骤；现阶段不塞 GPU/模型/外部服务测试。

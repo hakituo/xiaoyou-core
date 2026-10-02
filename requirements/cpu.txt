@@ -1,0 +1,6 @@
+# CPU 版 torch（日常默认，省 ~3GB 内存）
+# 用法: pip install -r requirements/cpu.txt
+--index-url https://download.pytorch.org/whl/cpu
+torch==2.13.0+cpu
+torchvision==0.28.0+cpu
+torchaudio==2.11.0+cpu

@@ -1,0 +1,52 @@
+# C++ CI（CPU build smoke）
+# 为节省 GitHub Actions 额度，当前仅允许手动触发。
+# 只做 CPU 构建冒烟，不做仓库本地 GPU/CUDA/模型环境相关验证。
+#
+# 注意（不稳定因素）：
+# - libuv 已固定 v1.48.0；llama.cpp 在本地源码/zip 缺失时回退到 GIT_TAG master（未 pin）。
+#   CI 上 external/llama.cpp-master 与 libuv-1.x 均被 .gitignore，故会走 FetchContent 下载，
+#   master 未固定可能引入上游构建波动，建议后续固定到明确 commit/tag。
+# - BUILD_TESTING OFF 是 CMakeLists 顶部 FORCE 钉死的：tests/integration_test.cpp 引用已删除旧 API，
+#   因此本 workflow 明确不运行 ctest；若强行 enable_testing 会导致 CI 永久失败。
+name: C++ CI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cpu-build:
+    name: CMake configure + CPU build
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v6
+
+      - name: 安装构建依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build python3-dev libpkgconf-dev
+
+      - name: CMake configure
+        # 关闭 CUDA/GGML_CUDA，明确 CPU-only；python3-dev 用于 pybind11 的 scheduler_py 扩展
+        run: |
+          cmake -S cpp_modules/cpp_scheduler -B cpp_modules/cpp_scheduler/build-ci \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLLAMA_CUDA=OFF \
+            -DGGML_CUDA=OFF
+
+      - name: 编译
+        run: cmake --build cpp_modules/cpp_scheduler/build-ci -j2
+
+      - name: 校验产物生成
+        run: |
+          [ -f cpp_modules/cpp_scheduler/build-ci/ai_scheduler ] && echo "OK ai_scheduler" || { echo "缺少 ai_scheduler"; exit 1; }
+          [ -f cpp_modules/cpp_scheduler/build-ci/scheduler_py*.so ] && echo "OK scheduler_py (.so)" || echo "(scheduler_py 未生成，检查 pybind11/llama 依赖)"

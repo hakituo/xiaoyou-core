@@ -1,0 +1,379 @@
+{
+  "version": 1,
+  "profile": "general_learner",
+  "description": "构建期 learner sense priority。它不是 ECDICT BNC/FRQ，也不宣称是严格语料义项频率；aliases_zh 只用于把现有中文释义映射到稳定 sense_id。",
+  "words": {
+    "perspective": {
+      "n": [
+        {
+          "sense_id": "viewpoint",
+          "rank": 1,
+          "tier": "core",
+          "aliases_zh": ["观点", "视角", "看法", "角度", "观察角度", "看问题的角度"],
+          "source": ["human_seed"],
+          "confidence": 0.99
+        },
+        {
+          "sense_id": "visual_perspective",
+          "rank": 2,
+          "tier": "common",
+          "aliases_zh": ["透视", "透视法", "透视画法"],
+          "source": ["human_seed"],
+          "confidence": 0.98
+        },
+        {
+          "sense_id": "vista",
+          "rank": 3,
+          "tier": "rare",
+          "aliases_zh": ["远景", "景观", "远眺"],
+          "source": ["human_seed"],
+          "confidence": 0.96
+        }
+      ]
+    },
+    "approach": {
+      "n": [
+        {
+          "sense_id": "method",
+          "rank": 1,
+          "tier": "core",
+          "aliases_zh": ["方法", "方式", "途径", "办法"],
+          "source": ["human_seed"],
+          "confidence": 0.95
+        },
+        {
+          "sense_id": "coming_nearer",
+          "rank": 2,
+          "tier": "common",
+          "aliases_zh": ["接近", "靠近", "临近"],
+          "source": ["human_seed"],
+          "confidence": 0.9
+        }
+      ],
+      "v": [
+        {
+          "sense_id": "deal_with",
+          "rank": 1,
+          "tier": "core",
+          "aliases_zh": ["处理", "着手处理", "对付"],
+          "source": ["human_seed"],
+          "confidence": 0.9
+        },
+        {
+          "sense_id": "move_near",
+          "rank": 2,
+          "tier": "common",
+          "aliases_zh": ["接近", "靠近", "走近"],
+          "source": ["human_seed"],
+          "confidence": 0.9
+        }
+      ]
+    },
+    "figure": {
+      "n": [
+        {
+          "sense_id": "number",
+          "rank": 1,
+          "tier": "core",
+          "aliases_zh": ["数字", "数值"],
+          "source": ["human_seed"],
+          "confidence": 0.92
+        },
+        {
+          "sense_id": "person",
+          "rank": 2,
+          "tier": "core",
+          "aliases_zh": ["人物", "人影"],
+          "source": ["human_seed"],
+          "confidence": 0.9
+        },
+        {
+          "sense_id": "shape_or_diagram",
+          "rank": 3,
+          "tier": "common",
+          "aliases_zh": ["图形", "图表", "图", "插图"],
+          "source": ["human_seed"],
+          "confidence": 0.88
+        },
+        {
+          "sense_id": "body_shape",
+          "rank": 4,
+          "tier": "common",
+          "aliases_zh": ["身材", "体形", "体型"],
+          "source": ["human_seed"],
+          "confidence": 0.88
+        }
+      ],
+      "v": [
+        {
+          "sense_id": "think_or_estimate",
+          "rank": 1,
+          "tier": "common",
+          "aliases_zh": ["认为", "估计", "料想"],
+          "source": ["human_seed"],
+          "confidence": 0.86
+        },
+        {
+          "sense_id": "calculate",
+          "rank": 2,
+          "tier": "common",
+          "aliases_zh": ["计算", "算出"],
+          "source": ["human_seed"],
+          "confidence": 0.86
+        },
+        {
+          "sense_id": "understand",
+          "rank": 3,
+          "tier": "common",
+          "aliases_zh": ["理解", "弄清楚"],
+          "source": ["human_seed"],
+          "confidence": 0.82
+        }
+      ]
+    },
+    "matter": {
+      "n": [
+        {
+          "sense_id": "affair_or_issue",
+          "rank": 1,
+          "tier": "core",
+          "aliases_zh": ["事情", "问题", "事务", "事件"],
+          "source": ["human_seed"],
+          "confidence": 0.97
+        },
+        {
+          "sense_id": "substance",
+          "rank": 2,
+          "tier": "common",
+          "aliases_zh": ["物质", "材料"],
+          "source": ["human_seed"],
+          "confidence": 0.94
+        }
+      ],
+      "v": [
+        {
+          "sense_id": "be_important",
+          "rank": 1,
+          "tier": "core",
+          "aliases_zh": ["要紧", "重要", "有关系", "有影响"],
+          "source": ["human_seed"],
+          "confidence": 0.99
+        }
+      ]
+    },
+    "subject": {
+      "n": [
+        {
+          "sense_id": "topic",
+          "rank": 1,
+          "tier": "core",
+          "aliases_zh": ["主题", "题目", "话题"],
+          "source": ["human_seed"],
+          "confidence": 0.96
+        },
+        {
+          "sense_id": "academic_field",
+          "rank": 2,
+          "tier": "core",
+          "aliases_zh": ["学科", "科目"],
+          "source": ["human_seed"],
+          "confidence": 0.96
+        },
+        {
+          "sense_id": "grammar_subject",
+          "rank": 3,
+          "tier": "common",
+          "aliases_zh": ["主语"],
+          "source": ["human_seed"],
+          "confidence": 0.94
+        },
+        {
+          "sense_id": "research_subject",
+          "rank": 4,
+          "tier": "specialized",
+          "aliases_zh": ["对象", "受试者", "实验对象"],
+          "source": ["human_seed"],
+          "confidence": 0.9
+        },
+        {
+          "sense_id": "ruler_subject",
+          "rank": 5,
+          "tier": "rare",
+          "aliases_zh": ["臣民"],
+          "source": ["human_seed"],
+          "confidence": 0.93
+        }
+      ]
+    },
+    "charge": {
+      "n": [
+        {
+          "sense_id": "fee",
+          "rank": 1,
+          "tier": "core",
+          "aliases_zh": ["费用", "收费", "价钱"],
+          "source": ["human_seed"],
+          "confidence": 0.94
+        },
+        {
+          "sense_id": "accusation",
+          "rank": 2,
+          "tier": "common",
+          "aliases_zh": ["指控", "控告", "罪名"],
+          "source": ["human_seed"],
+          "confidence": 0.92
+        },
+        {
+          "sense_id": "responsibility",
+          "rank": 3,
+          "tier": "common",
+          "aliases_zh": ["责任", "主管", "负责"],
+          "source": ["human_seed"],
+          "confidence": 0.88
+        },
+        {
+          "sense_id": "electric_charge",
+          "rank": 4,
+          "tier": "specialized",
+          "aliases_zh": ["电荷", "电量"],
+          "source": ["human_seed"],
+          "confidence": 0.95
+        }
+      ],
+      "v": [
+        {
+          "sense_id": "ask_payment",
+          "rank": 1,
+          "tier": "core",
+          "aliases_zh": ["收费", "索价", "要价"],
+          "source": ["human_seed"],
+          "confidence": 0.94
+        },
+        {
+          "sense_id": "accuse",
+          "rank": 2,
+          "tier": "common",
+          "aliases_zh": ["指控", "控告"],
+          "source": ["human_seed"],
+          "confidence": 0.93
+        },
+        {
+          "sense_id": "charge_battery",
+          "rank": 3,
+          "tier": "common",
+          "aliases_zh": ["充电"],
+          "source": ["human_seed"],
+          "confidence": 0.95
+        },
+        {
+          "sense_id": "entrust",
+          "rank": 4,
+          "tier": "common",
+          "aliases_zh": ["委托", "使负责"],
+          "source": ["human_seed"],
+          "confidence": 0.84
+        }
+      ]
+    },
+    "point": {
+      "n": [
+        {
+          "sense_id": "main_idea",
+          "rank": 1,
+          "tier": "core",
+          "aliases_zh": ["要点", "重点", "观点", "论点"],
+          "source": ["human_seed"],
+          "confidence": 0.95
+        },
+        {
+          "sense_id": "dot_or_location",
+          "rank": 2,
+          "tier": "core",
+          "aliases_zh": ["点", "地点", "位置"],
+          "source": ["human_seed"],
+          "confidence": 0.93
+        },
+        {
+          "sense_id": "score",
+          "rank": 3,
+          "tier": "common",
+          "aliases_zh": ["分数", "得分"],
+          "source": ["human_seed"],
+          "confidence": 0.91
+        },
+        {
+          "sense_id": "purpose_or_significance",
+          "rank": 4,
+          "tier": "common",
+          "aliases_zh": ["意义", "目的"],
+          "source": ["human_seed"],
+          "confidence": 0.86
+        }
+      ],
+      "v": [
+        {
+          "sense_id": "indicate",
+          "rank": 1,
+          "tier": "core",
+          "aliases_zh": ["指向", "指出", "指着"],
+          "source": ["human_seed"],
+          "confidence": 0.98
+        }
+      ]
+    },
+    "scale": {
+      "n": [
+        {
+          "sense_id": "size_or_extent",
+          "rank": 1,
+          "tier": "core",
+          "aliases_zh": ["规模", "范围", "程度"],
+          "source": ["human_seed"],
+          "confidence": 0.96
+        },
+        {
+          "sense_id": "measurement_marks",
+          "rank": 2,
+          "tier": "common",
+          "aliases_zh": ["刻度", "标度", "比例尺"],
+          "source": ["human_seed"],
+          "confidence": 0.93
+        },
+        {
+          "sense_id": "weighing_device",
+          "rank": 3,
+          "tier": "common",
+          "aliases_zh": ["秤", "天平"],
+          "source": ["human_seed"],
+          "confidence": 0.88
+        },
+        {
+          "sense_id": "animal_scale",
+          "rank": 4,
+          "tier": "specialized",
+          "aliases_zh": ["鳞", "鳞片"],
+          "source": ["human_seed"],
+          "confidence": 0.93
+        }
+      ],
+      "v": [
+        {
+          "sense_id": "resize",
+          "rank": 1,
+          "tier": "common",
+          "aliases_zh": ["缩放", "按比例调整", "扩大", "缩小"],
+          "source": ["human_seed"],
+          "confidence": 0.9
+        },
+        {
+          "sense_id": "climb",
+          "rank": 2,
+          "tier": "common",
+          "aliases_zh": ["攀登", "爬越"],
+          "source": ["human_seed"],
+          "confidence": 0.87
+        }
+      ]
+    }
+  }
+}

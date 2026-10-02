@@ -1,0 +1,5 @@
+<resources>
+    <style name="Theme.AvelineWear" parent="android:Theme.DeviceDefault">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+</resources>

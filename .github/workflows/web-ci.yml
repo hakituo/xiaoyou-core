@@ -1,0 +1,43 @@
+# Web CI (aveline-web, Vite + React + TypeScript, npm)
+# 为节省 GitHub Actions 额度，当前仅允许手动触发。
+name: Web CI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: typecheck + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: clients/frontend/aveline-web
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v6
+
+      - name: 配置 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: clients/frontend/aveline-web/package-lock.json
+
+      - name: 安装依赖
+        # 跳过 electron 二进制下载（CI 内只用 vite/tsc 构建，避免 100MB+ 下载抖动）
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+      - name: 类型检查
+        run: npm run typecheck
+
+      - name: 构建
+        run: npm run build

@@ -1,0 +1,958 @@
+{
+  "version": 1,
+  "description": "角色工具策略。resident为常驻工具名；on_demand可用工具名或domain:领域，覆盖默认按需范围；disabled优先。角色键为稳定scope，未配置角色继承defaults。现有人设tool_access继续作为额外权限限制。",
+  "defaults": {
+    "resident": [
+      "search_tools",
+      "manage_todo",
+      "search_chat_history"
+    ],
+    "on_demand": [
+      "domain:todo",
+      "domain:core",
+      "domain:information",
+      "domain:daily_record",
+      "domain:journal",
+      "domain:plan",
+      "domain:file",
+      "domain:food",
+      "domain:shop",
+      "domain:study",
+      "domain:study_teaching",
+      "domain:reminder",
+      "domain:user_status",
+      "domain:health",
+      "domain:memory_search",
+      "domain:memory_write",
+      "domain:companion",
+      "domain:communication",
+      "domain:active_care",
+      "domain:device_observe",
+      "domain:device_control",
+      "domain:scene",
+      "domain:tool_discovery"
+    ],
+    "disabled": []
+  },
+  "roles": {
+    "aveline": {
+      "resident": [
+        "search_tools",
+        "manage_todo",
+        "search_chat_history"
+      ]
+    },
+    "ling": {
+      "resident": [
+        "search_tools",
+        "search_chat_history"
+      ]
+    },
+    "ye": {
+      "resident": [
+        "search_tools",
+        "update_character_state",
+        "manage_todo",
+        "search_chat_history"
+      ],
+      "disabled": [
+        "message_peer",
+        "check_peer_status",
+        "get_bionic_state",
+        "get_character_daily_plan",
+        "aveline_daily_data",
+        "domain:food",
+        "domain:shop"
+      ],
+      "description": "叶的独立现场状态由工具维护；不接入原双角色仿生体、商城、投喂和跨角色文件管理。"
+    },
+    "chiba": {
+      "resident": [
+        "search_tools",
+        "manage_todo",
+        "search_chat_history"
+      ],
+      "disabled": [
+        "message_peer",
+        "check_peer_status"
+      ]
+    },
+    "kafka": {
+      "resident": [
+        "search_tools",
+        "manage_todo",
+        "search_chat_history"
+      ],
+      "disabled": [
+        "message_peer",
+        "check_peer_status"
+      ]
+    },
+    "mianmian": {
+      "resident": [
+        "search_tools",
+        "manage_todo",
+        "search_chat_history"
+      ],
+      "disabled": [
+        "message_peer",
+        "check_peer_status"
+      ]
+    },
+    "rushuang": {
+      "resident": [
+        "search_tools",
+        "manage_todo",
+        "search_chat_history"
+      ],
+      "disabled": [
+        "message_peer",
+        "check_peer_status"
+      ]
+    },
+    "xiaolu": {
+      "resident": [
+        "search_tools",
+        "manage_todo",
+        "search_chat_history"
+      ],
+      "disabled": [
+        "message_peer",
+        "check_peer_status"
+      ]
+    },
+    "yeye": {
+      "resident": [
+        "search_tools",
+        "manage_todo",
+        "search_chat_history"
+      ],
+      "disabled": [
+        "message_peer",
+        "check_peer_status"
+      ]
+    }
+  },
+  "modes": {
+    "study": {
+      "resident": [
+        "get_study_profile",
+        "study_get_context",
+        "study_record_teaching",
+        "study_record_answer",
+        "study_record_confusion",
+        "enter_study_mode",
+        "exit_study_mode"
+      ]
+    }
+  },
+  "routes": [
+    {
+      "keywords": [
+        "现在几点",
+        "当前时间",
+        "今天几号",
+        "今天星期",
+        "查询时间",
+        "几点",
+        "几号",
+        "星期几"
+      ],
+      "tools": [
+        "get_current_time"
+      ]
+    },
+    {
+      "keywords": [
+        "计算",
+        "算一下",
+        "算一算",
+        "计算器",
+        "calculator"
+      ],
+      "tools": [
+        "calculator"
+      ]
+    },
+    {
+      "keywords": [
+        "朗读",
+        "读出来",
+        "语音合成",
+        "合成音频",
+        "text to speech"
+      ],
+      "tools": [
+        "text_to_speech"
+      ]
+    },
+    {
+      "keywords": [
+        "联网",
+        "上网查",
+        "网上查",
+        "搜索",
+        "最新消息",
+        "最新新闻",
+        "web search"
+      ],
+      "tools": [
+        "web_search"
+      ]
+    },
+    {
+      "keywords": [
+        "角色状态",
+        "你在哪",
+        "你现在在哪",
+        "你在干嘛",
+        "你现在干嘛",
+        "你穿",
+        "穿什么",
+        "穿的什么",
+        "换衣",
+        "换上",
+        "脱下",
+        "拿起",
+        "放下",
+        "手里",
+        "谁在旁边",
+        "谁在身边",
+        "回宿舍"
+      ],
+      "tools": [
+        "update_character_state"
+      ]
+    },
+    {
+      "keywords": [
+        "天气",
+        "气温",
+        "下雨",
+        "降雨",
+        "台风",
+        "weather",
+        "temperature"
+      ],
+      "tools": [
+        "get_weather"
+      ]
+    },
+    {
+      "keywords": [
+        "提醒",
+        "闹钟",
+        "喊我",
+        "叫我",
+        "分钟后",
+        "小时后",
+        "remind",
+        "alarm"
+      ],
+      "tools": [
+        "set_reminder"
+      ]
+    },
+    {
+      "keywords": [
+        "计划",
+        "todo",
+        "待办",
+        "安排",
+        "日程"
+      ],
+      "tools": [
+        "get_plan",
+        "add_plan_item",
+        "update_plan_item",
+        "remove_plan_item",
+        "mark_plan_item_status",
+        "generate_today_plan",
+        "generate_tomorrow_plan"
+      ]
+    },
+    {
+      "keywords": [
+        "做完",
+        "写完",
+        "背完",
+        "搞完",
+        "完成了",
+        "搞定",
+        "弄好了",
+        "开始做",
+        "不做了",
+        "跳过"
+      ],
+      "tools": [
+        "mark_plan_item_status"
+      ]
+    },
+    {
+      "keywords": [
+        "日记",
+        "每日总结",
+        "今日总结",
+        "月度总结",
+        "月总结"
+      ],
+      "tools": [
+        "write_diary",
+        "read_diary",
+        "read_daily_summary",
+        "read_monthly_summary"
+      ]
+    },
+    {
+      "keywords": [
+        "今日生活",
+        "今日画像",
+        "今天做了什么",
+        "今天干了什么"
+      ],
+      "tools": [
+        "get_daily_summary"
+      ]
+    },
+    {
+      "keywords": [
+        "起床",
+        "睡了",
+        "醒了",
+        "吃饭",
+        "吃了",
+        "喝了",
+        "学习了",
+        "玩了",
+        "我刚",
+        "刚刚",
+        "刚才",
+        "我今天",
+        "今天我"
+      ],
+      "tools": [
+        "record_daily_activity"
+      ]
+    },
+    {
+      "keywords": [
+        "作息记录",
+        "睡眠记录",
+        "睡觉时间",
+        "起床时间",
+        "记错了",
+        "睡的",
+        "几点睡"
+      ],
+      "tools": [
+        "update_sleep_record"
+      ]
+    },
+    {
+      "keywords": [
+        "体重",
+        "体脂",
+        "肌肉量",
+        "身体数据"
+      ],
+      "tools": [
+        "record_body_metrics",
+        "query_health_data"
+      ]
+    },
+    {
+      "keywords": [
+        "心率",
+        "步数",
+        "健康数据",
+        "手表",
+        "睡眠数据",
+        "饮水",
+        "多少步",
+        "卡路里",
+        "睡眠"
+      ],
+      "tools": [
+        "query_health_data"
+      ]
+    },
+    {
+      "keywords": [
+        "生病",
+        "不舒服",
+        "忙碌",
+        "状态好了",
+        "病好了",
+        "持续状态"
+      ],
+      "tools": [
+        "add_user_status",
+        "remove_user_status",
+        "get_user_status"
+      ]
+    },
+    {
+      "keywords": [
+        "买吃",
+        "买点吃",
+        "投喂",
+        "喂你",
+        "菜单",
+        "库存",
+        "想吃",
+        "嘴馋"
+      ],
+      "tools": [
+        "buy_food",
+        "feed_food",
+        "list_food",
+        "show_inventory",
+        "crave_food",
+        "list_food_cravings",
+        "get_aveline_meals"
+      ]
+    },
+    {
+      "keywords": [
+        "商城",
+        "礼物",
+        "商品",
+        "购物",
+        "买个",
+        "送给"
+      ],
+      "tools": [
+        "browse_shop",
+        "buy_shop_item",
+        "show_gift_inventory",
+        "use_gift_item"
+      ]
+    },
+    {
+      "keywords": [
+        "专注",
+        "番茄钟",
+        "分心率",
+        "focus session"
+      ],
+      "tools": [
+        "get_current_focus_session"
+      ]
+    },
+    {
+      "keywords": [
+        "进入学习模式",
+        "开始学习",
+        "学习模式"
+      ],
+      "tools": [
+        "enter_study_mode"
+      ]
+    },
+    {
+      "keywords": [
+        "退出学习模式",
+        "学完了",
+        "不学了",
+        "休息一下"
+      ],
+      "tools": [
+        "exit_study_mode"
+      ]
+    },
+    {
+      "keywords": [
+        "知识库",
+        "学习资料",
+        "公式",
+        "知识点"
+      ],
+      "tools": [
+        "search_knowledge_base"
+      ]
+    },
+    {
+      "keywords": [
+        "单词",
+        "背词",
+        "词汇",
+        "word",
+        "vocabulary"
+      ],
+      "tools": [
+        "update_word_progress",
+        "word_quiz"
+      ]
+    },
+    {
+      "keywords": [
+        "创建文件",
+        "生成文件",
+        "导出文件",
+        "excel",
+        "word文档",
+        "pdf"
+      ],
+      "tools": [
+        "create_file"
+      ]
+    },
+    {
+      "keywords": [
+        "学习文件",
+        "学习笔记",
+        "学习记录"
+      ],
+      "tools": [
+        "study_data_management"
+      ]
+    },
+    {
+      "keywords": [
+        "companion_data",
+        "角色文件",
+        "数据文件"
+      ],
+      "tools": [
+        "aveline_daily_data"
+      ]
+    },
+    {
+      "keywords": [
+        "之前说",
+        "上次说",
+        "以前说",
+        "之前聊",
+        "上次聊",
+        "历史记录",
+        "聊天记录",
+        "说过",
+        "你之前",
+        "你上次",
+        "我之前",
+        "我上次",
+        "跟你说过",
+        "搜记录",
+        "搜聊天",
+        "查历史",
+        "翻记录"
+      ],
+      "tools": [
+        "search_chat_history"
+      ]
+    },
+    {
+      "keywords": [
+        "回忆",
+        "记得我",
+        "我的偏好",
+        "我喜欢",
+        "我讨厌",
+        "我习惯"
+      ],
+      "tools": [
+        "search_memory",
+        "record_preference"
+      ]
+    },
+    {
+      "keywords": [
+        "人物档案",
+        "这个人",
+        "他是谁",
+        "她是谁",
+        "认识的人",
+        "是谁",
+        "什么人"
+      ],
+      "tools": [
+        "query_person_profile"
+      ]
+    },
+    {
+      "keywords": [
+        "记住这个偏好",
+        "长期偏好",
+        "以后都",
+        "我一直"
+      ],
+      "tools": [
+        "record_preference"
+      ]
+    },
+    {
+      "keywords": [
+        "活跃任务",
+        "任务搁置",
+        "以后继续",
+        "任务完成"
+      ],
+      "tools": [
+        "record_active_task",
+        "complete_active_task"
+      ]
+    },
+    {
+      "keywords": [
+        "总结这段",
+        "记录摘要",
+        "重要节点"
+      ],
+      "tools": [
+        "record_summary"
+      ]
+    },
+    {
+      "keywords": [
+        "经验",
+        "最佳实践",
+        "以后应该"
+      ],
+      "tools": [
+        "record_experience"
+      ]
+    },
+    {
+      "keywords": [
+        "Ling怎么样",
+        "Aveline怎么样",
+        "她在干嘛",
+        "她吃饭了吗",
+        "现在在干嘛",
+        "咋样"
+      ],
+      "tools": [
+        "check_peer_status"
+      ]
+    },
+    {
+      "keywords": [
+        "你今天干嘛",
+        "你今天做什么",
+        "她今天干嘛",
+        "角色计划",
+        "你今天都",
+        "她今天都"
+      ],
+      "tools": [
+        "get_character_daily_plan"
+      ]
+    },
+    {
+      "keywords": [
+        "运行程序",
+        "运行进程",
+        "电脑在干嘛",
+        "屏幕上",
+        "看屏幕"
+      ],
+      "tools": [
+        "check_running_processes",
+        "look_at_screen"
+      ]
+    },
+    {
+      "keywords": [
+        "手机应用",
+        "已安装应用",
+        "打开应用",
+        "启动应用",
+        "强制停止",
+        "使用时长",
+        "应用限额"
+      ],
+      "tools": [
+        "list_installed_apps",
+        "start_app",
+        "force_stop_app",
+        "get_app_usage_time",
+        "set_app_limit"
+      ]
+    },
+    {
+      "keywords": [
+        "手机屏幕",
+        "手机截图"
+      ],
+      "tools": [
+        "capture_phone_screen"
+      ]
+    },
+    {
+      "keywords": [
+        "位置",
+        "定位",
+        "经纬度",
+        "我在哪"
+      ],
+      "tools": [
+        "get_device_location"
+      ]
+    },
+    {
+      "keywords": [
+        "蓝牙",
+        "耳机",
+        "配对设备"
+      ],
+      "tools": [
+        "list_paired_bluetooth_devices",
+        "scan_bluetooth_devices",
+        "pair_bluetooth_device",
+        "unpair_bluetooth_device"
+      ]
+    },
+    {
+      "keywords": [
+        "壁纸",
+        "桌面"
+      ],
+      "tools": [
+        "set_wallpaper"
+      ]
+    },
+    {
+      "keywords": [
+        "玩法",
+        "换个玩法",
+        "不玩了"
+      ],
+      "tools": [
+        "list_scenes",
+        "enable_scene",
+        "disable_scene"
+      ]
+    },
+    {
+      "keywords": [
+        "仿生体状态",
+        "你的状态",
+        "你饿吗",
+        "你渴吗",
+        "你累吗",
+        "饿不饿",
+        "渴不渴",
+        "累不累"
+      ],
+      "tools": [
+        "get_bionic_state"
+      ]
+    },
+    {
+      "keywords": [
+        "主动关怀",
+        "active care",
+        "关怀",
+        "打扰",
+        "烦我",
+        "别来",
+        "别发",
+        "少发",
+        "多发",
+        "发少",
+        "发多",
+        "频率",
+        "间隔",
+        "多久发",
+        "安静",
+        "别吵",
+        "别打扰",
+        "静一静",
+        "别烦",
+        "晚点再",
+        "过会儿",
+        "定时"
+      ],
+      "tools": [
+        "adjust_active_care_frequency",
+        "pause_active_care",
+        "schedule_active_care_message",
+        "toggle_active_care",
+        "get_active_care_status"
+      ]
+    },
+    {
+      "keywords": [
+        "学习",
+        "考试",
+        "错题",
+        "易错",
+        "掌握",
+        "没学会",
+        "数学",
+        "英语",
+        "物理",
+        "化学",
+        "语文",
+        "生物",
+        "历史",
+        "地理",
+        "高考",
+        "中考",
+        "刷题",
+        "练习",
+        "作业",
+        "成绩",
+        "知识",
+        "公式",
+        "考点"
+      ],
+      "tools": [
+        "get_study_profile",
+        "study_get_context",
+        "study_record_teaching",
+        "study_record_answer",
+        "study_record_confusion"
+      ]
+    },
+    {
+      "keywords": [
+        "没听懂",
+        "听不懂",
+        "没明白",
+        "不明白",
+        "不理解",
+        "没搞懂",
+        "没学会",
+        "卡住"
+      ],
+      "tools": [
+        "study_record_confusion",
+        "study_get_context"
+      ]
+    },
+    {
+      "keywords": [
+        "单词",
+        "英语",
+        "背诵",
+        "复习",
+        "word",
+        "vocabulary",
+        "study",
+        "exam",
+        "grade"
+      ],
+      "tools": [
+        "update_word_progress"
+      ]
+    },
+    {
+      "keywords": [
+        "记一下",
+        "帮我记",
+        "别忘了",
+        "要记得",
+        "备忘录",
+        "划掉",
+        "做完了",
+        "还没做",
+        "清单"
+      ],
+      "tools": [
+        "manage_todo"
+      ]
+    },
+    {
+      "keywords": [
+        "今天要干",
+        "干点啥",
+        "今天做啥",
+        "有啥安排"
+      ],
+      "tools": [
+        "get_plan"
+      ]
+    },
+    {
+      "keywords": [
+        "加上",
+        "再加",
+        "加一项"
+      ],
+      "tools": [
+        "add_plan_item"
+      ]
+    },
+    {
+      "keywords": [
+        "今天都干",
+        "干了点啥",
+        "今天做了"
+      ],
+      "tools": [
+        "get_daily_summary"
+      ]
+    },
+    {
+      "keywords": [
+        "记住了",
+        "以后我",
+        "记下我"
+      ],
+      "tools": [
+        "record_preference"
+      ]
+    },
+    {
+      "keywords": [
+        "给你买了",
+        "给你吃",
+        "喂你吃"
+      ],
+      "tools": [
+        "feed_food"
+      ]
+    },
+    {
+      "keywords": [
+        "这个月都",
+        "这一个月",
+        "本月总结"
+      ],
+      "tools": [
+        "read_monthly_summary"
+      ]
+    },
+    {
+      "keywords": [
+        "还有啥吃",
+        "冰箱里",
+        "还剩什么"
+      ],
+      "tools": [
+        "show_inventory"
+      ]
+    },
+    {
+      "keywords": [
+        "带伞",
+        "要不要穿",
+        "冷不冷"
+      ],
+      "tools": [
+        "get_weather"
+      ]
+    },
+    {
+      "keywords": [
+        "习惯你还",
+        "我说过的",
+        "记得我"
+      ],
+      "tools": [
+        "search_memory"
+      ]
+    },
+    {
+      "keywords": [
+        "别老给我发",
+        "老给我发",
+        "发消息太"
+      ],
+      "tools": [
+        "adjust_active_care_frequency"
+      ]
+    }
+  ]
+}

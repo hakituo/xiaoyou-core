@@ -1,0 +1,86 @@
+"""
+主动关怀通用数值常量（间隔 / 生成 / 提醒 / 退避 / 抖动）
+
+从原 `shared/constants.py` 拆出：仅放与"睡眠窗口"无关的可调阈值，
+睡眠相关阈值见 `sleep_thresholds.py`。纯数据模块，无 import 依赖。
+
+注意：这里的默认值只在配置缺失时兜底，实际运行优先读 config。
+"""
+from typing import Dict
+
+# ── 调度与生成默认值 ────────────────────────────────────────
+DEFAULT_NEXT_CHECK_SECONDS = 300
+DEFAULT_MIN_GAP_SECONDS = 600
+DEFAULT_DAILY_LIMIT = 20
+DEFAULT_USER_QUIET_SECONDS = 300
+DEFAULT_TONE_REFERENCE_MAX_CHARS = 3000
+DEFAULT_GENERATION_TEMPERATURE = 0.65
+DEFAULT_GENERATION_MAX_TOKENS = 220
+DEFAULT_DECISION_TEMPERATURE = 0.45
+DEFAULT_BANDIT_EPSILON = 0.2
+
+# ── 沉默与提醒 ──────────────────────────────────────────────
+SILENCE_BREAKER_SECONDS = 1800
+REMINDER_MAX_CONSECUTIVE_RETRIES = 3
+REMINDER_RETRY_BACKOFF_BASE_SECONDS = 300
+LONG_SILENCE_THRESHOLD_SECONDS = 1800
+RECENT_HISTORY_LIMIT = 8
+RECENT_HISTORY_CONTENT_MAX_CHARS = 180
+# 用户消息超过该年龄时不再当作"刚发生的交互"处理
+USER_MESSAGE_MAX_AGE_SECONDS = 300
+
+# ── 非响应退避 ──────────────────────────────────────────────
+BACKOFF_BASE = 1.8
+BACKOFF_CAP = 12.0
+MAX_CONSECUTIVE_NON_RESPONSES_BEFORE_SKIP = 4
+
+# ── 抖动与最小间隔 ──────────────────────────────────────────
+JITTER_LOW_RATIO = 0.9
+JITTER_HIGH_RATIO = 1.1
+INTERVAL_MIN_SECONDS = 30
+
+# ── 误触短回复判定 ──────────────────────────────────────────
+ACCIDENTAL_REPLY_WINDOW_SECONDS = 300
+ACCIDENTAL_REPLY_MAX_LENGTH = 4
+
+# 情绪 → (基础间隔乘数, 增量偏移)，用于心跳间隔自适应
+EMOTION_INTERVAL_MULTIPLIERS: Dict[str, tuple] = {
+    "sad": (1.0, 0.8),
+    "tired": (1.0, 0.8),
+    "lost": (1.0, 0.8),
+    "wronged": (1.0, 0.8),
+    "angry": (1.0, 0.8),
+    "happy": (1.0, -0.3),
+    "excited": (1.0, -0.3),
+    "coquetry": (1.0, -0.3),
+    "anxious": (0.8, 0.0),
+}
+
+
+__all__ = [
+    "DEFAULT_NEXT_CHECK_SECONDS",
+    "DEFAULT_MIN_GAP_SECONDS",
+    "DEFAULT_DAILY_LIMIT",
+    "DEFAULT_USER_QUIET_SECONDS",
+    "DEFAULT_TONE_REFERENCE_MAX_CHARS",
+    "DEFAULT_GENERATION_TEMPERATURE",
+    "DEFAULT_GENERATION_MAX_TOKENS",
+    "DEFAULT_DECISION_TEMPERATURE",
+    "DEFAULT_BANDIT_EPSILON",
+    "SILENCE_BREAKER_SECONDS",
+    "REMINDER_MAX_CONSECUTIVE_RETRIES",
+    "REMINDER_RETRY_BACKOFF_BASE_SECONDS",
+    "LONG_SILENCE_THRESHOLD_SECONDS",
+    "RECENT_HISTORY_LIMIT",
+    "RECENT_HISTORY_CONTENT_MAX_CHARS",
+    "USER_MESSAGE_MAX_AGE_SECONDS",
+    "BACKOFF_BASE",
+    "BACKOFF_CAP",
+    "MAX_CONSECUTIVE_NON_RESPONSES_BEFORE_SKIP",
+    "JITTER_LOW_RATIO",
+    "JITTER_HIGH_RATIO",
+    "INTERVAL_MIN_SECONDS",
+    "ACCIDENTAL_REPLY_WINDOW_SECONDS",
+    "ACCIDENTAL_REPLY_MAX_LENGTH",
+    "EMOTION_INTERVAL_MULTIPLIERS",
+]

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- 全局允许明文 HTTP。
+         原因: 本应用是个人陪伴助手, 后端部署在用户内网(如 192.168.x.x),
+         明文在内网无嗅探风险; release 也需要能连内网后端。
+         若未来后端上公网并启用 HTTPS, 可改回 cleartextTrafficPermitted="false"。
+         注意: 内网明文仅为功能性妥协, 访问令牌等敏感信息请务必通过 HTTPS/WSS 信道传输。 -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <!-- 生产(release)只信任系统根证书; 用户自装 CA 一律不信任,
+                 防止中间人代理或恶意自签证书在正式环境中放行。 -->
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <!-- Debug 构建: 额外信任用户安装的证书, 方便抓包调试 -->
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>

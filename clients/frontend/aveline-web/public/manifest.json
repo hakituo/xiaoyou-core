@@ -1,0 +1,12 @@
+{
+  "name": "Aveline",
+  "short_name": "Aveline",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#18181b",
+  "description": "Aveline 本地 AI 聊天系统 (PWA)",
+  "icons": [
+    { "src": "/icons/aveline.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "_说明": "已拆分模块的「门面对外契约」登记表，供 tests/scripts/docs/verify_all_split_contracts.py 逐个复核。",
+  "_登记条件": "只登记「薄壳门面 + 全量再导出」型拆分 —— 门面保留拆分前的全部对外名字。契约校验比对「拆分前 vs 当前工作区」，只报**缺失**的名字（新增不报），所以可长期当回归网。",
+  "_为什么不登记其它拆分": [
+    "「搬出去型」（如 fa26b452/life.py）：函数搬去兄弟模块、门面不再保留 → 契约校验会把正常的搬迁报成丢失，改用 check_integrity_at.py 按方法级比对。",
+    "「重构型」（如 0ff7819f 教学系统、2bbe9ba6/openai_compat client）：抽 helper / 改名 / 改签名，函数体必然变化 → 契约校验不适用。",
+    "「顺手清 import 型」（如 signal_detector、study_daily）：拆分后不再需要的 import 被删掉，契约校验会把清理报成丢失。"
+  ],
+  "entries": [
+    {
+      "module": "core.utils.text_segmenter",
+      "path": "core/utils/text_segmenter.py",
+      "split_commit": "a0ca6003",
+      "note": "拆为薄壳门面 + 7 个职责子模块"
+    },
+    {
+      "module": "memory.core.analysis_ops",
+      "path": "memory/core/analysis_ops.py",
+      "split_commit": "8fe67395",
+      "note": "最后 5 个千行源码文件解耦（第 1 个）"
+    },
+    {
+      "module": "core.tools.study.english.daily_word_log",
+      "path": "core/tools/study/english/daily_word_log.py",
+      "split_commit": "8fe67395",
+      "note": "最后 5 个千行源码文件解耦（第 2 个）"
+    },
+    {
+      "module": "core.modules.llm.stream_generator",
+      "path": "core/modules/llm/stream_generator.py",
+      "split_commit": "8fe67395",
+      "note": "最后 5 个千行源码文件解耦（第 3 个）"
+    },
+    {
+      "module": "core.agents.chat_agent_components.persona_system.prompt.active_care_prompts",
+      "path": "core/agents/chat_agent_components/persona_system/prompt/active_care_prompts.py",
+      "split_commit": "8fe67395",
+      "note": "最后 5 个千行源码文件解耦（第 4 个）"
+    },
+    {
+      "module": "core.agents.chat_agent_components.handler",
+      "path": "core/agents/chat_agent_components/handler.py",
+      "split_commit": "8fe67395",
+      "note": "最后 5 个千行源码文件解耦（第 5 个）"
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+# 仓库健康审计：tests/ 目录规范 + 单文件行数门禁
+#
+# 触发策略（2026-09-25 再次调整）：
+# - 曾短暂改为 push / PR 触发（paths 过滤源码类文件），但用户 GitHub Actions 额度已耗尽，
+#   **改回纯手动触发（workflow_dispatch）**：想跑门禁时在 Actions 页手动点一下即可。
+# - 注意：手动触发时代门禁同样生效，只是不会自动拦 push。
+# - 有意 **不含 .md**：docs/updates 每次自动提交都会动，纳入会把额度吃光。
+#
+# 两个脚本的「严格度」刻意不同：
+# - audit_tests.py：**报告模式**。历史债务 260+ 项，--strict 会让本工作流永久变红。
+# - check_file_sizes.py --strict：**门禁模式**。只对「新增超限」返回非零，
+#   存量超限登记在 tests/scripts/docs/file_size_baseline.txt，不会误伤历史债务。
+#   因此它适合当门禁：有人新写一个超 300 行的 Python 文件就会在这里失败。
+name: Test Health Audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # 带上 ref：main 的 push 与各 PR 各占一组，互不取消（本工作流很快，不需取消在跑的）
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: tests/ 目录健康审计
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v6
+        with:
+          # 契约复核要 `git show <拆分提交>^:<路径>`，默认 fetch-depth=1 取不到历史基线
+          fetch-depth: 0
+
+      - name: tests/ 目录审计（报告模式）
+        # 报告模式：即使发现问题也返回 0，避免整个仓库 CI 因历史债务永久变红。
+        run: python3 tests/scripts/audit_tests.py
+
+      - name: 单文件行数门禁（新增超限即失败）
+        # 口径真源：.trae/rules/RULES.md §2 速查表 + check_file_sizes.py#LIMITS
+        # （Python 300 / .kt .java .cpp 400 / .ts .tsx .vue .swift 350 / .md 500）
+        # 存量债务请拆分，不要往 file_size_baseline.txt 里加新条目。
+        run: python3 tests/scripts/docs/check_file_sizes.py --strict
+
+      - name: 已拆分门面的对外契约复核
+        # 登记表：tests/scripts/docs/split_contract_manifest.json
+        # 比对「拆分前 vs 当前」，只报**缺失**的对外名字（新增不报），可长期当回归网。
+        # 只登记「薄壳门面 + 全量再导出」型拆分；搬出去型 / 重构型不适用，见登记表注释。
+        run: python3 tests/scripts/docs/verify_all_split_contracts.py

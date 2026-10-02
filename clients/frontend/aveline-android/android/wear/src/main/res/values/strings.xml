@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">Aveline Wear</string>
+    <string name="start_collect">开始采集</string>
+    <string name="stop_collect">停止采集</string>
+    <string name="status_idle">等待采集</string>
+    <string name="status_collecting">采集中…</string>
+    <string name="steps_label">步数</string>
+    <string name="heart_rate_label">心率</string>
+</resources>
